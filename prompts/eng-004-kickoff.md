@@ -66,13 +66,29 @@ The registry setup is governance-recorded as **DEC-001 (ENG-004, Active,
 DB-first recording of future standards. (Vocab note: decision status is
 `Active`, not `accepted`.)
 
+**UI STANDARDS COMPLETE (2026-07-03):** all topics dictated, ruled, and in
+the DB as ENG-004 instruction skills bound to AGP-016/017/018 —
+**SKL-111** UI core principles, **SKL-112** grid, **SKL-113** layout &
+window, **SKL-114** forms & edit screens, **SKL-115** workprocess
+(custom-app plug-in model), **SKL-116** help system, **SKL-117** look &
+feel. UI Developer contract verified carrying all of them. Decision record:
+`~/Dropbox/Projects/cbm-mentoring-app/docs/ui-standards-discussion.md`
+(scratch; DB is truth). `prompts/ui-standards-session-2.md` is now
+historical.
+
 ## Agenda for the next session
 
 1. Bootstrap per the crmbuilder CLAUDE.md.
-2. Continue standards dictation — remaining UI topics
-   (`prompts/ui-standards-session-2.md`), then **database/API rules** —
-   recording decisions straight into the V2 DB (skills/governance rules
-   under ENG-004), files only as scratch.
+2. **Database/API rules** (Doug's named next standards area) — same
+   working method; decisions recorded as ENG-004 skills bound to the
+   api/storage agent triads (AGP-010/011/012, AGP-001/002/006). The UI
+   standards already imply data-layer obligations to honor: admin-authored
+   SQL data sources + per-source grants + userID filtering; server-side
+   search/count/aggregates; infinite-scroll caching; optimistic
+   concurrency; soft deletes everywhere; same-user sync + designed-for
+   server push; background tasks (>10s rule); view/pin/preference
+   persistence; per-field single-field writes; duplicate detection;
+   postal-code + address/name parsing services; export/print generation.
 3. Requirements capture for the app itself: REQs under ENG-004 (sources:
    the dictated standards, domain brief, cbm-custom-mentor-app L1/L2 PRDs)
    → confirm → PIs → compose + freeze a release → the pipeline run IS the
