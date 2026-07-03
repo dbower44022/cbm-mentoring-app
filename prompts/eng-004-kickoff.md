@@ -61,11 +61,14 @@ Doug's approval.
   DB records (the DB is the source of truth; the files are authoring
   artifacts).
 
+The registry setup is governance-recorded as **DEC-001 (ENG-004, Active,
+2026-07-03)** — reuse of system agent profiles + the three skills/bindings +
+DB-first recording of future standards. (Vocab note: decision status is
+`Active`, not `accepted`.)
+
 ## Agenda for the next session
 
-1. Bootstrap; confirm governance recording for the 2026-07-03 registry
-   setup (does it need a retroactive work record/decision per TOP-013
-   recording rules?).
+1. Bootstrap per the crmbuilder CLAUDE.md.
 2. Continue standards dictation — remaining UI topics
    (`prompts/ui-standards-session-2.md`), then **database/API rules** —
    recording decisions straight into the V2 DB (skills/governance rules
