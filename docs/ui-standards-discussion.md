@@ -375,6 +375,77 @@ from these notes for approval.
 
 **OVERALL LAYOUT COMPLETE (2026-07-03).** All six suggestions IN.
 
+# FORMS & EDIT SCREENS (dictation in progress — records to ENG-004 skills on consolidation)
+
+## Full edit screen (decided)
+
+- The **Edit action invokes a full-screen edit function**. **All fields are
+  editable.**
+- **Field locations roughly match the (read) view layout**, scaled up — the
+  edit screen is larger because edit controls need more room.
+- **Large Save button**; warning if the user selects another page without
+  saving (extends the dirty-guard rules).
+- **Cancel button reverts to the original values** — available any time
+  before the save action.
+- **Validation is driven by data set / field-type settings** (not per-form
+  hand rules).
+- **Automatic data formatting** for typed fields: address, phone, email,
+  website, etc.
+- **Smart paste-parsing:** the address field accepts a pasted free-text
+  address (e.g. copied from a website) and **resolves it into components**;
+  same for full name → first / middle / last, etc.
+- **Validation timing: per-field on exit PLUS a save-time sweep** (sweep
+  focuses the first problem); **messages inline** at the offending field.
+- **Smart-paste ambiguity:** fill the components the parser is confident of,
+  **keep the unresolved remainder visible** (never discarded), **never block
+  the paste**; the user finishes by hand.
+- **Postal-code auto-fill:** entering a postal code automatically fills
+  city/state.
+
+## Per-field edit window (decided)
+
+- Has its own **Save / Cancel buttons**; Save **commits that single field
+  immediately** (single-field write + optimistic-concurrency check), Cancel
+  discards. No full-record save required.
+
+## Relationship / lookup fields (decided)
+
+- Standard control: **type-ahead search** over the related data set
+  (respecting its permissions), with **open-the-selected-record** and
+  **create-new-related-record** affordances inline.
+
+## Required fields (decided)
+
+- Marked with an **asterisk on the label**; **required-ness is defined in
+  the field settings** (data-set level), not per form.
+
+## Forms suggestions round (Claude proposed, Doug ruling)
+
+1. **Create form — IN.** Same full-screen form, empty, pre-filled from
+   field-setting defaults (data-set level), same validation/formatting; no
+   separate create wizard unless a workprocess defines one. After first
+   save the user lands on the new record's read-optimized view; Cancel
+   before first save creates nothing and returns whence they came.
+2. **Computed-fields exception — IN.** Non-editable fields (computed,
+   system, no field permission) appear in their usual position but render
+   read-only; clicking one explains why it's not editable (educate voice).
+3. **Duplicate detection on create — IN.** Key identity fields (declared
+   per data set) trigger a non-blocking similar-records check before save:
+   "N similar records exist" + open-in-pop-out to compare + continue-or-
+   switch choice. Never a hard block. Soft-deleted matches surface with a
+   restore-instead offer.
+4. **Form keyboard standard — IN (+ Doug).** Ctrl+S = Save everywhere;
+   Esc = cancel per-field window / close-request (dirty guard) elsewhere;
+   focus starts in first editable field; Enter never submits a multi-field
+   form. **Doug: Tab stops ONLY on editable fields** — never labels,
+   read-only/computed elements, or other non-data-input controls.
+5. **Field-level help — IN.** Field settings carry optional help text;
+   rendered as a subtle affordance (info marker on label, text on
+   hover/focus), never permanent hint paragraphs. Bottom layer of the
+   situation-specific Help pyramid; admin-maintained, not hardcoded.
+
+**FORMS & EDIT SCREENS COMPLETE (2026-07-03).**
+
 ## Still open
 
 - Preview pane docked position (right vs bottom vs user choice) — minor;
