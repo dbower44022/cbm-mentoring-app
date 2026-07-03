@@ -42,17 +42,38 @@ Doug's approval.
   production context: `cbm-client-intake` (intake forms + staff tools live
   against EspoCRM).
 
-## Agenda for this session (confirm order with Doug)
+## DONE 2026-07-03 (registry entry criterion met)
 
-1. Bootstrap + read ENG-004's current DB state (what's already recorded).
-2. Decide with Doug how the E2E runs under governance: what needs REQs/PIs
-   first (defining web-app agents in the registry? importing the UI-standards
-   skills as engagement-scoped instruction skills?).
-3. Define the web-app agent set for ENG-004 (areas × tiers + capability
-   descriptions) in the registry, per the target model.
-4. Import/record the UI standards as ENG-004 skills; continue standards
-   dictation (remaining UI topics, then database/API rules) with decisions
-   recorded in the V2 DB, not files.
+- Agent registry located: **`/agent-profiles`** (AGP-NNN). 38 standing
+  system profiles cover the webapp areas — ui (AGP-016/017/018),
+  api (AGP-010/011/012), storage (AGP-001/002/006), espo (AGP-025/026/027).
+  **Decision: reuse system agents via the engagement-overlay model; no
+  ENG-004 profiles created** (create one only if a genuinely new area
+  emerges).
+- UI standards are IN THE DATABASE as ENG-004-scoped instruction skills:
+  **SKL-111** (UI core principles), **SKL-112** (grid standard), **SKL-113**
+  (layout & window standard) — each bound via `agent_profile_has_skill` to
+  AGP-016/017/018. **VERIFIED:** `GET /agent-profiles/AGP-017/contract
+  ?engagement=ENG-004` composes them into the system prompt; resolved for
+  ENG-001 they are absent (scope isolation confirmed).
+- Skill-content source remains `~/Dropbox/Projects/cbm-mentoring-app/
+  .claude/skills/ui-standards/` — future edits must be re-recorded to the
+  DB records (the DB is the source of truth; the files are authoring
+  artifacts).
+
+## Agenda for the next session
+
+1. Bootstrap; confirm governance recording for the 2026-07-03 registry
+   setup (does it need a retroactive work record/decision per TOP-013
+   recording rules?).
+2. Continue standards dictation — remaining UI topics
+   (`prompts/ui-standards-session-2.md`), then **database/API rules** —
+   recording decisions straight into the V2 DB (skills/governance rules
+   under ENG-004), files only as scratch.
+3. Requirements capture for the app itself: REQs under ENG-004 (sources:
+   the dictated standards, domain brief, cbm-custom-mentor-app L1/L2 PRDs)
+   → confirm → PIs → compose + freeze a release → the pipeline run IS the
+   E2E test.
 
 ## Working method (Doug's, proven 2026-07-03)
 
