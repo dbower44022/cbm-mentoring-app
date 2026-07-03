@@ -52,8 +52,10 @@ agent**.
 
 Skills: `webapp-standards` (house stack + conventions), `spec-authoring`
 (requirement format + traceability), `design-doc-standards` (design doc
-formats). Agents are told to load the relevant skill before producing their
-artifact.
+formats), `ui-standards` (canonical list-view grid, layout/navigation model,
+editor + modal + notice behaviors — distilled from the production staff tools,
+inconsistencies resolved). Agents are told to load the relevant skill before
+producing their artifact.
 
 ## Relationship to other CBM repos
 

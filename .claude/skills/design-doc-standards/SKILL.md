@@ -18,7 +18,10 @@ covered because…"). An uncovered Must-have fails the design gate.
 3. **Screen inventory** — every screen/page: purpose, who reaches it and how,
    what it shows, what actions it offers.
 4. **Wireframes** — per screen, low-fi layout as an ASCII/text sketch or
-   simple HTML. Content and hierarchy, not pixels.
+   simple HTML. Content and hierarchy, not pixels. Reference `ui-standards`
+   components by name (e.g. "standard grid: columns …, filters …, default
+   sort …, empty state: '…'") and specify only the per-screen particulars —
+   never respecify standard behavior.
 5. **Interaction & state rules** — empty states, loading, errors, validation
    messages, permission-denied behavior.
 6. **Assumptions / Questions for the stakeholder**
