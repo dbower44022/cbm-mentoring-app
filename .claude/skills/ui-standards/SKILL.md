@@ -5,6 +5,11 @@ description: Standard UI functionality for this app — the canonical list-view 
 
 # UI standards
 
+> **STATUS: DRAFT STRAWMAN — not approved.** Written from an inventory of the
+> existing staff tools before the stakeholder's own standards were gathered.
+> Do not treat as binding until Doug has revised and approved it; agents must
+> not load-and-follow this skill while this banner is present.
+
 The canonical behaviors every screen inherits. The UX design references these
 components by name ("standard grid with columns …") instead of respecifying
 them; deviations must be explicit in the design and justified. Distilled from

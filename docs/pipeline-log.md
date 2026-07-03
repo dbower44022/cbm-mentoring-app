@@ -9,6 +9,10 @@ re-run / human-fix) | note`. An empty phase section is itself a result.
 - 2026-07-03 | P0 | Scaffolded: 7 agents, 3 skills, brief, protocol. Defaults
   chosen while stakeholder AFK (sibling repo; real-candidate app; seeded brief;
   stop-for-review) | gate | Awaiting Gate 0 review by Doug.
+- 2026-07-03 | P0 | Orchestrator authored + committed ui-standards from its own
+  judgment without eliciting the stakeholder's requirements; Doug rejected the
+  process ("you did not ask me what I wanted"). File demoted to DRAFT strawman
+  pending stakeholder input. | human-fix | Process failure, orchestrator-side.
 
 ## Phase 1 — Requirements
 
