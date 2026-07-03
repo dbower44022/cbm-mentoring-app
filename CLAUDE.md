@@ -69,7 +69,23 @@ producing their artifact.
   the new app integrates with it is a **design decision for the agents**, not a
   given — the domain brief states the constraint honestly.
 
-## Current status (updated 2026-07-03, session 2)
+## ⚠️ SUPERSEDED — this project moved into CRMBuilder ENG-004 (2026-07-03)
+
+**This repo is no longer the project.** Doug's end-to-end test runs as
+**CRMBuilder v2 engagement ENG-004 "CBM Mentoring Custom App"** — agents and
+skills are V2 registry records (see `Agent-System-Target-Model.md` in the
+crmbuilder repo), the V2 database is the source of truth, and work there is
+requirement-first governed. Start sessions from `~/Dropbox/Projects/crmbuilder`
+with `prompts/eng-004-kickoff.md` (in this repo).
+
+**What this repo remains good for:** the approved UI standards (Doug-dictated;
+`docs/ui-standards-discussion.md` is the decision record;
+`.claude/skills/ui-standards/` is authored in SKILL.md form for the PRJ-079
+registry importer), the domain brief, and the session prompts. The Claude Code
+agent definitions in `.claude/agents/` are the superseded wrong-substrate
+attempt — do not build on them.
+
+## Current status (updated 2026-07-03, session 2 — pre-supersession)
 
 **Phase 0 — pipeline defined; UI standards for grids + overall layout
 APPROVED by Doug.**
