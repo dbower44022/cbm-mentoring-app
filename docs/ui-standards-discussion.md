@@ -158,8 +158,106 @@ repeatedly — repeated tasks deserve an optimal UI.
 - **The last action in every menu is Help** — provides **situation-specific
   help**. (Applies to every menu, app-wide.)
 
+## Suggestions round (Claude proposed, Doug ruling one at a time)
+
+1. **Server-side truth — IN.** Search, row counts, and all aggregates are
+   computed server-side over the ENTIRE filtered result set; the
+   infinite-scroll window affects only what's rendered, never what's counted,
+   matched, or summed.
+
+2. **Selection semantics — decided (Doug).**
+   - **Select-all means select ALL** — the entire filtered result set, no
+     two-step "visible first" pattern (explicitly rejected: "gmail sucks").
+     Safety lives in the action, not the selection: invoking an action on a
+     large selection warns the user it will run on "X items".
+   - **Filter/search changes keep the selection, with notice** — status bar
+     shows e.g. "10 selected, 3 not in current filter", and action
+     confirmations spell out that hidden-selected rows are included.
+     Silently deselecting a user-selected row is terrible practice.
+
+3. **Keyboard model — IN (as defined).** Arrow up/down = row focus (visible
+   indicator); Space = toggle selection; Shift+arrows = extend; Ctrl+A =
+   select all (entire filtered set); Enter = open/view; Menu key / Shift+F10 =
+   actions menu on selection; focus starts in the search box and `/` jumps to
+   it; column-header focus + Enter sorts. Arrow-down at the bottom edge keeps
+   loading (infinite scroll). One standard covers power users AND
+   accessibility.
+
+4. **Multi-sort mechanics — IN (as defined).** Click = sole sort (repeat
+   toggles direction); Shift+click adds secondary/tertiary (repeat toggles,
+   third removes); sorted headers show direction arrow + numbered badge for
+   sort position. Header sorting is a temporary view modification — flags the
+   view *(modified)*, lasts until another view is selected, saveable into a
+   user view via the view editor.
+
+5. **Grid state restoration — IN.** Returning from a record restores the grid
+   exactly: view + temporary modifications, search text, scroll position,
+   selection, focused row — but the DATA refreshes underneath (edited rows
+   show new values; keep-with-notice applies if a selected row no longer
+   matches). Lifetime: view choice persists long-term (already decided);
+   scroll/selection/search restore is session-only.
+
+6. **Export — IN; Print added (Doug).** Export is a standard action on every
+   data set: exports the current view as seen (columns, order, formats, sort,
+   filters + active search); selection if any, else entire filtered set
+   (server-side); CSV + Excel (.xlsx); status-bar progress for long exports;
+   **formatted values by default with an "export raw values" checkbox**.
+   Grouping: flat with group columns, or Excel grouping — implementer's
+   choice v1. **Doug: PRINT is also a standard grid function** — same scope
+   semantics as export (selection else filtered set), print-friendly
+   rendering of the current view; details at design time.
+
+7. **Deep links — IN (as defined).** URL identifies grid + active view only
+   (not search/sort/selection — session state per #5). Links are references:
+   data-source permission still required; a link to another user's private
+   view falls back to the recipient's last-used view with an educate-style
+   notice; system-view links work for everyone with the data source.
+   **Doug (preview of layout discussion): views will also be pinnable as
+   tabs/menu items** — the system defines default tabs/menus, and users can
+   add their own views to their tabs/menus for faster access (personal main
+   navigation).
+
+8. **Per-column (ad-hoc) filtering — IN, as a view setting.** The view
+   decides whether ad-hoc header filters are allowed (funnel: distinct-value
+   checkboxes / ranges / contains; filled funnel indicator; ANDs with view
+   filters + search; marks view *(modified)*, saveable). **Doug's stated
+   intent: well-designed saved views are the primary tool — ad-hoc filters
+   are the escape hatch, not the culture.** Distinct-value lists come from
+   the server-side filtered set.
+
+9. **Empty/error states — IN (as defined).** Four distinguished states, each
+   with the educate pattern (what happened → why → what next): view-empty
+   (states the view's criteria), filtered-to-zero (says N rows hidden +
+   [Clear search] — never let a filter masquerade as missing data),
+   data-source error (plain words + [Retry], detail available not dumped),
+   permission/no-access (which permission, who grants it). Standard defines
+   the pattern; data set/view supplies wording.
+
+10. **Destructive-action confirmation — IN (as defined).** Actions classified
+    at definition: safe (no confirm) / modifying (confirm optional) /
+    destructive (confirm required). Destructive confirms name the action,
+    exact count, affected records (first N + "and X more"), and call out
+    selected-but-filtered-out rows. One shared confirmation component
+    app-wide. No type-to-confirm theatrics.
+    **Doug (system-wide decision): the system uses SOFT DELETES — a record
+    is never physically deleted.** Safety is assured at the data layer;
+    confirmation wording must therefore be honest (not "cannot be undone" —
+    deleted records are recoverable by admin).
+
+11. **Inline cell editing — OUT for v1, revisit later.** If ever added it
+    would likely be a view setting. Doug's expectation: the powerful action
+    set + multi-select actions may make grid editing unnecessary.
+
+**GRID STANDARD COMPLETE (2026-07-03).** All regions, behaviors, and edge
+semantics ruled on by Doug. Next: rewrite the ui-standards skill grid section
+from these notes for approval.
+
 ## Still open
 
-- Overall layout (app shell, navigation, list/detail/edit relationships).
-- Expected UI functionality beyond grids.
+- Overall layout (app shell, navigation, list/detail/edit relationships) —
+  incl. Doug's pinned-views-as-tabs/menus concept (see #7) and grid-on-phone
+  behavior.
+- Expected UI functionality beyond grids (feedback patterns, unsaved changes,
+  the situation-specific Help system, whether never-hide/never-disable is
+  formally app-wide).
 - Status bar left side: situation-specific uses TBD.
