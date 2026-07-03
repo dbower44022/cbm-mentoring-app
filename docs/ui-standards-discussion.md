@@ -502,7 +502,41 @@ from these notes for approval.
   page-specific help exists yet for this panel"). Never a dead link,
   never a hidden icon.
 
-**HELP SYSTEM COMPLETE (2026-07-03).**
+**HELP SYSTEM COMPLETE (2026-07-03).** → Recorded as **SKL-116** (ENG-004),
+bound to AGP-016/017/018, contract-verified.
+
+# LOOK & FEEL (dictation in progress)
+
+## Decided
+
+- **Colors are controlled by templates.** **Users create their own color
+  templates; the structure is fixed** — the template defines a fixed set of
+  color slots (structure), users fill the slots. Refines the earlier
+  "curated themes" ruling: curated/system templates exist, plus
+  user-created color templates within the fixed structure; never
+  per-element freeform styling.
+- **Layering: "whatever is typical" (Doug delegated).** Standard layering
+  adopted: app default = org-branded system template (CBM identity) →
+  per-user template choice applies app-wide → a view's row-theme setting
+  may override for that grid (per the earlier row-theme-is-a-view-setting
+  ruling).
+- **Launch template set — IN (proposal #1):** Standard (CBM-branded
+  default), Compact (max density), Large print (accessibility), Dark
+  (night palette; the usual base for personal copies). All fill the same
+  fixed slot structure.
+- **Conditional formatting — IN (proposal #2):** per rule, a condition on
+  any data-source field (=, ≠, >, <, between, contains, empty/not-empty —
+  the ad-hoc-filter operators) + an effect from the fixed slots (row/cell
+  background or text color, bold, optional small status icon). Rules
+  evaluate in declared order, first match wins per target. Not a
+  scripting language.
+- **Typography + guardrail — IN (proposal #3):** one shared app-wide type
+  scale (templates/row themes pick defined steps, never arbitrary sizes;
+  fonts from template font slots). User-created templates get an
+  educate-style contrast guardrail: warn + preview on unreadable combos,
+  never block.
+
+**LOOK & FEEL COMPLETE (2026-07-03). ALL UI TOPICS COMPLETE.**
 
 ## Still open
 
