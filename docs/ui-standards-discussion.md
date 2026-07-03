@@ -481,7 +481,28 @@ from these notes for approval.
   classification (safe/modifying/destructive → confirmation rules);
   permission inherited from data-source access, no per-app grants.
 
-**WORKPROCESS WIZARDS COMPLETE (2026-07-03).**
+**WORKPROCESS WIZARDS COMPLETE (2026-07-03).** → Recorded as **SKL-115**
+(ENG-004), bound to AGP-016/017/018, contract-verified.
+
+# HELP SYSTEM (dictation in progress)
+
+## Decided
+
+- **Every page has a floating Help icon** that links to a **URL providing
+  help specific to that page** (help content lives outside the app at the
+  target URL).
+- **Mapping is admin-configured** — per panel / data set / workprocess in
+  their settings, with a URL pattern giving new pages a sensible default
+  automatically. Menu Help items and the floating icon resolve through the
+  SAME mapping. Target = Doug's own docs/wiki platform.
+- **Opens in a separate browser window/tab — IN (suggestion #1)** — never
+  navigates the working window away (fits the real-window model).
+- **Unmapped-page fallback — IN (suggestion #2):** no mapped URL → Help
+  goes to the help site's home/index with an educate-voice note ("No
+  page-specific help exists yet for this panel"). Never a dead link,
+  never a hidden icon.
+
+**HELP SYSTEM COMPLETE (2026-07-03).**
 
 ## Still open
 
