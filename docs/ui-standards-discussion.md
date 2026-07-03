@@ -252,11 +252,137 @@ repeatedly — repeated tasks deserve an optimal UI.
 semantics ruled on by Doug. Next: rewrite the ui-standards skill grid section
 from these notes for approval.
 
+# OVERALL LAYOUT (dictation in progress)
+
+## Panels — the core concept (decided)
+
+- The system is composed of **panel types**; **grid is the most common**;
+  also **dashboards**, and **eventually Gantt charts**.
+- The general UI = navigation among all panels **available to the user**
+  (permissioned, like data sources).
+
+## Navigation (decided)
+
+- The user can choose **tabs across the top** OR **items down the side**:
+  tabs suit a small number of views; vertical menus suit larger numbers.
+- For very large numbers of panels, the user can create **panel groups**
+  displayed as a **tree on the left side**.
+- System defaults + user-pinned views as tabs/menu items (from grid
+  suggestion #7).
+
+## Home panel (decided)
+
+- A provided **Home panel**: **messaging information from the sysadmin** +
+  whatever **dashlets** the user wants to add.
+- Startup preference per user: **"Open to last Panel"** or **"Open to
+  Default"**; system default = **open to Home**.
+
+## Opening records & multi-panel (decided)
+
+- **Wherever possible, open/edit an item in a preview pane or a popup
+  NON-modal window**, so the user can keep clicking the grid and quickly
+  view more detail than the grid can present.
+- **Multiple live panels open simultaneously** — for multi-monitor / large
+  monitors, viewing large amounts of data at once.
+
+## Density & scaling principle (decided — Doug, near-verbatim)
+
+- All panels and dialogs **must scale to full screen** and show as much data
+  as possible.
+- **"White space is a waste"** — always strive for **data-dense but not
+  junky/crowded** UIs. (Extends the grid's NO-WHITE-SPACE rule app-wide.)
+
+## Layout follow-up answers (decided)
+
+- **Panel binding confirmed:** a panel = a grid on a data set (full action
+  bar inside); a pinned tab/menu item = that panel opened with a specific
+  view active (grid-panel + view reference).
+- **Navigation presentation is a per-user preference** (tabs / side menu /
+  group tree), **switchable anytime** without losing pinned panels/groups —
+  the pin set is the data, the presentation is just how it renders.
+- **Preview is always read-optimized, never an edit form:** no edit
+  controls; optimized for readability. Two paths into editing:
+  - the **Edit action** switches the preview to a typical edit screen;
+  - **double-click on any read-only element opens a per-field edit window**
+    (edit just that field in place).
+- **Preview docking:** docked when the window size enables it; the user can
+  **pop it out** into a separate window to re-arrange on their monitor(s).
+- **Popup mechanics:** pop-outs are **real browser windows** (multi-monitor
+  capable). A pop-out is **pinned to its record** — effectively "open a view
+  window for the selected record" — and **multiple pop-outs may be open at
+  once**. The **docked preview always live-updates immediately** to the
+  currently selected row.
+- **Cross-window freshness — decided:** **same-user cross-window sync is
+  standard in v1** (any save in any window updates every open window showing
+  that record or a grid containing it; BroadcastChannel-class mechanism).
+  **Multi-user liveness (server push) is designed-for but delivered later** —
+  architecture must not preclude it; manual/periodic Refresh covers the gap.
+- **Dashlets — decided:** a dashlet is **any view or panel** rendered small.
+  System-defined and user-defined dashlets exist, same model as views; **a
+  view carries a property listing it as a dashlet** in addition to a view.
+  Dashboards compose from the same view/data-source system and inherit its
+  permissions. (Graph/chart panel types not yet discussed — future panel
+  type alongside Gantt.)
+
+- **Mobile — decided:** **desktop and web first. Phones eventually, as a
+  SEPARATE app** — not responsive retrofitting of this UI.
+
+## Layout suggestions round (Claude proposed, Doug ruling)
+
+1. **Multi-window editing rules — IN, plus multi-user concurrency (Doug).**
+   Dirty-window guard on every window close (main window warns when pop-outs
+   hold unsaved edits). Same-user collision: invoking Edit on a record
+   already open for editing offers [Switch to that window] instead of a
+   second editor — record-level for full edit screens, field-level for
+   per-field editors. **Multi-user: optimistic concurrency check is standard
+   NOW** — save verifies the record hasn't changed since load; on conflict,
+   educate-voice resolution (show what changed, never silently overwrite).
+
+2. **Session lifecycle — IN.** Expiry: every window shows re-auth in place;
+   unsaved work survives; one re-login re-authenticates all windows.
+   Pop-outs survive main-window close (full session citizens). Logout is
+   explicit and total across windows (dirty-window guard first).
+   **Workspace restore: IN but deferred to v1.5** (user preference, restore
+   open panels on login; window placement best-effort).
+
+3. **Broken-pin fallbacks — IN (as defined).** Pins are never silently
+   removed: the tab/menu item stays (subtly marked); clicking explains what
+   happened (what was deleted/revoked, by whom, when) with [Remove this pin]
+   / [Choose a different view]. Same rule powers deep-link fallbacks and
+   startup: "Open to last Panel" pointing at something inaccessible falls
+   back to Home with the explanation — never a blank screen at login.
+
+4. **Home messaging mechanics — IN (as defined).** Message list = system
+   dashlet on Home (title/body/posted-by/date, newest first, admin-set
+   expiration). Per-user read/unread with unread count; auto-read on view;
+   optional admin flag "requires acknowledgment" (explicit click, admin sees
+   who has/hasn't). Priority normal (Home only) vs urgent (banner across
+   every panel until read).
+
+5. **Background-task notifications — IN (as defined).** Actions that can
+   run >~10s MUST be background tasks — never a spinner the user can't walk
+   away from; panel stays free, status bar shows progress while present.
+   Header notification icon (bell + count) collects completions/failures
+   (educate voice), per-user, read-on-view, expiring. Future multi-user
+   server push lands in this same channel.
+
+6. **Standard app header + quick-open palette — IN (as defined).** One thin
+   standard header every window: identity/logo + navigation left;
+   notification bell, Help, user menu right. User menu = address for all
+   per-user preferences (nav style, startup, themes, manage views/pins,
+   logout). Ctrl+K quick-open palette: type-ahead over every panel/view the
+   user can access. Pop-outs get the header minus navigation.
+
+**OVERALL LAYOUT COMPLETE (2026-07-03).** All six suggestions IN.
+
 ## Still open
 
-- Overall layout (app shell, navigation, list/detail/edit relationships) —
-  incl. Doug's pinned-views-as-tabs/menus concept (see #7) and grid-on-phone
-  behavior.
+- Preview pane docked position (right vs bottom vs user choice) — minor;
+  candidate for design-time / implementer's choice.
+  and promote-to-full; non-modal popups = real browser windows or in-app
+  floating panes; multiple live panels mechanics ("live" = auto-refresh?);
+  dashboards/dashlets composition; Home messaging mechanics.
+- Grid-on-phone behavior (deferred).
 - Expected UI functionality beyond grids (feedback patterns, unsaved changes,
   the situation-specific Help system, whether never-hide/never-disable is
   formally app-wide).
