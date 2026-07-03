@@ -69,19 +69,27 @@ producing their artifact.
   the new app integrates with it is a **design decision for the agents**, not a
   given — the domain brief states the constraint honestly.
 
-## Current status (updated 2026-07-03)
+## Current status (updated 2026-07-03, session 2)
 
-**Phase 0 — pipeline defined. Scaffolded 2026-07-03; awaiting Doug's review of
-the agent team + protocol before Phase 1 runs.**
+**Phase 0 — pipeline defined; UI standards for grids + overall layout
+APPROVED by Doug.**
 
-- Repo scaffolded: agent definitions, skills, domain brief, pipeline protocol.
-- Defaults chosen while Doug was AFK (confirm or redirect): new sibling repo;
-  app is a real candidate (pipeline test first); agents seeded from the domain
-  brief (not fresh elicitation); Phase 1 (requirements) runs only after review.
-- Nothing has been run yet: no agent has executed, no spec/design/code exists.
+- Repo scaffolded 2026-07-03: 7 agent definitions, skills, domain brief,
+  pipeline protocol. Nothing run yet — no spec/design/code exists.
+- **UI standards defined the right way:** Doug dictated, Claude captured +
+  ran a one-at-a-time suggestions round, then consolidated. Grids + layout
+  are APPROVED and live in `.claude/skills/ui-standards/` (SKILL.md
+  principles + references/grid-standard.md + references/layout-standard.md);
+  decision record in `docs/ui-standards-discussion.md`. (An earlier
+  Claude-authored strawman was rejected for process — see pipeline-log; the
+  lesson: Doug's standards are elicited, never invented.)
+- **UI topics still open** (do not improvise): forms/edit screens,
+  workprocess wizards, the Help system, look & feel/themes. Session prompt
+  ready: `prompts/ui-standards-session-2.md`.
 
-**Next:** Doug reviews Phase 0 → run requirements-analyst (Phase 1) →
-gate review → Phase 2 (ux-designer + solution-architect).
+**Next:** (a) UI standards part 2 per the session prompt; (b) then
+**database/API agent rules** (Doug's named next area); (c) Gate 0 review of
+the agent team + protocol; then Phase 1 (requirements-analyst).
 
 ## Commands
 
