@@ -444,7 +444,44 @@ from these notes for approval.
    hover/focus), never permanent hint paragraphs. Bottom layer of the
    situation-specific Help pyramid; admin-maintained, not hardcoded.
 
-**FORMS & EDIT SCREENS COMPLETE (2026-07-03).**
+**FORMS & EDIT SCREENS COMPLETE (2026-07-03).** → Recorded as **SKL-114**
+(ENG-004), bound to AGP-016/017/018, contract-verified.
+
+# WORKPROCESS WIZARDS (dictation in progress)
+
+## Concept (decided)
+
+- Beyond CRUD, the system supports **process flows / wizards**. Each is
+  **essentially a custom app**: a defined number of steps that
+  capture/edit information to complete a defined work process. (Defined by
+  the system admin; launched as data-set actions on selected rows —
+  established earlier.)
+- **Branching is supported** — the next step can depend on answers given
+  in earlier steps.
+- **Leave = cancel.** No mid-flight save/resume: a workprocess is
+  all-or-nothing per sitting; nothing commits until completion (leaving
+  discards, with the standard dirty-guard warning).
+- **Internals are per-app freedom (Doug):** workprocesses are custom apps —
+  they can do whatever they need. The standard does NOT prescribe internal
+  behavior (Back semantics, per-step validation, progress display, etc.);
+  it defines only the surrounding frame/contract.
+- **The frame (decided, complete):** launched from the action list
+  (inheriting selection, permission, and invalid-invocation explanation);
+  runs in the standard window model (pop-out capable); leave = cancel with
+  dirty guard; on completion — success confirmation, affected grids refresh
+  via same-user sync, notification-bell entry if it ran long; standard Help
+  affordance on every step.
+- **THE KEY (Doug):** the platform lets users **register a custom app
+  against data source(s)**, and it becomes available **directly from the
+  app** (in the action lists of those data sources) — a plug-in model.
+- **Registration contract — IN (suggestion).** A registration declares:
+  name + description (action-list display; feeds invalid-invocation +
+  Help machinery); target data source(s); selection contract
+  (none/single/multiple — powers the never-hide explainer); action
+  classification (safe/modifying/destructive → confirmation rules);
+  permission inherited from data-source access, no per-app grants.
+
+**WORKPROCESS WIZARDS COMPLETE (2026-07-03).**
 
 ## Still open
 
