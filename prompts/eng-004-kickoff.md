@@ -106,3 +106,27 @@ clarifying questions, few at a time → suggestions round presented ONE AT A
 TIME (rationale + cost; Doug rules in/out/modified) → consolidate only after
 his decisions are complete. Never author standards from Claude's judgment;
 never present drafts as done.
+
+## DONE 2026-07-03 (evening) — REQUIREMENTS CAPTURED, RELEASE FROZEN
+
+- **Governance scaffolding:** PRJ-001 "CBM Mentoring Application v1", SES-001,
+  CNV-001, topic tree TOP-001 (root) + TOP-002..011 (ten app areas).
+- **Requirements:** REQ-004..REQ-070 (67, ai_derived) captured from the
+  dictated UI standards, database/API standards, domain brief, and L1/L2 PRDs;
+  REQ-003 rooted and folded in. **All 70 confirmed** at Doug's gate
+  (set-level DEC-070; the store also auto-minted per-REQ human-review
+  decisions DEC-003..069 for the ai_derived ones — origin-gate behavior,
+  attributed to the token principal). Review sheet:
+  `docs/requirements-capture-2026-07-03.md`.
+- **Doug's gate rulings:** confirm full set; CRM ownership boundary (May L2
+  "plumbing-only" vs July app-owned data layer — ten tensions catalogued)
+  DEFERRED to the architecture phase, REQ-062/063 worded to hold either way;
+  everything in ONE release.
+- **Delivery structure:** PI-001..PI-010 (one per area, Draft, implements
+  edges to all 70 REQs) in PRJ-001; **REL-001 "CBM Mentoring App v1"
+  (automated)** composed with PRJ-001, freeze-readiness green, transitioned
+  preliminary_planning → development_planning → **reconciliation (FROZEN,
+  amend_window)**.
+- **Next session:** run the release pipeline over REL-001 — reconciliation,
+  architecture planning (resolve the CRM boundary per data set there),
+  decomposition, development. The run is the E2E test.
