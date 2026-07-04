@@ -192,3 +192,47 @@ X-Engagement header; adaptive thinking shares max_tokens with output.
 
 NEXT: dev-lane go/no-go (separate budget) — development -> QA -> testing
 -> deployment over the 190 work tasks.
+
+## DONE 2026-07-04 (late) — DEV-LANE PREREQS COMPLETE, PILOT READY
+
+- **Gap-1 SHIPPED (ENG-001 governed loop, ~40 min):** REQ-460 confirmed
+  (DEC-898) -> PI-392 -> TestTargetMap per-repo test-target config
+  (coordinating/ado/release schedulers, `--test-root`), 288 scheduler tests
+  green, merged to main (0ed7ab95 / CM-0185), PI-392 Resolved, SES-345
+  closed. **Doug: push crmbuilder main; droplet pulls before any droplet
+  runs** (local runs already use the fix).
+- **Scaffold SHIPPED:** cbm-mentoring-app commit 86f3c53 — uv + FastAPI
+  walking skeleton ({data,meta,errors} envelope, /healthz, structured-JSON
+  stdout logging seam per CS-1), pytest green (plain tests/ root), ruff
+  clean, governance hook warn-mode wired to the cloud store (ENG-004),
+  CLAUDE.md rewritten as DB-native bootstrap (old repo-local pipeline text
+  in git history).
+- **ADO dry-run PASSED** (local, cloud API): PI-008 dispatch resolves,
+  WSK-022 (Design) is the first step. Auth note: export
+  CRMBUILDER_V2_ORCHESTRATOR_TOKEN (the API token works) — unset gives 401.
+- **Budget:** REL-002 ceiling raised to $200 ($12.81 spent planning; $150
+  pilot increment approved).
+
+### PILOT LAUNCH (next session)
+
+Pilot scope per Doug: PI-008 (data platform) then PI-001 (identity), review
+between. Run LOCALLY (repo + Gap-1 fix + claude CLI here):
+
+    cd /home/doug/Dropbox/Projects/crmbuilder
+    set -a && . crmbuilder-v2/data/crmbuilder.env && \
+      export CRMBUILDER_V2_ORCHESTRATOR_TOKEN="$CRMBUILDER_V2_API_TOKEN" && set +a
+    uv run python3 - <<'PY'
+    from crmbuilder_v2.scheduler.ado_scheduler import AdoScheduler, AdoSchedulerConfig
+    r = AdoScheduler(AdoSchedulerConfig(
+        planning_item="PI-008", api_base="https://api.crmbuilder.ai",
+        engagement="ENG-004",
+        repo_root="/home/doug/Dropbox/Projects/cbm-mentoring-app",
+        base_branch="main", test_root="tests", enable_file_locks=True,
+    )).run()
+    print(r.status, r.completed_phases, r.reason)
+    PY
+
+Watch for at the pilot: Design-phase agents writing spec .md files vs the
+NO-MD ruling (route design output to the DB — likely finding #7); ENG-004
+skills composing into spawned agent contracts; the affected-test gate
+running plain tests/.
