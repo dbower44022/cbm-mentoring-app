@@ -29,8 +29,6 @@ JsonValue = JSON().with_variant(JSONB(), "postgresql")
 __all__ = ["Base", "JsonValue", "StructuralColumnsMixin", "utcnow", "uuid7"]
 
 
-
-
 def utcnow() -> datetime:
     """Timezone-aware UTC now — the single timestamp source for audit columns."""
     return datetime.now(UTC)
