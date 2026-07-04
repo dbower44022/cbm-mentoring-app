@@ -89,8 +89,11 @@ class OptionValue(StructuralColumnsMixin, Base):
     option_value_id: Mapped[uuid.UUID] = mapped_column(
         "optionValueID", primary_key=True, default=uuid7
     )
+    # The by-set lookup rides the partial unique index above (optionSetID is
+    # its leading column) — a separate FK index would be dead weight and
+    # would break the REQ-052 partial-index rule.
     option_set_id: Mapped[uuid.UUID] = mapped_column(
-        "optionSetID", ForeignKey("optionSet.optionSetID"), nullable=False, index=True
+        "optionSetID", ForeignKey("optionSet.optionSetID"), nullable=False
     )
     option_value_name: Mapped[str] = mapped_column(
         "optionValueName", String(200), nullable=False
@@ -125,7 +128,20 @@ class SchemaRegistry(StructuralColumnsMixin, Base):
             postgresql_where=_LIVE,
         ),
         # GET /schema/{entity} reads the whole registry for one entity.
-        Index("ix_schemaRegistry_entityType_live", "entityType", sqlite_where=_LIVE),
+        Index(
+            "ix_schemaRegistry_entityType_live",
+            "entityType",
+            sqlite_where=_LIVE,
+            postgresql_where=_LIVE,
+        ),
+        # The admin-UI read "which fields use this option set" (DB-S7);
+        # partial per the REQ-052 rule.
+        Index(
+            "ix_schemaRegistry_optionSetID_live",
+            "optionSetID",
+            sqlite_where=_LIVE,
+            postgresql_where=_LIVE,
+        ),
     )
 
     schema_registry_id: Mapped[uuid.UUID] = mapped_column(
@@ -143,7 +159,7 @@ class SchemaRegistry(StructuralColumnsMixin, Base):
     )
     # Null for non-choice fields; choice fields (built-in or custom) point at their set.
     option_set_id: Mapped[uuid.UUID | None] = mapped_column(
-        "optionSetID", ForeignKey("optionSet.optionSetID"), default=None, index=True
+        "optionSetID", ForeignKey("optionSet.optionSetID"), default=None
     )
     history_tracked_flag: Mapped[bool] = mapped_column(
         "historyTrackedFlag", nullable=False, default=False
