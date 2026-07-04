@@ -149,3 +149,19 @@ never present drafts as done.
 - Open issues for design: Zoom org-account hosting; notes-summary
   presentation on the prep surface.
 - Next: pipeline run over REL-002 — the E2E test.
+
+## DONE 2026-07-04 (later) — CODING STANDARDS COMPLETE
+
+Ten areas ruled (SES-003/CNV-003; scratch:
+`docs/coding-standards-discussion.md`): logging/exceptions (structured
+stdout + Sentry SDK -> GlitchTip), in-app usage analytics (one capture
+primitive, own dashboards), Playwright journey testing + engine component
+tests, strict typing/format/lint CI gates, boring-dependency policy,
+engine-and-configuration organization, PR-only change discipline
+governance-welded (trailer gate + PR gate enforce frozen scope), NO-MD
+documentation-as-data (module/platform log -> ENG-001 candidate REQ-455;
+reference books interim), why-not-what commenting with contract docstrings.
+User testing DEFERRED. In the DB: **SKL-121/122/123** bound to all four
+triads (36 edges), **DEC-073**; contracts verified, ENG-001 isolation
+confirmed (check with X-Engagement header — the ?engagement param loses to
+the header; API finding candidate). Next: pipeline run over REL-002.
