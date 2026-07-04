@@ -10,6 +10,10 @@ dependencies = [
     # requires relational models with dialect-aware types (JSONB on Postgres) and
     # future Alembic migrations; SQLAlchemy 2.x is the boring incumbent ORM.
     "sqlalchemy>=2.0",
+    # Adopted for WTK-133 (Governed-By: PI-008): versioned schema migrations for
+    # the base-entity tables; Alembic is SQLAlchemy's own migration tool — the
+    # boring incumbent for the job.
+    "alembic>=1.18",
 ]
 
 [dependency-groups]
