@@ -130,3 +130,22 @@ never present drafts as done.
 - **Next session:** run the release pipeline over REL-001 — reconciliation,
   architecture planning (resolve the CRM boundary per data set there),
   decomposition, development. The run is the E2E test.
+
+## DONE 2026-07-04 — MENTOR USER-REQUIREMENTS INTERVIEW, REL-002 FROZEN
+
+- Gap acknowledged: the 07-03 Mentoring Domain REQs were headings from the
+  domain brief, not elicited user requirements. Doug interviewed under the
+  conduct charter (SES-002/CNV-002); notes in
+  `docs/mentor-requirements-interview-2026-07-04.md`.
+- **REQ-071..086 (16) confirmed** (DEC-072): triage view, acceptance flow,
+  templated email, session scheduling + client invites, conference links,
+  automated meeting creation (org-level credentials), prep surface, session
+  notes/action items (rich-text v1), AI transcript + draft summary,
+  resource library, events reference, status vocabulary, company
+  subclassing. REQ-066 amended (DEC-071): decline = status change only.
+- **Release recomposed via the governed correction path** (scope cannot
+  enter a frozen plan): REL-002 corrects + supersedes REL-001, full scope
+  (10 PIs, 86 REQs), **frozen (reconciliation / amend_window)**.
+- Open issues for design: Zoom org-account hosting; notes-summary
+  presentation on the prep surface.
+- Next: pipeline run over REL-002 — the E2E test.
