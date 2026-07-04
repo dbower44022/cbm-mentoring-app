@@ -76,23 +76,28 @@ feel. UI Developer contract verified carrying all of them. Decision record:
 (scratch; DB is truth). `prompts/ui-standards-session-2.md` is now
 historical.
 
+## DATABASE/API STANDARDS COMPLETE (2026-07-03)
+
+Working method flipped BY DOUG for this area: he set four anchor
+requirements (GUIDs/UUIDv7; field names unique across ALL tables incl.
+entity-named PK/FK — `mentorID` everywhere, no bare `id`/`name`;
+user-defined attributes; read-over-write priority) and asked Claude to
+bring suggestions — 13 presented one at a time, ALL ruled IN. In the DB as
+ENG-004 instruction skills bound to BOTH the storage (AGP-001/002/006) and
+api (AGP-010/011/012) triads: **SKL-118** data model standard, **SKL-119**
+API contract standard, **SKL-120** read surface & platform services
+standard (edges REF-0022..0039). Governance: **DEC-002 (ENG-004, Active)**.
+All six contracts verified carrying all three; ENG-001 isolation confirmed.
+Decision record: `docs/database-api-standards-discussion.md`; authoring
+artifacts: `.claude/skills/database-api-standards/` (DB is truth).
+
 ## Agenda for the next session
 
 1. Bootstrap per the crmbuilder CLAUDE.md.
-2. **Database/API rules** (Doug's named next standards area) — same
-   working method; decisions recorded as ENG-004 skills bound to the
-   api/storage agent triads (AGP-010/011/012, AGP-001/002/006). The UI
-   standards already imply data-layer obligations to honor: admin-authored
-   SQL data sources + per-source grants + userID filtering; server-side
-   search/count/aggregates; infinite-scroll caching; optimistic
-   concurrency; soft deletes everywhere; same-user sync + designed-for
-   server push; background tasks (>10s rule); view/pin/preference
-   persistence; per-field single-field writes; duplicate detection;
-   postal-code + address/name parsing services; export/print generation.
-3. Requirements capture for the app itself: REQs under ENG-004 (sources:
-   the dictated standards, domain brief, cbm-custom-mentor-app L1/L2 PRDs)
-   → confirm → PIs → compose + freeze a release → the pipeline run IS the
-   E2E test.
+2. **Requirements capture** for the app itself: REQs under ENG-004
+   (sources: the dictated UI + database/API standards, domain brief,
+   cbm-custom-mentor-app L1/L2 PRDs) → confirm → PIs → compose + freeze a
+   release → the pipeline run IS the E2E test.
 
 ## Working method (Doug's, proven 2026-07-03)
 
