@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import time
 import uuid
-from collections.abc import Iterator
 
 import pytest
-from sqlalchemy import create_engine, event, select
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.exc import StaleDataError
@@ -31,21 +30,6 @@ STRUCTURAL_COLUMNS = {
     "rowVersion",
     "customAttributes",
 }
-
-
-@pytest.fixture()
-def session() -> Iterator[Session]:
-    engine = create_engine("sqlite+pysqlite:///:memory:")
-
-    # SQLite ignores foreign keys unless asked — the tests must exercise them.
-    @event.listens_for(engine, "connect")
-    def _enable_fks(dbapi_connection: object, _record: object) -> None:
-        dbapi_connection.execute("PRAGMA foreign_keys=ON")  # type: ignore[attr-defined]
-
-    Base.metadata.create_all(engine)
-    with Session(engine) as sess:
-        yield sess
-    engine.dispose()
 
 
 def test_uuid7_is_version_7_and_time_ordered() -> None:
