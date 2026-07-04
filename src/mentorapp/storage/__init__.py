@@ -3,7 +3,9 @@
 Implements the ENG-004 data-model standard: ``entity`` carries the declarative
 base, structural system columns, and key-naming policy (WTK-125); ``models``
 carries the schema registry, option sets, background jobs, and change feed
-(WTK-126/WTK-127). One declarative ``Base`` spans them all.
+(WTK-126/WTK-127); ``registry_seed`` seeds built-in registry rows from the
+column-site definitions the drift check verifies (WTK-134). One declarative
+``Base`` spans them all.
 """
 
 from mentorapp.storage.adminsql import (
@@ -52,6 +54,14 @@ from mentorapp.storage.readsurface import (
     run_schema_drift_startup_check,
     schema_drift_findings,
 )
+from mentorapp.storage.registry_seed import (
+    BuiltInField,
+    RegistrySeedError,
+    RegistrySeedResult,
+    built_in_field_from_column,
+    built_in_fields,
+    seed_built_in_registry,
+)
 
 __all__ = [
     "ADMIN_SQL_ROLE",
@@ -66,6 +76,7 @@ __all__ = [
     "BackgroundJob",
     "Base",
     "BaseEntity",
+    "BuiltInField",
     "ChangeFeedEntry",
     "DriftFinding",
     "DuplicateOverride",
@@ -73,12 +84,16 @@ __all__ = [
     "OptionSet",
     "OptionValue",
     "PostalCode",
+    "RegistrySeedError",
+    "RegistrySeedResult",
     "SchemaDriftError",
     "SchemaRegistry",
     "StructuralColumnsMixin",
     "UserPreference",
     "WorkprocessRegistration",
     "admin_sql_role_ddl",
+    "built_in_field_from_column",
+    "built_in_fields",
     "entity_key",
     "entity_ref",
     "execute_admin_sql",
@@ -90,6 +105,7 @@ __all__ = [
     "regenerate_read_views",
     "run_schema_drift_startup_check",
     "schema_drift_findings",
+    "seed_built_in_registry",
     "utcnow",
     "uuid7",
     "uuid7_created_at",
