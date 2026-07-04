@@ -1,4 +1,4 @@
-"""Every mentorapp table: schema registry, option lists, job queue, change feed.
+"""Every mentorapp table: registries, options, jobs, feed, and supporting entities.
 
 ``schemaRegistry`` (REQ-050, REQ-051) holds one row per field of every entity —
 built-in and user-defined — and is the single contract that drives UI
@@ -8,6 +8,17 @@ choice-field options as data, never as database enums or CHECK constraints
 (DB-S7). ``backgroundJob`` (REQ-058, REQ-014) is the one queue behind all
 background work (DB-S11). ``changeFeedEntry`` (REQ-057) is the append-only
 ledger behind ``GET /changes?since=<watermark>`` (DB-S10).
+
+Supporting entities (WTK-128): ``fieldChange`` (REQ-054) is the one
+system-wide history table for history-tracked fields; ``duplicateOverride``
+(REQ-059) records every explicit duplicate-detection override;
+``userPreference`` (REQ-060) is the single store for all per-user
+personalization with org-default rows; ``postalCode`` (REQ-061) is the
+refreshable postal → city/state reference table; ``workprocessRegistration``
+(REQ-041) registers admin-authored multi-step apps against data sources.
+REQ-049's storage surface (the attribute registry + per-table
+``customAttributes``) already ships in ``schemaRegistry`` and the structural
+columns — nothing is duplicated here.
 
 Associations: ``optionValue.optionSetID`` → each value belongs to one set;
 ``schemaRegistry.optionSetID`` → a choice field's registry row points at the
@@ -275,4 +286,220 @@ class ChangeFeedEntry(StructuralColumnsMixin, Base):
     # When the described change happened — same vocabulary as fieldChange (DB-S5).
     changed_at: Mapped[datetime] = mapped_column(
         "changedAt", DateTime(timezone=True), nullable=False, default=utcnow
+    )
+
+
+class FieldChange(StructuralColumnsMixin, Base):
+    """One old → new transition of a history-tracked field (DB-S5, REQ-054).
+
+    Written by the API whenever a field whose registry row sets
+    ``historyTrackedFlag`` changes; untracked fields never appear here. A
+    record's History panel is one indexed lookup on ``(entityType, recordID)``,
+    already ordered. Display-grade audit trail — not a backup, not event
+    sourcing; retention trimming is allowed later without schema change.
+    """
+
+    __tablename__ = "fieldChange"
+    __table_args__ = (
+        # The History panel read: every tracked change for one record, in order.
+        Index(
+            "ix_fieldChange_record_live",
+            "entityType",
+            "recordID",
+            "changedAt",
+            sqlite_where=_LIVE,
+            postgresql_where=_LIVE,
+        ),
+    )
+
+    field_change_id: Mapped[uuid.UUID] = mapped_column(
+        "fieldChangeID", primary_key=True, default=uuid7
+    )
+    # Same vocabulary as schemaRegistry.entityType/fieldName and
+    # changeFeedEntry.recordID/changedAt (DB-R2: one name, one meaning).
+    entity_type: Mapped[str] = mapped_column("entityType", String(100), nullable=False)
+    record_id: Mapped[uuid.UUID] = mapped_column("recordID", nullable=False)
+    field_name: Mapped[str] = mapped_column("fieldName", String(100), nullable=False)
+    # JSON rather than text so typed values (numbers, lists, option IDs) survive
+    # round-trip; null is a legitimate value on either side (field set/cleared).
+    old_value: Mapped[Any | None] = mapped_column("oldValue", JsonValue, default=None)
+    new_value: Mapped[Any | None] = mapped_column("newValue", JsonValue, default=None)
+    changed_at: Mapped[datetime] = mapped_column(
+        "changedAt", DateTime(timezone=True), nullable=False, default=utcnow
+    )
+    changed_by: Mapped[uuid.UUID | None] = mapped_column("changedBy", default=None)
+
+
+class DuplicateOverride(StructuralColumnsMixin, Base):
+    """The recorded explicit override of a duplicate-detection rejection (DB-S12, REQ-059).
+
+    A create matching the entity's registry-declared match rules is rejected
+    with candidates; resubmitting with the override flag creates the record AND
+    writes this row in the same transaction — the override is history, never a
+    silent bypass. ``candidateRecordIDs``/``matchedRuleNames`` snapshot what the
+    user saw and dismissed (candidates may later merge or soft-delete), so they
+    are stored values, not foreign keys.
+    """
+
+    __tablename__ = "duplicateOverride"
+    __table_args__ = (
+        # The audit read: overrides recorded against one created record.
+        Index(
+            "ix_duplicateOverride_record_live",
+            "entityType",
+            "recordID",
+            sqlite_where=_LIVE,
+            postgresql_where=_LIVE,
+        ),
+    )
+
+    duplicate_override_id: Mapped[uuid.UUID] = mapped_column(
+        "duplicateOverrideID", primary_key=True, default=uuid7
+    )
+    # The record created despite the match — same recordID vocabulary (DB-R2).
+    entity_type: Mapped[str] = mapped_column("entityType", String(100), nullable=False)
+    record_id: Mapped[uuid.UUID] = mapped_column("recordID", nullable=False)
+    # Registry match-rule names that fired; several can match one create
+    # (e.g. by-email AND by-name+phone), so this is a list, not a scalar.
+    matched_rule_names: Mapped[list[str]] = mapped_column(
+        "matchedRuleNames", JsonValue, nullable=False, default=list
+    )
+    candidate_record_ids: Mapped[list[str]] = mapped_column(
+        "candidateRecordIDs", JsonValue, nullable=False, default=list
+    )
+    override_reason: Mapped[str | None] = mapped_column(
+        "overrideReason", String(2000), default=None
+    )
+
+
+# Live-row predicates split by userID because unique indexes never collide NULLs
+# (on either dialect): user rows and the org-default row are enforced separately.
+_LIVE_USER_ROW = text('"deletedAt" IS NULL AND "userID" IS NOT NULL')
+_LIVE_ORG_DEFAULT = text('"deletedAt" IS NULL AND "userID" IS NULL')
+
+
+class UserPreference(StructuralColumnsMixin, Base):
+    """One namespaced preference document per user — or the org default (DB-S13, REQ-060).
+
+    All view/pin/layout/filter/startup persistence rides this one table behind
+    ``GET/PUT /preferences/{key}`` — a new grid feature needs no migration.
+    Null ``userID`` marks the organization-wide default row, which a user's own
+    row overrides at read time. ``userID`` is a bare UUID (no FK): staff
+    identities live in the CRM system of record, and the API stamps the
+    session user, exactly as it does for the audit columns.
+    """
+
+    __tablename__ = "userPreference"
+    __table_args__ = (
+        Index(
+            "uq_userPreference_user_key_live",
+            "userID",
+            "preferenceKey",
+            unique=True,
+            sqlite_where=_LIVE_USER_ROW,
+            postgresql_where=_LIVE_USER_ROW,
+        ),
+        Index(
+            "uq_userPreference_orgDefault_key_live",
+            "preferenceKey",
+            unique=True,
+            sqlite_where=_LIVE_ORG_DEFAULT,
+            postgresql_where=_LIVE_ORG_DEFAULT,
+        ),
+    )
+
+    user_preference_id: Mapped[uuid.UUID] = mapped_column(
+        "userPreferenceID", primary_key=True, default=uuid7
+    )
+    user_id: Mapped[uuid.UUID | None] = mapped_column("userID", default=None)
+    # Namespaced key, e.g. grid.mentorRoster.columns or nav.pinnedViews (DB-S13).
+    preference_key: Mapped[str] = mapped_column("preferenceKey", String(200), nullable=False)
+    preference_value: Mapped[dict[str, Any]] = mapped_column(
+        "preferenceValue", JsonValue, nullable=False, default=dict
+    )
+
+
+class PostalCode(StructuralColumnsMixin, Base):
+    """One postal-code → city/state lookup row (DB-S13, REQ-061).
+
+    Reference data, not user data: loaded and refreshed as a job type on the
+    one background queue — never hand-edited. The lookup feeds form auto-fill
+    and the same normalizers the duplicate-detection shadow columns use, so
+    address equality has exactly one definition.
+    """
+
+    __tablename__ = "postalCode"
+    __table_args__ = (
+        Index(
+            "uq_postalCode_country_value_live",
+            "countryCode",
+            "postalCodeValue",
+            unique=True,
+            sqlite_where=_LIVE,
+            postgresql_where=_LIVE,
+        ),
+    )
+
+    postal_code_id: Mapped[uuid.UUID] = mapped_column(
+        "postalCodeID", primary_key=True, default=uuid7
+    )
+    # ISO 3166-1 alpha-2. CBM operates US-only today; the column keeps the
+    # refresh job honest if that changes, without a schema change.
+    country_code: Mapped[str] = mapped_column(
+        "countryCode", String(2), nullable=False, default="US"
+    )
+    postal_code_value: Mapped[str] = mapped_column(
+        "postalCodeValue", String(20), nullable=False
+    )
+    city_name: Mapped[str] = mapped_column("cityName", String(200), nullable=False)
+    state_code: Mapped[str] = mapped_column("stateCode", String(10), nullable=False)
+
+
+# REQ-041's selection contract: what row selection a workprocess needs from its
+# host data source. App-validated vocabulary, never a database enum (DB-S7).
+SELECTION_CONTRACTS: Final[tuple[str, ...]] = ("none", "single", "multiple")
+
+
+class WorkprocessRegistration(StructuralColumnsMixin, Base):
+    """An administrator-registered custom multi-step app (REQ-041).
+
+    Registration is data, not framework code: a live row surfaces the
+    workprocess in its target data sources' action lists; no code change adds
+    one. Permission is inherited from data-source access — deliberately no
+    per-app grant columns. ``selectionContract`` (``SELECTION_CONTRACTS``)
+    drives the standard invalid-invocation explanations.
+    """
+
+    __tablename__ = "workprocessRegistration"
+    __table_args__ = (
+        Index(
+            "uq_workprocessRegistration_name_live",
+            "workprocessName",
+            unique=True,
+            sqlite_where=_LIVE,
+            postgresql_where=_LIVE,
+        ),
+    )
+
+    workprocess_registration_id: Mapped[uuid.UUID] = mapped_column(
+        "workprocessRegistrationID", primary_key=True, default=uuid7
+    )
+    workprocess_name: Mapped[str] = mapped_column(
+        "workprocessName", String(200), nullable=False
+    )
+    workprocess_description: Mapped[str] = mapped_column(
+        "workprocessDescription", String(2000), nullable=False
+    )
+    # Data-source records live in app tables that land with the read-surface
+    # work (DB-S9); until that table exists this is a soft reference by
+    # data-source key, validated by the API — not a foreign key.
+    target_data_source_keys: Mapped[list[str]] = mapped_column(
+        "targetDataSourceKeys", JsonValue, nullable=False, default=list
+    )
+    selection_contract: Mapped[str] = mapped_column(
+        "selectionContract", String(50), nullable=False
+    )
+    # Where the action sorts/groups in the host data source's action list.
+    action_classification: Mapped[str] = mapped_column(
+        "actionClassification", String(100), nullable=False
     )
