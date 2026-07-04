@@ -1,121 +1,57 @@
-# CLAUDE.md
+# CLAUDE.md — CBM Mentoring Application (mentorapp)
 
-Guidance for Claude Code working in the **cbm-mentoring-app** repository.
-This file is the recovery anchor if a session is lost — keep the
-"Current status" section up to date.
+Agent bootstrap for this repository. This file is operating bootstrap, not
+documentation: per the engagement's coding standards, **no markdown
+documentation lives in this repo** — module/platform documentation, decisions,
+requirements, and standards live in the CRMBuilder V2 store (engagement
+ENG-004) and are read from there.
+
+> Process note: this file described the earlier repo-local subagent pipeline
+> (MENT-### IDs, `.claude/agents/`). That process was replaced 2026-07-03/04
+> by the DB-native CRMBuilder pipeline — requirements, planning items,
+> releases, and work tasks live in the store, and the ADO runtime builds
+> here. The old text is in git history; `docs/` and `prompts/` are historical
+> working artifacts of the engagement, not app documentation.
 
 ## What this is
 
-An **end-to-end test of an agent-driven software development pipeline**, using a
-real workload: specifying and building a custom web application for the
-**mentoring process** of Cleveland Business Mentors (CBM).
+The CBM Mentoring Application: a mentor-facing web app over the CBM CRM
+system of record. Built release-scoped under CRMBuilder governance
+(engagement ENG-004; release/PI/work-task records in the cloud store at
+https://api.crmbuilder.ai, header `X-Engagement: ENG-004`). Current release:
+CBM Mentoring App v1 (r2) — 86 confirmed requirements, ten planning items,
+190 work tasks.
 
-Two deliverables, in priority order:
+## Binding standards (in the store, composed into agent contracts)
 
-1. **The pipeline evaluation** — can a defined team of Claude Code subagents
-   (`.claude/agents/`) with web-app-development skills (`.claude/skills/`) carry
-   a project from domain brief → requirements spec → UX + technical design →
-   working build, with human review only at phase gates?
-2. **The application itself** — treated as a real candidate for CBM's mentoring
-   process (not a throwaway), so the quality bar at every phase is "could ship".
+The ENG-004 instruction skills bound to your agent profile ARE the standards:
+UI, data model / API contract / read surface, observability & analytics,
+code maintainability, testing & change discipline. Non-negotiables enforced
+in review and CI:
 
-The process being modeled is the CBM mentoring lifecycle; the seed knowledge is
-`docs/domain-brief.md`. The pipeline rules, phases, gates, and evaluation
-criteria are in `docs/pipeline-protocol.md` — **read it before running any
-agent**.
-
-## How work happens here
-
-- The main session acts as **delivery lead / orchestrator**: it launches the
-  subagents, enforces the phase gates, and never does an agent's job inline
-  (that would invalidate the test — see the protocol's ground rules).
-- Each phase ends at a **human review gate**: Doug approves the phase artifact
-  before the next phase starts. Do not start a phase whose predecessor is
-  unapproved.
-- Every requirement gets an ID (`MENT-###`); design, code, and tests must trace
-  back to requirement IDs. The skills enforce the formats.
-- Pipeline friction (an agent's output needing human/orchestrator correction,
-  rework loops, ambiguities) is **data, not embarrassment** — log every
-  intervention in `docs/pipeline-log.md` as it happens.
-
-## The agent team (`.claude/agents/`)
-
-| Agent | Phase | Produces |
-|-------|-------|----------|
-| requirements-analyst | 1 Requirements | `docs/requirements-spec.md` |
-| ux-designer | 2 Design | `docs/ux-design.md` |
-| solution-architect | 2 Design | `docs/technical-design.md` |
-| backend-developer | 3 Build | server code + API |
-| frontend-developer | 3 Build | UI code |
-| code-reviewer | 3 Build | review findings (gates merges) |
-| qa-engineer | 3 Build | test plan + tests, traced to MENT IDs |
-
-Skills: `webapp-standards` (house stack + conventions), `spec-authoring`
-(requirement format + traceability), `design-doc-standards` (design doc
-formats), `ui-standards` (canonical list-view grid, layout/navigation model,
-editor + modal + notice behaviors — distilled from the production staff tools,
-inconsistencies resolved). Agents are told to load the relevant skill before
-producing their artifact.
-
-## Relationship to other CBM repos
-
-- **`cbm-client-intake`** (sibling) — the production intake forms + staff tools
-  (`/mentoradmin`, `/assignments`) against EspoCRM. This project may read it for
-  domain reference; **never modify it from this project.**
-- **`dbower44022/ClevelandBusinessMentoring`** (crmbuilder) — governed process
-  definitions (MN-*). Read-only reference; its governance applies if you ever
-  touch it (read its CLAUDE.md first).
-- EspoCRM (crm-test / prod) is CBM's system of record today. Whether and how
-  the new app integrates with it is a **design decision for the agents**, not a
-  given — the domain brief states the constraint honestly.
-
-## ⚠️ SUPERSEDED — this project moved into CRMBuilder ENG-004 (2026-07-03)
-
-**This repo is no longer the project.** Doug's end-to-end test runs as
-**CRMBuilder v2 engagement ENG-004 "CBM Mentoring Custom App"** — agents and
-skills are V2 registry records (see `Agent-System-Target-Model.md` in the
-crmbuilder repo), the V2 database is the source of truth, and work there is
-requirement-first governed. Start sessions from `~/Dropbox/Projects/crmbuilder`
-with `prompts/eng-004-kickoff.md` (in this repo).
-
-**What this repo remains good for:** the approved UI standards (Doug-dictated;
-`docs/ui-standards-discussion.md` is the decision record;
-`.claude/skills/ui-standards/` is authored in SKILL.md form for the PRJ-079
-registry importer), the domain brief, and the session prompts. The Claude Code
-agent definitions in `.claude/agents/` are the superseded wrong-substrate
-attempt — do not build on them.
-
-## Current status (updated 2026-07-03, session 2 — pre-supersession)
-
-**Phase 0 — pipeline defined; UI standards for grids + overall layout
-APPROVED by Doug.**
-
-- Repo scaffolded 2026-07-03: 7 agent definitions, skills, domain brief,
-  pipeline protocol. Nothing run yet — no spec/design/code exists.
-- **UI standards defined the right way:** Doug dictated, Claude captured +
-  ran a one-at-a-time suggestions round, then consolidated. Grids + layout
-  are APPROVED and live in `.claude/skills/ui-standards/` (SKILL.md
-  principles + references/grid-standard.md + references/layout-standard.md);
-  decision record in `docs/ui-standards-discussion.md`. (An earlier
-  Claude-authored strawman was rejected for process — see pipeline-log; the
-  lesson: Doug's standards are elicited, never invented.)
-- **UI topics still open** (do not improvise): forms/edit screens,
-  workprocess wizards, the Help system, look & feel/themes. Session prompt
-  ready: `prompts/ui-standards-session-2.md`.
-
-**Next:** (a) UI standards part 2 per the session prompt; (b) then
-**database/API agent rules** (Doug's named next area); (c) Gate 0 review of
-the agent team + protocol; then Phase 1 (requirements-analyst).
+- Strict typing; ruff format + lint at zero warnings; CI green before merge.
+- Engines + configuration: never re-implement engine capability in features;
+  one canonical home per concept; no dead/commented-out code.
+- Structured JSON logging to stdout via `mentorapp.observability.get_logger`
+  ONLY — no bare prints, no swallowed exceptions.
+- Every response speaks the `{data, meta, errors}` envelope.
+- Comments carry the WHY; contract docstrings on public surfaces; no orphan
+  TODOs (every TODO names a PI or finding).
+- Every code commit carries `Governed-By: PI-NNN` (an ENG-004 planning item
+  in an executable state). Hook: `.githooks/` (warn mode);
+  `git config core.hooksPath .githooks` after clone.
 
 ## Commands
 
-Nothing to run yet — Phase 3 (build) will establish the toolchain per the
-architect's design (house default: uv + FastAPI + pytest, see
-`webapp-standards`).
+```bash
+uv sync            # install
+uv run pytest      # tests (plain test root: tests/)
+uv run ruff check src tests && uv run ruff format --check src tests
+uv run uvicorn mentorapp.main:app --reload   # run locally
+```
 
-## Conventions
+## Layout
 
-- **Push convention:** Claude commits in this local clone; **Doug reviews and
-  pushes** (no remote configured yet). Do not push without being asked.
-- Conventional Commits (`feat:`, `docs:`, `chore:`, …).
-- Never commit secrets; the app must boot with zero env vars (dry-run/dev mode).
+`src/mentorapp/` application code; `tests/` plain pytest root (the ADO
+affected-test gate runs the full `tests/` suite for any non-doc change —
+per-repo plain mode).

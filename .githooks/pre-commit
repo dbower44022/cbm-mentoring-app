@@ -1,0 +1,22 @@
+#!/bin/sh
+# Model A guard: governance deposit-event logs advance only on main.
+# Blocks staged deposit-event-logs/ changes on any non-main branch.
+# Merge-time override: CRMBUILDER_ALLOW_BRANCH_SNAPSHOT=1
+# (PI-β slice 4 deleted the db-export/ snapshot tree; the deposit-event
+# logs are the remaining git-tracked governance trail, so only they are
+# guarded now.)
+branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null)"
+if [ "$branch" = "main" ] || [ "${CRMBUILDER_ALLOW_BRANCH_SNAPSHOT:-}" = "1" ]; then
+    exit 0
+fi
+blocked="$(git diff --cached --name-only \
+    -- 'PRDs/product/crmbuilder-v2/deposit-event-logs/')"
+if [ -n "$blocked" ]; then
+    echo "✗ pre-commit: governance deposit-event logs may not be committed on branch '$branch'." >&2
+    echo "  Model A: deposit-event-logs/ advance only on main." >&2
+    echo "  Staged offending files:" >&2
+    echo "$blocked" | sed 's/^/    /' >&2
+    echo "  Merge of a branch-local apply? Set CRMBUILDER_ALLOW_BRANCH_SNAPSHOT=1." >&2
+    exit 1
+fi
+exit 0

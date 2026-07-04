@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# Governance gate (warn mode) for the CBM Mentoring App repo (ENG-004).
+# Validates the Governed-By trailer against the cloud store via the
+# crmbuilder installation's gate module. Mode: CRMBUILDER_GOVERNANCE_GATE =
+# off | warn (default) | enforce. Resilient: tooling breakage degrades to
+# allow; only the validator's own verdict blocks (in enforce mode).
+mode="${CRMBUILDER_GOVERNANCE_GATE:-warn}"
+[ "$mode" = "off" ] && exit 0
+CRM_ROOT="/home/doug/Dropbox/Projects/crmbuilder"
+CRM_ENV="$CRM_ROOT/crmbuilder-v2/data/crmbuilder.env"
+set -a
+[ -f "$CRM_ENV" ] && . "$CRM_ENV"
+set +a
+export CRMBUILDER_V2_API_BASE="${CRMBUILDER_V2_API_BASE_URL:-https://api.crmbuilder.ai}"
+export CRMBUILDER_V2_GATE_TOKEN="${CRMBUILDER_V2_API_TOKEN:-}"
+export CRMBUILDER_V2_GATE_ENGAGEMENT="ENG-004"
+py="$CRM_ROOT/.venv/bin/python3"
+[ -x "$py" ] || { echo "[governance-gate] crmbuilder venv missing — skipping" >&2; exit 0; }
+PYTHONPATH="$CRM_ROOT/crmbuilder-v2/src${PYTHONPATH:+:$PYTHONPATH}" \
+  "$py" -m crmbuilder_v2.governance_gate commit-msg "$1" --mode "$mode"
