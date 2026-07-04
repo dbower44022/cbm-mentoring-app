@@ -64,7 +64,10 @@ class PermanentJobError(Exception):
 
 def retry_backoff(attempt_count: int) -> timedelta:
     """Exponential backoff for the Nth failed attempt, capped (DB-S11)."""
-    return min(BACKOFF_BASE * (2 ** max(attempt_count - 1, 0)), BACKOFF_CAP)
+    # The exponent is clamped before multiplying: past ~2^20 the product
+    # overflows timedelta long before the min() could apply the cap.
+    exponent = min(max(attempt_count - 1, 0), 20)
+    return min(BACKOFF_BASE * (2**exponent), BACKOFF_CAP)
 
 
 def enqueue_job(

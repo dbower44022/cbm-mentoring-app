@@ -113,7 +113,7 @@ def test_exhausted_attempts_park_as_needs_attention(session: Session) -> None:
 
 def test_completion_stamps_artifact_and_surfaces_on_the_feed(session: Session) -> None:
     now = utcnow()
-    job = enqueue_job(session, "gridExport", {"gridKey": "mentorRoster"})
+    job = enqueue_job(session, "gridExport", {"gridKey": "mentorRoster"}, run_after=now)
     session.commit()
 
     def export_handler(inner: Session, claimed: BackgroundJob) -> JobOutcome:
@@ -155,8 +155,8 @@ def test_unregistered_job_type_parks_instead_of_dropping(session: Session) -> No
 
 def test_worker_pass_drains_only_what_is_due(session: Session) -> None:
     now = utcnow()
-    enqueue_job(session, "gridExport")
-    enqueue_job(session, "gridExport")
+    enqueue_job(session, "gridExport", run_after=now)
+    enqueue_job(session, "gridExport", run_after=now)
     enqueue_job(session, "gridExport", run_after=now + timedelta(hours=1))
     session.commit()
 
@@ -203,9 +203,7 @@ def test_catch_up_replays_idempotently_from_any_older_watermark(session: Session
 
     # At-least-once: the same older watermark replays the same entries.
     replay, _ = read_changes_since(session, watermark, limit=10)
-    assert [e.change_feed_entry_id for e in replay] == [
-        e.change_feed_entry_id for e in rest
-    ]
+    assert [e.change_feed_entry_id for e in replay] == [e.change_feed_entry_id for e in rest]
 
     caught_up, none_mark = read_changes_since(
         session, read_changes_since(session, None, limit=10)[1]

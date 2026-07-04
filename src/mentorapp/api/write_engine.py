@@ -32,10 +32,6 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.exc import StaleDataError
 
-# The ONE definition of duplicate-match equality (DB-S13) lives with the shared
-# normalization services (WTK-132) so background jobs and this engine can never
-# disagree; re-exported here because it is part of this engine's contract.
-from mentorapp.automation.normalization import normalize_for_match
 from mentorapp.api.envelope import ApiError, field_error
 from mentorapp.api.errors import (
     ApiValidationError,
@@ -51,6 +47,11 @@ from mentorapp.api.records import (
     registry_for,
     serialize_record,
 )
+
+# The ONE definition of duplicate-match equality (DB-S13) lives with the shared
+# normalization services (WTK-132) so background jobs and this engine can never
+# disagree; re-exported here because it is part of this engine's contract.
+from mentorapp.automation.normalization import normalize_for_match
 from mentorapp.storage import (
     ChangeFeedEntry,
     DuplicateOverride,
