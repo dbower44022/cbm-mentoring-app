@@ -11,6 +11,9 @@ The contract (REQ-059/DB-S12, REQ-050/DB-S6):
 - ``routers.schema`` serves ``GET /schema/{entity}`` — the single metadata
   endpoint over the schema registry that drives UI rendering, validation,
   exports, and view columns.
+- ``routers.preferences`` serves ``GET/PUT /preferences/{key}`` (REQ-060,
+  DB-S13) — the one persistence mechanism for all view/pin/layout/filter
+  state, with org-default rows overridden by the caller's own.
 
 The cross-cutting read/write processes (REQ-053/054/055/059, WTK-130) are the
 two shared engines every entity endpoint composes — never re-implemented per
