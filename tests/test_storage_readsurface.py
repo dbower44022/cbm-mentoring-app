@@ -31,6 +31,7 @@ from mentorapp.storage import (
     regenerate_read_views,
     run_schema_drift_startup_check,
     schema_drift_findings,
+    utcnow,
 )
 
 
@@ -192,7 +193,8 @@ def test_drift_check_reports_unregistered_columns(session: Session) -> None:
     name_row = session.scalars(
         select(SchemaRegistry).where(SchemaRegistry.field_name == "engagementName")
     ).one()
-    name_row.soft_delete()
+    # StructuralColumnsMixin has no soft_delete helper; stamp the column directly.
+    name_row.deleted_at = utcnow()
     session.commit()
 
     problems = {(f.field_name, f.problem) for f in schema_drift_findings(session)}
