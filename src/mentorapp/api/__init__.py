@@ -11,6 +11,20 @@ The contract (REQ-059/DB-S12, REQ-050/DB-S6):
 - ``routers.schema`` serves ``GET /schema/{entity}`` — the single metadata
   endpoint over the schema registry that drives UI rendering, validation,
   exports, and view columns.
+
+The cross-cutting read/write processes (REQ-053/054/055/059, WTK-130) are the
+two shared engines every entity endpoint composes — never re-implemented per
+feature:
+
+- ``list_engine`` — keyset pagination (cursor codec built once), counts and
+  aggregates as a separate whole-set query, and registry-driven server-side
+  search (DB-S8).
+- ``write_engine`` — create with duplicate detection + recorded overrides,
+  field-level PATCH under optimistic concurrency, registry validation of
+  built-in and custom fields alike, audit stamping, field history, and
+  change-feed append (DB-S4/S5/S12).
+- ``records`` — the shared registry/field-map/serialization primitives,
+  including the custom-attribute merge into served records (DB-R3).
 """
 
 from mentorapp.api.envelope import ApiError, Envelope, field_error, ok, request_error
@@ -21,6 +35,15 @@ from mentorapp.api.errors import (
     StaleRowVersionError,
     register_error_handlers,
 )
+from mentorapp.api.list_engine import (
+    count_and_aggregates,
+    decode_cursor,
+    encode_cursor,
+    keyset_page,
+    trigram_search_filter,
+)
+from mentorapp.api.records import registry_for, serialize_record
+from mentorapp.api.write_engine import create_record, normalize_for_match, partial_update
 
 __all__ = [
     "ApiError",
@@ -29,8 +52,18 @@ __all__ = [
     "Envelope",
     "RecordNotFoundError",
     "StaleRowVersionError",
+    "count_and_aggregates",
+    "create_record",
+    "decode_cursor",
+    "encode_cursor",
     "field_error",
+    "keyset_page",
+    "normalize_for_match",
     "ok",
+    "partial_update",
     "register_error_handlers",
+    "registry_for",
     "request_error",
+    "serialize_record",
+    "trigram_search_filter",
 ]
