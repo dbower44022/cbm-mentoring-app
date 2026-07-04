@@ -4,10 +4,15 @@ in one round trip, recovery bodies on 409, opaque logged 500s.
 
 from __future__ import annotations
 
+import re
+
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
+from mentorapp.api.deps import get_session
 from mentorapp.api.envelope import Envelope, field_error, ok, request_error
 from mentorapp.api.errors import (
     CODE_DUPLICATE_CANDIDATES,
@@ -20,6 +25,7 @@ from mentorapp.api.errors import (
     StaleRowVersionError,
     register_error_handlers,
 )
+from mentorapp.main import create_app
 
 
 def test_ok_envelope_shape() -> None:
@@ -129,3 +135,77 @@ def test_unhandled_exception_is_opaque_500_in_the_envelope() -> None:
     body = resp.json()
     assert body["errors"][0]["code"] == CODE_INTERNAL
     assert "secret internals" not in resp.text
+
+
+# --- The mounted application: EVERY route speaks the envelope (WTK-145) -----
+#
+# The sweep is generated from the app's own OpenAPI document (routers are
+# lazily wrapped in the route table, so the published contract is the reliable
+# enumeration), meaning a future router cannot be mounted without inheriting
+# these assertions — "every endpoint" is enforced mechanically, not by each
+# endpoint suite remembering to check the shape. A route hidden with
+# ``include_in_schema=False`` would escape; none exists, and hiding one is an
+# off-contract act this suite should force a conversation about.
+
+_HTTP_METHODS = frozenset({"get", "put", "post", "patch", "delete"})
+
+
+def _probe_targets() -> list[tuple[str, str]]:
+    paths = create_app().openapi()["paths"]
+    return [
+        (method.upper(), path)
+        for path, operations in sorted(paths.items())
+        for method in sorted(operations)
+        if method in _HTTP_METHODS
+    ]
+
+
+@pytest.fixture()
+def mounted_client(session: Session) -> TestClient:
+    app = create_app()
+    app.dependency_overrides[get_session] = lambda: session
+    return TestClient(app, raise_server_exceptions=False)
+
+
+def test_the_sweep_sees_the_known_surface() -> None:
+    # Canary for the sweep itself: if route collection ever silently breaks,
+    # this fails before the parametrized sweep vacuously passes.
+    paths = {path for _, path in _probe_targets()}
+    assert {"/healthz", "/schema/{entity_type}", "/preferences/{preference_key}"} <= paths
+
+
+@pytest.mark.parametrize(
+    ("method", "path_template"),
+    [pytest.param(m, p, id=f"{m} {p}") for m, p in _probe_targets()],
+)
+def test_every_mounted_route_speaks_the_envelope(
+    mounted_client: TestClient, method: str, path_template: str
+) -> None:
+    # A bare probe (no headers, no body, unknown path params) must come back as
+    # a structured client response in the one envelope — never a 500, never a
+    # bare FastAPI error shape.
+    path = re.sub(r"\{[^}]+\}", "sweep-probe", path_template)
+    resp = mounted_client.request(method, path)
+    assert resp.status_code < 500
+    body = resp.json()
+    assert set(body) == {"data", "meta", "errors"}
+    if resp.status_code < 400:
+        assert body["errors"] is None
+    else:
+        assert body["errors"], "a failure must carry at least one structured error"
+        for entry in body["errors"]:
+            assert set(entry) == {"fieldName", "code", "message"}
+            assert entry["code"]
+            assert entry["message"]
+
+
+def test_mounted_route_reports_failures_from_every_source_in_one_round_trip(
+    mounted_client: TestClient,
+) -> None:
+    # One request, two failure sources (missing X-User-ID header, missing body
+    # field): a real registered endpoint reports both together, proving the
+    # one-round-trip rule holds on the mounted app, not just synthetic routes.
+    resp = mounted_client.put("/preferences/grid.sweep.probe", json={})
+    assert resp.status_code == 422
+    errors = resp.json()["errors"]
+    assert {e["fieldName"] for e in errors} == {"X-User-ID", "preferenceValue"}
