@@ -32,6 +32,10 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.exc import StaleDataError
 
+# The ONE definition of duplicate-match equality (DB-S13) lives with the shared
+# normalization services (WTK-132) so background jobs and this engine can never
+# disagree; re-exported here because it is part of this engine's contract.
+from mentorapp.automation.normalization import normalize_for_match
 from mentorapp.api.envelope import ApiError, field_error
 from mentorapp.api.errors import (
     ApiValidationError,
@@ -65,20 +69,6 @@ CODE_INACTIVE_OPTION = "inactiveOption"
 # fieldType vocabulary shared with the schema registry; validated here, never
 # a database enum (DB-S7). Text-like types differ only in normalization.
 _TEXT_TYPES = frozenset({"text", "email", "phone"})
-
-
-def normalize_for_match(field_type: str, value: Any) -> str:
-    """The ONE definition of duplicate-match equality per field type (DB-S13).
-
-    Phones compare digits-only; everything else compares case-insensitively,
-    whitespace-trimmed. The normalized shadow columns entities index for
-    detection MUST be populated by this same function — two definitions of
-    "equal" is the bug class this module exists to prevent.
-    """
-    text = str(value)
-    if field_type == "phone":
-        return "".join(character for character in text if character.isdigit())
-    return text.strip().lower()
 
 
 def _validate_value(row: SchemaRegistry, value: Any) -> ApiError | None:
