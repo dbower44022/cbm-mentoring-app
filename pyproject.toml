@@ -6,9 +6,9 @@ requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115",
     "uvicorn>=0.30",
-    # Adopted for WTK-126 (Governed-By: PI-008): the data-model standard requires
-    # relational models with dialect-aware types (JSONB on Postgres) and future Alembic
-    # migrations; SQLAlchemy 2.x is the boring incumbent ORM, actively maintained.
+    # Adopted for WTK-125/WTK-126 (Governed-By: PI-008): the data-model standard
+    # requires relational models with dialect-aware types (JSONB on Postgres) and
+    # future Alembic migrations; SQLAlchemy 2.x is the boring incumbent ORM.
     "sqlalchemy>=2.0",
 ]
 

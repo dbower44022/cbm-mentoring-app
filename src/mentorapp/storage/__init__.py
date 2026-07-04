@@ -1,6 +1,21 @@
-"""Storage layer: declarative models implementing the ENG-004 data-model standard."""
+"""Storage layer — base-entity model, key policy, registries, jobs, and change feed.
 
-from mentorapp.storage.base import Base, StructuralColumnsMixin, utcnow, uuid7
+Implements the ENG-004 data-model standard: ``entity`` carries the declarative
+base, structural system columns, and key-naming policy (WTK-125); ``models``
+carries the schema registry, option sets, background jobs, and change feed
+(WTK-126/WTK-127). One declarative ``Base`` spans them all.
+"""
+
+from mentorapp.storage.base import StructuralColumnsMixin, utcnow
+from mentorapp.storage.entity import (
+    Base,
+    BaseEntity,
+    entity_key,
+    entity_ref,
+    live_index,
+    live_unique,
+)
+from mentorapp.storage.ids import uuid7, uuid7_created_at
 from mentorapp.storage.models import (
     CHANGE_KINDS,
     JOB_STATUSES,
@@ -16,11 +31,17 @@ __all__ = [
     "JOB_STATUSES",
     "BackgroundJob",
     "Base",
+    "BaseEntity",
     "ChangeFeedEntry",
     "OptionSet",
     "OptionValue",
     "SchemaRegistry",
     "StructuralColumnsMixin",
+    "entity_key",
+    "entity_ref",
+    "live_index",
+    "live_unique",
     "utcnow",
     "uuid7",
+    "uuid7_created_at",
 ]

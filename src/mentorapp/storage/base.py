@@ -9,59 +9,31 @@ entity-named keys, and the structural/system columns every entity table carries
 
 from __future__ import annotations
 
-import secrets
-import time
 import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import JSON, DateTime, MetaData
+from sqlalchemy import JSON, DateTime
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import DeclarativeBase, Mapped, declared_attr, mapped_column
+from sqlalchemy.orm import Mapped, declared_attr, mapped_column
 
-# Deterministic constraint/index names so future Alembic autogenerate diffs are stable.
-NAMING_CONVENTION = {
-    "ix": "ix_%(table_name)s_%(column_0_N_name)s",
-    "uq": "uq_%(table_name)s_%(column_0_N_name)s",
-    "ck": "ck_%(table_name)s_%(constraint_name)s",
-    "fk": "fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s",
-    "pk": "pk_%(table_name)s",
-}
+# WSK-022 merge resolution: the declarative Base and the UUIDv7 primitive live
+# in entity.py/ids.py (WTK-125); this module re-exports them so its own
+# consumers (models.py) keep one metadata and one key policy.
+from mentorapp.storage.entity import Base
+from mentorapp.storage.ids import uuid7
 
 # JSONB on Postgres (GIN-indexable per DB-R3); plain JSON on SQLite for tests.
 JsonValue = JSON().with_variant(JSONB(), "postgresql")
 
+__all__ = ["Base", "JsonValue", "StructuralColumnsMixin", "utcnow", "uuid7"]
 
-def uuid7() -> uuid.UUID:
-    """Return a time-ordered UUIDv7 (RFC 9562) for use as a primary key.
 
-    DB-R1 mandates UUIDv7 keys generated in the app layer. The stdlib gains
-    ``uuid.uuid7`` only in Python 3.14, and the boring-dependency policy says a
-    ~10-line primitive is written, not imported. Layout: 48-bit unix-ms
-    timestamp, version nibble 7, 12 random bits, RFC variant, 62 random bits.
-    Ordering is millisecond-granular; sub-millisecond ties are unordered, which
-    the standard tolerates (the key is a tiebreak, not a clock).
-    """
-    unix_ms = time.time_ns() // 1_000_000
-    value = (
-        ((unix_ms & 0xFFFF_FFFF_FFFF) << 80)
-        | (0x7 << 76)
-        | (secrets.randbits(12) << 64)
-        | (0b10 << 62)
-        | secrets.randbits(62)
-    )
-    return uuid.UUID(int=value)
 
 
 def utcnow() -> datetime:
     """Timezone-aware UTC now — the single timestamp source for audit columns."""
     return datetime.now(UTC)
-
-
-class Base(DeclarativeBase):
-    """Declarative base for every mentorapp table."""
-
-    metadata = MetaData(naming_convention=NAMING_CONVENTION)
 
 
 class StructuralColumnsMixin:
