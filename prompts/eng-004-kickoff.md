@@ -165,3 +165,30 @@ User testing DEFERRED. In the DB: **SKL-121/122/123** bound to all four
 triads (36 edges), **DEC-073**; contracts verified, ENG-001 isolation
 confirmed (check with X-Engagement header — the ?engagement param loses to
 the header; API finding candidate). Next: pipeline run over REL-002.
+
+## DONE 2026-07-04 (night) — PLANNING SLICE COMPLETE: REL-002 IS READY
+
+Pipeline run (droplet, driver `/opt/crmbuilder/rel002_planning_v2.py`, $50
+budget approved, $12.81 spent, all cost-captured after the fix):
+- Demands: 594 authored from the 86 REQs (11 chunked batches).
+- Reconciliation: 4 conflicts -> governed decisions DEC-074/075; Doug's
+  reconciliation sign-off recorded. Orchestrator normalization: 164
+  artifact identifiers (case-variant dup entities merged; auth_session vs
+  session split preserved).
+- Architecture: 445 design artifact versions; CRM boundary shaped as
+  app-owned mentoring entities + crm_*_ref reference entities (staff
+  visibility = dev-lane design-review item). Doug's architecture sign-off
+  recorded.
+- Decomposition: 10 PIs -> 30 workstreams (Design/Develop/Test) / 190
+  area-tagged work tasks. finalize_planning flipped PIs to ado; release
+  transitioned to READY.
+
+E2E findings -> ENG-001 candidates: REQ-455 (module/platform doc log UI),
+REQ-456 (unscoped release lookup), REQ-457 (output-ceiling truncation +
+lost cost telemetry + identical-retry loop), REQ-458 (canonical artifact
+naming in demand authoring), REQ-459 (provider-output validation at the
+agent boundary). Plus: contract endpoint ?engagement param loses to
+X-Engagement header; adaptive thinking shares max_tokens with output.
+
+NEXT: dev-lane go/no-go (separate budget) — development -> QA -> testing
+-> deployment over the 190 work tasks.
