@@ -1,22 +1,31 @@
 """Tests for the automation layer — worker, change-feed sync, normalization,
-postal refresh (REQ-057, REQ-058, REQ-061, WTK-132)."""
+postal refresh, artifact jobs (REQ-057, REQ-058, REQ-061, REQ-014, WTK-132,
+WTK-141)."""
 
 from __future__ import annotations
 
+import uuid
 from datetime import timedelta
 
 import pytest
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from mentorapp.automation import (
+    EXPORT_JOB_TYPE,
+    EXPORT_RETENTION,
     POSTAL_REFRESH_JOB_TYPE,
+    PRINT_JOB_TYPE,
+    PRINT_RETENTION,
+    RETENTION_TRIM_JOB_TYPE,
     FeedSyncError,
     JobOutcome,
     PermanentJobError,
     PostalReferenceRow,
+    artifact_retention_trim_job,
     claim_next_job,
     enqueue_job,
+    export_job_handler,
     fail_job,
     normalize_for_match,
     normalize_phone,
@@ -26,19 +35,24 @@ from mentorapp.automation import (
     parse_street_address,
     postal_lookup,
     postal_reference_refresh_job,
+    print_job_handler,
     process_next_job,
     read_changes_since,
     refresh_postal_reference,
     retry_backoff,
     run_worker_pass,
     sync_change_feed,
+    trim_expired_artifacts,
 )
 from mentorapp.automation.worker import BACKOFF_BASE, BACKOFF_CAP
 from mentorapp.storage import (
     BackgroundJob,
+    BaseEntity,
     ChangeFeedEntry,
     PostalCode,
     SchemaRegistry,
+    entity_key,
+    regenerate_read_views,
     utcnow,
     uuid7,
 )
@@ -384,3 +398,162 @@ def test_postal_refresh_parks_on_a_malformed_payload(session: Session) -> None:
     handlers = {POSTAL_REFRESH_JOB_TYPE: postal_reference_refresh_job}
     assert process_next_job(session, handlers) is True
     assert job.job_status == "needsAttention"
+
+
+# --- export/print artifact jobs and retention trim (REQ-058, REQ-014) --------
+
+
+class Cohort(BaseEntity):
+    """Test-owned entity backing the artifact-job read-view tests."""
+
+    __tablename__ = "Cohort"
+
+    cohort_id: Mapped[uuid.UUID] = entity_key("cohortID")
+    cohort_name: Mapped[str] = mapped_column("cohortName", nullable=False)
+
+
+class _Store:
+    """In-memory ArtifactStore capturing puts and discards for assertions."""
+
+    def __init__(self) -> None:
+        self.artifacts: dict[str, tuple[bytes, str]] = {}
+        self.discarded: list[str] = []
+
+    def put(self, name: str, content: bytes, content_type: str) -> str:
+        url = f"https://artifacts.test/{name}"
+        self.artifacts[url] = (content, content_type)
+        return url
+
+    def discard(self, url: str) -> None:
+        self.discarded.append(url)
+        self.artifacts.pop(url, None)
+
+
+def _seed_cohorts(session: Session) -> None:
+    session.add_all(
+        [
+            SchemaRegistry(
+                entity_type="Cohort",
+                field_name="cohortID",
+                field_type="id",
+                field_label="Cohort ID",
+            ),
+            SchemaRegistry(
+                entity_type="Cohort",
+                field_name="cohortName",
+                field_type="text",
+                field_label="Name",
+            ),
+        ]
+    )
+    retired = Cohort(cohort_name="Retired")
+    retired.soft_delete()
+    session.add_all(
+        [Cohort(cohort_name="Spring & Summer"), Cohort(cohort_name="Fall"), retired]
+    )
+    session.commit()
+    regenerate_read_views(session)
+
+
+def test_export_job_produces_a_csv_artifact_with_retention(session: Session) -> None:
+    _seed_cohorts(session)
+    store = _Store()
+    job = enqueue_job(
+        session, EXPORT_JOB_TYPE, {"entityType": "Cohort", "columns": ["cohortName"]}
+    )
+    session.commit()
+    now = utcnow()
+    handlers = {EXPORT_JOB_TYPE: export_job_handler(store)}
+    assert process_next_job(session, handlers, now=now) is True
+
+    assert job.job_status == "completed"
+    assert job.job_expires_at == now + EXPORT_RETENTION
+    content, content_type = store.artifacts[job.artifact_url]
+    assert content_type == "text/csv"
+    text = content.decode("utf-8")
+    assert text.splitlines()[0] == "cohortName"
+    assert "Fall" in text and "Spring & Summer" in text
+    # The read view is the source: soft-deleted rows never reach an export.
+    assert "Retired" not in text
+
+
+def test_print_job_produces_an_escaped_html_document(session: Session) -> None:
+    _seed_cohorts(session)
+    store = _Store()
+    job = enqueue_job(
+        session, PRINT_JOB_TYPE, {"entityType": "Cohort", "columns": ["cohortName"]}
+    )
+    session.commit()
+    now = utcnow()
+    handlers = {PRINT_JOB_TYPE: print_job_handler(store)}
+    assert process_next_job(session, handlers, now=now) is True
+
+    assert job.job_status == "completed"
+    assert job.job_expires_at == now + PRINT_RETENTION
+    content, content_type = store.artifacts[job.artifact_url]
+    assert content_type == "text/html"
+    document = content.decode("utf-8")
+    assert "<table>" in document
+    assert "Spring &amp; Summer" in document and "Retired" not in document
+
+
+def test_export_parks_permanently_on_a_malformed_payload(session: Session) -> None:
+    _seed_cohorts(session)
+    handlers = {EXPORT_JOB_TYPE: export_job_handler(_Store())}
+    unknown_entity = enqueue_job(session, EXPORT_JOB_TYPE, {"entityType": "NoSuch"})
+    unknown_column = enqueue_job(
+        session, EXPORT_JOB_TYPE, {"entityType": "Cohort", "columns": ["nope"]}
+    )
+    session.commit()
+    assert run_worker_pass(session, handlers) == 2
+    assert unknown_entity.job_status == "needsAttention"
+    assert unknown_column.job_status == "needsAttention"
+
+
+def test_retention_trim_reclaims_only_expired_artifacts(session: Session) -> None:
+    _seed_cohorts(session)
+    store = _Store()
+    expired = enqueue_job(session, EXPORT_JOB_TYPE, {"entityType": "Cohort"})
+    fresh = enqueue_job(session, EXPORT_JOB_TYPE, {"entityType": "Cohort"})
+    session.commit()
+    now = utcnow()
+    assert run_worker_pass(session, {EXPORT_JOB_TYPE: export_job_handler(store)}, now=now) == 2
+    expired_url = expired.artifact_url
+
+    # Age only the first export past its retention; the second stays fresh.
+    expired.job_expires_at = now
+    session.flush()
+    assert trim_expired_artifacts(session, store, now=now + timedelta(seconds=1)) == 1
+
+    assert expired.deleted_at is not None
+    assert expired.artifact_url is None
+    assert store.discarded == [expired_url]
+    assert fresh.deleted_at is None and fresh.artifact_url in store.artifacts
+    trim_feed = session.scalars(
+        select(ChangeFeedEntry).where(
+            ChangeFeedEntry.record_id == expired.job_id,
+            ChangeFeedEntry.change_kind == "deleted",
+        )
+    ).all()
+    assert len(trim_feed) == 1
+
+
+def test_retention_trim_runs_on_the_one_queue(session: Session) -> None:
+    _seed_cohorts(session)
+    store = _Store()
+    export = enqueue_job(session, EXPORT_JOB_TYPE, {"entityType": "Cohort"})
+    session.commit()
+    now = utcnow()
+    handlers = {
+        EXPORT_JOB_TYPE: export_job_handler(store),
+        RETENTION_TRIM_JOB_TYPE: artifact_retention_trim_job(store),
+    }
+    assert run_worker_pass(session, handlers, now=now) == 1
+
+    export.job_expires_at = now - timedelta(seconds=1)
+    session.flush()
+    trim = enqueue_job(session, RETENTION_TRIM_JOB_TYPE)
+    session.commit()
+    assert run_worker_pass(session, handlers) == 1
+    assert trim.job_status == "completed"
+    assert export.deleted_at is not None and store.artifacts == {}
