@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import Engine, create_engine, event, inspect
+from sqlalchemy import Engine, Table, create_engine, event, inspect
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
@@ -24,6 +24,18 @@ from mentorapp.storage import Base, OptionSet, utcnow
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _ALEMBIC_INI = _REPO_ROOT / "alembic.ini"
 _SCRIPT_LOCATION = _REPO_ROOT / "src" / "mentorapp" / "storage" / "migrations"
+
+
+def _production_tables() -> dict[str, Table]:
+    # Other test modules register throwaway entities on the shared Base, so
+    # under the full suite Base.metadata holds more than production. The
+    # migration chain owns exactly the tables mapped from the mentorapp package.
+    return {
+        mapper.local_table.name: mapper.local_table
+        for mapper in Base.registry.mappers
+        if mapper.class_.__module__.startswith("mentorapp.")
+        and isinstance(mapper.local_table, Table)
+    }
 
 
 def _alembic_config() -> Config:
@@ -66,13 +78,13 @@ def migrated_engine() -> Iterator[Engine]:
 
 def test_upgrade_head_creates_every_model_table(migrated_engine: Engine) -> None:
     actual = set(inspect(migrated_engine).get_table_names())
-    expected = set(Base.metadata.tables) | {"alembic_version"}
+    expected = set(_production_tables()) | {"alembic_version"}
     assert actual == expected
 
 
 def test_migrated_columns_match_models(migrated_engine: Engine) -> None:
     inspector = inspect(migrated_engine)
-    for table in Base.metadata.tables.values():
+    for table in _production_tables().values():
         actual = {c["name"]: c["nullable"] for c in inspector.get_columns(table.name)}
         expected = {c.name: bool(c.nullable) for c in table.columns}
         assert actual == expected, f"column drift on {table.name}"
@@ -80,7 +92,7 @@ def test_migrated_columns_match_models(migrated_engine: Engine) -> None:
 
 def test_migrated_indexes_match_models(migrated_engine: Engine) -> None:
     inspector = inspect(migrated_engine)
-    for table in Base.metadata.tables.values():
+    for table in _production_tables().values():
         actual = {i["name"]: bool(i["unique"]) for i in inspector.get_indexes(table.name)}
         expected = {i.name: bool(i.unique) for i in table.indexes}
         assert actual == expected, f"index drift on {table.name}"
