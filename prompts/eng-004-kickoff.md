@@ -236,3 +236,38 @@ Watch for at the pilot: Design-phase agents writing spec .md files vs the
 NO-MD ruling (route design output to the DB — likely finding #7); ENG-004
 skills composing into spawned agent contracts; the affected-test gate
 running plain tests/.
+
+## DONE 2026-07-05 — UI PROTOTYPE GATE PASSED (SES-004 / CNV-004 / DEC-084)
+
+$0 metered (cost-pivot rule held; local work only). Four-screen clickable
+prototype in `prototype/` (review artifact, NOT app code; commits
+be0130e..8371d7c): (A) My Active Engagements triage grid + action/status
+bars + docked preview, (B) engagement preview with notes/action-item
+rollup + client/company/contact pop-ups, (C) session prep/conduct surface,
+(D) Home with admin messaging + dashlets. Built strictly from
+REQ-009..046 + REQ-071..086 + SKL-111..117; walked screen by screen under
+Doug's dictation method. **Six rulings → confirmed REQs, recorded
+real-time with live skill amendments and prototype application:**
+
+- **REQ-087** panel resizing + per-panel zoom, all panels, wide grabbable
+  borders, dimensions/zoom remembered (SKL-113 v2)
+- **REQ-088** preview panels fill white space with rollup content
+  (SKL-113 v3)
+- **REQ-089** data-entry areas auto-resize to fill their panel
+  (SKL-114 v2)
+- **REQ-090** best-available rich-text edit control (Word/email paste
+  fidelity); REQ-082's "deliberately simple" = data model, not editor
+  (SKL-114 v2)
+- **REQ-091** Home/dashboard dashlets fill available space (SKL-113 v4)
+- **REQ-092** subtle alternating row banding on ALL lists, theme-slot
+  driven (SKL-117 v2)
+
+Positive rulings: splitter treatment clearly visible; screen B "looks
+great". Review decision **DEC-084** (Active, decided_in SES-004;
+requirement_approved_by_decision edges to all six).
+
+**OPEN: REQ-087..092 are confirmed scope NOT in frozen REL-002** — fold
+in via the governed release-correction path (as REL-001 → REL-002)
+before/at the next planning slice. Skill authoring file updated in step
+with the DB (layout-standard.md); SKL-114/117 amendments are DB-only
+(no authoring file exists for them).
