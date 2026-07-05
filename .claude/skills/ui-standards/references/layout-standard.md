@@ -123,3 +123,12 @@ junky/crowded. (The grid NO-WHITE-SPACE rule, applied app-wide.)
   (long-term per-user persistence, like view choice — not session-only).
 - **Per-panel zoom:** each panel supports a user-defined zoom level, set by
   the user and remembered (same persistence class).
+
+## Preview content fills the panel (REQ-088, ruled by Doug 2026-07-05 at the prototype gate)
+
+- A preview panel never ends in idle white space while more of its content
+  exists: when its sections are fully displayed and vertical space remains,
+  the panel expands its primary rolling content (e.g. the engagement
+  preview's session notes/action-item rollup) to consume the space.
+- Fixed truncation counts are replaced by fill-to-available-space sizing,
+  with a continues indicator when content remains beyond the fill.

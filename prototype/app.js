@@ -233,17 +233,22 @@ function renderPreview() {
   const co = COMPANIES[r.companyId];
   const cl = CLIENTS[r.clientId];
 
-  let rollup = "";
-  if (!held.length) {
-    rollup = `<p class="preview-hint">No sessions held yet — notes and action items will aggregate here from each session (you never open sessions one by one to find them).</p>`;
-  } else {
-    rollup = held.slice(0, 3).map(s => `
+  const rollupItem = (s) => `
       <div class="rollup-item ${s.actionItems ? "open-ai" : ""}">
         <div class="ri-head">Session ${fmtDate(s.date)} — notes & action items</div>
         <div>${s.notes ? s.notes.split(". ").slice(0, 2).join(". ") + "." : ""}</div>
         ${s.actionItems || ""}
-      </div>`).join("");
-    if (held.length > 3) rollup += `<p class="preview-hint">…rollup continues (${held.length - 3} more sessions) — full rollup on the session prep surface.</p>`;
+      </div>`;
+  // Fill-to-available-space (REQ-088): start with a minimum, then grow
+  // below until the panel is visually full — never idle white space
+  // while more rollup exists.
+  const INITIAL_ROLLUP = 2;
+  let rollup = "";
+  if (!held.length) {
+    rollup = `<p class="preview-hint">No sessions held yet — notes and action items will aggregate here from each session (you never open sessions one by one to find them).</p>`;
+  } else {
+    rollup = `<div id="rollup-box">${held.slice(0, INITIAL_ROLLUP).map(rollupItem).join("")}</div>`;
+    if (held.length > INITIAL_ROLLUP) rollup += `<p class="preview-hint" id="rollup-more">…rollup continues (${held.length - INITIAL_ROLLUP} more sessions) — full rollup on the session prep surface.</p>`;
   }
 
   pane.innerHTML = `
@@ -278,6 +283,21 @@ function renderPreview() {
     dd.ondblclick = () => perFieldEditWindow(r, "Summary", dd.textContent);
   });
   attachZoom(pane, "proto.zoom.preview", { bottom: "8px" }); // re-attach after innerHTML render
+
+  // REQ-088 fill pass: append more rollup sessions while free space remains.
+  const box = pane.querySelector("#rollup-box");
+  const more = pane.querySelector("#rollup-more");
+  if (box) {
+    let shown = INITIAL_ROLLUP;
+    while (shown < held.length && pane.scrollHeight <= pane.clientHeight + 2) {
+      box.insertAdjacentHTML("beforeend", rollupItem(held[shown]));
+      shown++;
+      if (more) more.textContent = shown < held.length
+        ? `…rollup continues (${held.length - shown} more sessions) — full rollup on the session prep surface.`
+        : "";
+    }
+    if (more && shown >= held.length) more.remove();
+  }
 }
 
 // Per-field edit window (REQ-035) — simulated pop-out.
@@ -870,6 +890,9 @@ function attachZoom(panel, storageKey, { bottom = "32px" } = {}) {
   }
   apply();
 }
+
+// Re-run the preview fill pass when the window height changes (REQ-088).
+window.addEventListener("resize", () => { if (state.currentScreen === "engagements") renderPreview(); });
 
 wireSplitter($("split-preview"), $("preview-pane"), "proto.w.preview", { grow: "left" });
 wireSplitter($("split-nav"), $("side-nav"), "proto.w.nav", { grow: "right", min: 110, max: 340 });
