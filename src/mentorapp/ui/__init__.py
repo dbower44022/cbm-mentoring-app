@@ -14,6 +14,10 @@
   real-browser-window pop-outs pinned to their records, the two declared
   actions with never-hide explainers, and the same-user cross-window
   save fan-out.
+- :mod:`~mentorapp.ui.shell_header` — standard header, quick-open palette,
+  and logout (WTK-026): the REQ-009 header for every window (pop-outs omit
+  navigation), the Ctrl+K palette over every reachable panel and view, and
+  the user-menu logout seam over the WTK-005 session controller.
 """
 
 from mentorapp.ui.auth_flows import (
@@ -82,6 +86,19 @@ from mentorapp.ui.record_preview import (
     already_open_message,
     single_row_required_message,
 )
+from mentorapp.ui.shell_header import (
+    LOGOUT_UNSAVED_WORK,
+    MAIN_WINDOW_HEADER,
+    POP_OUT_HEADER,
+    QUICK_OPEN_SHORTCUT,
+    QuickOpenEntry,
+    QuickOpenKind,
+    StandardHeader,
+    header_for_window,
+    quick_open_entries,
+    request_logout,
+    search_quick_open,
+)
 
 __all__ = [
     "ACCOUNT_MENU",
@@ -91,13 +108,17 @@ __all__ = [
     "HOME_FRAME",
     "HOME_PANEL_KEY",
     "LOGIN_SCREEN",
+    "LOGOUT_UNSAVED_WORK",
+    "MAIN_WINDOW_HEADER",
     "MESSAGES_DASHLET",
     "NO_ROW_FOCUSED",
     "OPEN_RECORD_PREVIEW",
     "POP_OUT_HAS_NAVIGATION",
+    "POP_OUT_HEADER",
     "POP_OUT_HEADER_RIGHT",
     "POP_OUT_RECORD",
     "PREVIEW_DOCK_POSITION",
+    "QUICK_OPEN_SHORTCUT",
     "REAUTH_PROMPT",
     "REAUTH_SCREEN",
     "REAUTH_WRONG_USER",
@@ -124,12 +145,15 @@ __all__ = [
     "PopOutWindow",
     "PreviewContent",
     "PreviewPane",
+    "QuickOpenEntry",
+    "QuickOpenKind",
     "RecordRef",
     "RecordWindows",
     "ResolvedDashlet",
     "ScreenField",
     "SessionLoggedOut",
     "SessionRevived",
+    "StandardHeader",
     "StartupChoice",
     "StartupTarget",
     "SyncFanout",
@@ -140,8 +164,12 @@ __all__ = [
     "WindowSessionController",
     "already_open_message",
     "dashlet_unavailable_message",
+    "header_for_window",
     "login_failure_message",
+    "quick_open_entries",
+    "request_logout",
     "resolve_home_dashlets",
     "resolve_startup_panel",
+    "search_quick_open",
     "single_row_required_message",
 ]
