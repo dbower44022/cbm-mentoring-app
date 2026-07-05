@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<!-- =====================================================================
+  REVIEW ARTIFACT — NOT APP CODE.
+  ENG-004 UI prototype gate (SES-004, 2026-07-05). Clickable static
+  prototype of the four load-bearing mentor screens, built strictly from
+  the confirmed UI requirements (REQ-009..046, REQ-071..086) and the
+  binding UI standards skills SKL-111..117. Plain HTML/CSS/JS, no build
+  step, fake data. Open index.html in a browser.
+  ===================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>CBM Mentoring — UI Prototype (review artifact)</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- Standard header (REQ-009): identity + nav left; bell, Help, user menu right -->
+<header class="app-header">
+  <div class="brand"><span class="logo">CBM</span> Mentoring</div>
+  <span class="header-note">PROTOTYPE — fake data, review artifact (ENG-004 prototype gate)</span>
+  <div class="header-right">
+    <button class="hbtn" id="btn-palette" title="Quick open (Ctrl+K)">⌘K</button>
+    <button class="hbtn" id="btn-bell" title="Notifications">🔔<span class="badge" id="bell-badge">2</span></button>
+    <button class="hbtn" id="btn-help" title="Help">?</button>
+    <button class="hbtn" id="btn-user" title="Frank Delgado — preferences, themes, views, logout"><span class="avatar">FD</span></button>
+  </div>
+</header>
+
+<div class="app-body">
+  <!-- Side-menu navigation (per-user presentation choice; mentor area set per REQ-071) -->
+  <nav class="side-nav" id="side-nav">
+    <span class="nav-label">Areas</span>
+    <button class="nav-item" data-screen="home">Home</button>
+    <button class="nav-item" data-screen="contacts">Contacts</button>
+    <button class="nav-item" data-screen="companies">Companies</button>
+    <button class="nav-item" data-screen="clients">Clients</button>
+    <button class="nav-item active" data-screen="engagements">Engagements</button>
+    <button class="nav-item" data-screen="sessions">Sessions</button>
+    <button class="nav-item" data-screen="resources">Resources</button>
+    <button class="nav-item" data-screen="events">Events</button>
+    <span class="nav-label">Pinned views</span>
+    <button class="nav-pin" data-screen="engagements">Engagements → My Active Engagements</button>
+    <button class="nav-pin" id="pin-pending">Engagements → Pending Acceptance</button>
+  </nav>
+
+  <main class="main-area">
+    <!-- Urgent admin message banners across every panel until read (REQ-011) -->
+    <div id="urgent-banner-slot"></div>
+
+    <!-- ============ SCREEN A: Engagements triage grid ============ -->
+    <section class="screen active" id="screen-engagements">
+      <div class="grid-panel">
+        <!-- Action bar: view selector left, search middle, actions right (SKL-112) -->
+        <div class="action-bar">
+          <div class="view-select">
+            <select id="view-selector" title="View selector — system + user views">
+              <option selected>My Active Engagements (system)</option>
+              <option>All My Engagements (system)</option>
+              <option>Pending Acceptance (system)</option>
+              <option>Needs Follow-up (my view)</option>
+            </select>
+            <span class="view-modified" id="view-modified" title="Temporary view modification — save as a user view to keep it">● modified</span>
+            <button class="icon-btn" id="btn-view-edit" title="Edit view settings">✎</button>
+          </div>
+          <div class="grid-search">
+            <input type="text" id="grid-search" placeholder="Search displayed columns (live from 3rd character)…" autocomplete="off">
+          </div>
+          <div class="action-buttons">
+            <button class="btn" id="act-schedule">Schedule Session</button>
+            <button class="btn secondary" id="act-email">Send Email</button>
+            <button class="btn ghost" id="act-other">Other Actions ▾</button>
+          </div>
+        </div>
+        <!-- The grid: infinite scroll, no pagination (REQ-016) -->
+        <div class="grid-scroll" id="grid-scroll">
+          <table class="grid" id="eng-grid">
+            <thead>
+              <tr id="eng-grid-head">
+                <th class="check-col" data-nosort>✓</th>
+                <th data-col="name" style="width:19%">Engagement</th>
+                <th data-col="status" style="width:12%">Status</th>
+                <th data-col="contact" style="width:14%">Primary Contact</th>
+                <th data-col="email" style="width:20%">Contact Email</th>
+                <th data-col="lastSession" style="width:11%">Last Session</th>
+                <th data-col="nextSession" style="width:13%">Next Session</th>
+                <th data-col="totalSessions" style="width:8%">Total Sessions</th>
+              </tr>
+            </thead>
+            <tbody id="eng-grid-body"></tbody>
+          </table>
+          <div class="grid-empty" id="grid-empty" style="display:none"></div>
+        </div>
+        <!-- Status bar: progress middle, counts right (REQ-026) -->
+        <div class="status-bar">
+          <span class="status-left" id="status-left"></span>
+          <span class="status-mid" id="status-mid"></span>
+          <span class="status-right" id="status-right"></span>
+        </div>
+      </div>
+      <!-- Docked read-optimized preview, follows selection (REQ-012/073) -->
+      <aside class="preview-pane" id="preview-pane"></aside>
+    </section>
+
+    <!-- ============ SCREEN C: Session prep / conduct ============ -->
+    <section class="screen" id="screen-prep"></section>
+
+    <!-- ============ SCREEN D: Home panel ============ -->
+    <section class="screen" id="screen-home">
+      <div class="home-wrap">
+        <div class="home-grid" id="home-grid"></div>
+      </div>
+    </section>
+
+    <!-- Placeholder areas (not in scope for this gate) -->
+    <section class="screen" id="screen-placeholder">
+      <div class="grid-empty" id="placeholder-body" style="margin:auto"></div>
+    </section>
+
+    <div class="footnote">
+      Prototype scope: (A) Engagements triage grid + preview · (B) engagement preview pop-ups · (C) session prep/conduct · (D) Home.
+      Other areas are placeholders. Everything follows the binding UI standards SKL-111..117; deviations are review findings.
+    </div>
+  </main>
+</div>
+
+<script src="data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

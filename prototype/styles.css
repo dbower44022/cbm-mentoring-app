@@ -1,0 +1,349 @@
+/* =====================================================================
+   REVIEW ARTIFACT — NOT APP CODE.
+   ENG-004 UI prototype gate (SES-004, 2026-07-05).
+   Color slots follow the look & feel standard (SKL-117): a fixed slot
+   structure, filled here with the "Standard (CBM-branded)" template.
+   Data-dense, never crowded (SKL-111 #3). Desktop/web only.
+   ===================================================================== */
+
+:root {
+  /* --- Fixed color slots (Standard / CBM-branded template) --- */
+  --slot-brand:          #1b3a5c;  /* CBM deep navy */
+  --slot-brand-contrast: #ffffff;
+  --slot-accent:         #e07b28;  /* warm orange — secondary actions (PRF-007) */
+  --slot-surface:        #f5f6f8;
+  --slot-panel:          #ffffff;
+  --slot-border:         #d4d9e0;
+  --slot-text:           #1d2733;
+  --slot-text-dim:       #5a6675;
+  --slot-row-alt:        #f7f9fb;
+  --slot-row-hover:      #eef3f8;
+  --slot-row-selected:   #d7e6f5;
+  --slot-focus:          #2e6fb3;
+  --slot-ok:             #2e7d43;
+  --slot-warn:           #b7791f;
+  --slot-danger:         #b3402e;
+  --slot-info:           #2e6fb3;
+  --slot-urgent-bg:      #fdecea;
+  --slot-urgent-border:  #b3402e;
+
+  /* --- Type scale steps (SKL-117: steps, never arbitrary sizes) --- */
+  --type-1: 11px;   /* dense metadata */
+  --type-2: 12.5px; /* grid body / default */
+  --type-3: 14px;   /* emphasized body */
+  --type-4: 16px;   /* section titles */
+  --type-5: 19px;   /* panel titles */
+
+  --row-h: 27px;    /* Standard template row height */
+  --header-h: 42px;
+  --statusbar-h: 26px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  font-family: "Segoe UI", system-ui, -apple-system, Arial, sans-serif;
+  font-size: var(--type-2);
+  color: var(--slot-text);
+  background: var(--slot-surface);
+  overflow: hidden;
+}
+
+button { font: inherit; cursor: pointer; }
+a { color: var(--slot-focus); }
+
+/* ============================= Header ============================= */
+/* One thin standard header (REQ-009): identity + nav left; bell, Help,
+   user menu right. Data density starts below it. */
+.app-header {
+  height: var(--header-h);
+  background: var(--slot-brand);
+  color: var(--slot-brand-contrast);
+  display: flex; align-items: center; gap: 12px;
+  padding: 0 12px;
+}
+.brand { display: flex; align-items: center; gap: 8px; font-size: var(--type-4); font-weight: 600; white-space: nowrap; }
+.brand .logo {
+  background: var(--slot-accent); color: #fff; border-radius: 4px;
+  font-size: var(--type-1); font-weight: 700; padding: 3px 5px; letter-spacing: .5px;
+}
+.header-note { font-size: var(--type-1); opacity: .75; white-space: nowrap; }
+.header-right { margin-left: auto; display: flex; align-items: center; gap: 4px; }
+.hbtn {
+  background: transparent; border: none; color: var(--slot-brand-contrast);
+  padding: 6px 10px; border-radius: 4px; position: relative; font-size: var(--type-3);
+}
+.hbtn:hover { background: rgba(255,255,255,.14); }
+.badge {
+  position: absolute; top: 1px; right: 2px; background: var(--slot-accent); color: #fff;
+  border-radius: 8px; font-size: 10px; font-weight: 700; padding: 0 4px; min-width: 15px; line-height: 15px;
+}
+.avatar {
+  background: var(--slot-accent); color: #fff; width: 26px; height: 26px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center; font-size: var(--type-1); font-weight: 700;
+}
+
+/* ============================ App shell =========================== */
+.app-body { display: flex; height: calc(100vh - var(--header-h)); }
+
+/* Side-menu navigation (one of the three per-user styles, REQ-010).
+   Mentor default area set per REQ-071. */
+.side-nav {
+  width: 168px; background: var(--slot-panel); border-right: 1px solid var(--slot-border);
+  display: flex; flex-direction: column; padding-top: 4px; flex: none;
+}
+.side-nav .nav-label { font-size: var(--type-1); color: var(--slot-text-dim); text-transform: uppercase; letter-spacing: .6px; padding: 6px 12px 2px; }
+.nav-item {
+  border: none; background: none; text-align: left; padding: 6px 12px;
+  font-size: var(--type-2); color: var(--slot-text); display: flex; justify-content: space-between; align-items: center;
+}
+.nav-item:hover { background: var(--slot-row-hover); }
+.nav-item.active { background: var(--slot-row-selected); font-weight: 600; border-left: 3px solid var(--slot-brand); padding-left: 9px; }
+.nav-item .pin-count { font-size: var(--type-1); color: var(--slot-text-dim); }
+.nav-pin {
+  border: none; background: none; text-align: left; padding: 5px 12px 5px 22px;
+  font-size: var(--type-1); color: var(--slot-text-dim); font-style: italic;
+}
+.nav-pin:hover { background: var(--slot-row-hover); }
+
+.main-area { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+
+/* Urgent admin-message banner across every panel until read (REQ-011) */
+.urgent-banner {
+  background: var(--slot-urgent-bg); border-bottom: 2px solid var(--slot-urgent-border);
+  color: var(--slot-danger); padding: 5px 12px; font-size: var(--type-2);
+  display: flex; align-items: center; gap: 10px;
+}
+.urgent-banner button { margin-left: auto; }
+
+.screen { flex: 1; display: none; min-height: 0; }
+.screen.active { display: flex; }
+
+/* ============================== Grid ============================== */
+/* Universal anatomy (REQ-016): action bar / table / status bar. */
+.grid-panel { flex: 1; display: flex; flex-direction: column; min-width: 0; background: var(--slot-panel); }
+
+.action-bar {
+  display: flex; align-items: center; gap: 8px; padding: 6px 10px;
+  border-bottom: 1px solid var(--slot-border); background: var(--slot-panel); flex: none;
+}
+.view-select { display: flex; align-items: center; gap: 4px; }
+.view-select select { font-size: var(--type-2); padding: 3px 4px; border: 1px solid var(--slot-border); border-radius: 3px; max-width: 220px; }
+.view-modified { color: var(--slot-warn); font-size: var(--type-1); font-weight: 600; display: none; }
+.icon-btn { background: none; border: 1px solid transparent; border-radius: 3px; padding: 3px 6px; font-size: var(--type-3); color: var(--slot-text-dim); }
+.icon-btn:hover { border-color: var(--slot-border); background: var(--slot-row-hover); }
+
+.grid-search { flex: 1; display: flex; justify-content: center; }
+.grid-search input {
+  width: min(420px, 100%); padding: 4px 8px; font-size: var(--type-2);
+  border: 1px solid var(--slot-border); border-radius: 3px;
+}
+.grid-search input:focus { outline: 2px solid var(--slot-focus); outline-offset: -1px; }
+
+.action-buttons { display: flex; gap: 6px; align-items: center; }
+.btn {
+  padding: 4px 12px; border-radius: 3px; border: 1px solid var(--slot-brand);
+  background: var(--slot-brand); color: var(--slot-brand-contrast); font-size: var(--type-2);
+}
+.btn:hover { filter: brightness(1.15); }
+.btn.secondary { background: var(--slot-accent); border-color: var(--slot-accent); color: #fff; }
+.btn.ghost { background: var(--slot-panel); color: var(--slot-text); border-color: var(--slot-border); }
+.btn.ghost:hover { background: var(--slot-row-hover); filter: none; }
+.btn.danger { background: var(--slot-danger); border-color: var(--slot-danger); }
+
+/* Table */
+.grid-scroll { flex: 1; overflow: auto; min-height: 0; }
+table.grid { border-collapse: collapse; width: 100%; table-layout: fixed; }
+table.grid th {
+  position: sticky; top: 0; z-index: 2;
+  background: #e8ecf1; font-size: var(--type-1); text-transform: uppercase; letter-spacing: .4px;
+  color: var(--slot-text-dim); text-align: left; padding: 4px 8px;
+  border-bottom: 1px solid var(--slot-border); border-right: 1px solid #dde3ea;
+  cursor: pointer; user-select: none; white-space: nowrap;
+}
+table.grid th .sort-mark { color: var(--slot-brand); font-weight: 700; }
+table.grid td {
+  padding: 0 8px; height: var(--row-h); font-size: var(--type-2);
+  border-bottom: 1px solid #edf0f4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+tr.grid-row:nth-child(even) { background: var(--slot-row-alt); }
+tr.grid-row:hover { background: var(--slot-row-hover); }
+tr.grid-row.selected { background: var(--slot-row-selected); }
+tr.grid-row.focused td:first-child { box-shadow: inset 3px 0 0 var(--slot-focus); }
+td.check-col, th.check-col { width: 30px; text-align: center; padding: 0; }
+
+/* Status chips — conditional formatting via theme slots (REQ-045) */
+.chip { display: inline-block; padding: 1px 7px; border-radius: 9px; font-size: var(--type-1); font-weight: 600; }
+.chip.pending  { background: #fff3e6; color: var(--slot-accent); border: 1px solid var(--slot-accent); }
+.chip.assigned { background: #eaf2fb; color: var(--slot-info); border: 1px solid var(--slot-info); }
+.chip.active   { background: #e9f4ec; color: var(--slot-ok); border: 1px solid var(--slot-ok); }
+.chip.onhold   { background: #faf3e3; color: var(--slot-warn); border: 1px solid var(--slot-warn); }
+.chip.dormant  { background: #f0f1f3; color: var(--slot-text-dim); border: 1px solid var(--slot-border); }
+
+/* Status bar (REQ-026) */
+.status-bar {
+  height: var(--statusbar-h); border-top: 1px solid var(--slot-border);
+  display: flex; align-items: center; padding: 0 10px; gap: 14px;
+  font-size: var(--type-1); color: var(--slot-text-dim); background: var(--slot-panel); flex: none;
+}
+.status-left { min-width: 120px; }
+.status-mid { flex: 1; text-align: center; }
+.status-right { margin-left: auto; white-space: nowrap; }
+.status-right .sel-note { color: var(--slot-warn); }
+
+/* Empty / filtered-to-zero state (REQ-030, educate voice) */
+.grid-empty { padding: 28px 20px; color: var(--slot-text-dim); font-size: var(--type-3); text-align: center; }
+.grid-empty .btn { margin-top: 10px; }
+
+/* ========================= Preview pane =========================== */
+/* Docked right (implementer's choice), read-optimized, follows the
+   selected row (REQ-012, REQ-073). */
+.preview-pane {
+  width: 420px; flex: none; border-left: 1px solid var(--slot-border);
+  background: var(--slot-panel); overflow-y: auto; padding: 10px 12px;
+}
+.preview-pane h2 { font-size: var(--type-5); color: var(--slot-brand); }
+.preview-sub { font-size: var(--type-1); color: var(--slot-text-dim); margin: 2px 0 8px; }
+.preview-section { margin-bottom: 10px; }
+.preview-section > h3 {
+  font-size: var(--type-1); text-transform: uppercase; letter-spacing: .5px;
+  color: var(--slot-text-dim); border-bottom: 1px solid var(--slot-border);
+  padding-bottom: 2px; margin-bottom: 4px;
+}
+.kv { display: grid; grid-template-columns: 118px 1fr; gap: 1px 8px; font-size: var(--type-2); }
+.kv dt { color: var(--slot-text-dim); }
+.kv dd { overflow: hidden; text-overflow: ellipsis; }
+.kv dd.editable:hover { background: var(--slot-row-hover); cursor: default; }
+
+.rollup-item { border-left: 3px solid var(--slot-border); padding: 3px 8px; margin-bottom: 6px; }
+.rollup-item .ri-head { font-size: var(--type-1); color: var(--slot-text-dim); }
+.rollup-item ul { margin: 2px 0 0 16px; }
+.rollup-item.open-ai { border-left-color: var(--slot-accent); }
+.link-row { border: none; background: none; color: var(--slot-focus); text-decoration: underline; font-size: var(--type-2); padding: 1px 0; display: block; text-align: left; }
+.link-row:hover { color: var(--slot-brand); }
+.preview-hint { font-size: var(--type-1); color: var(--slot-text-dim); font-style: italic; }
+
+/* ========================= Pop-out windows ======================== */
+/* In the product these are REAL browser windows pinned to their record
+   (layout standard). The prototype simulates them as draggable
+   non-modal windows. */
+.popout {
+  position: fixed; z-index: 60; width: 400px; max-height: 70vh;
+  background: var(--slot-panel); border: 1px solid var(--slot-border); border-radius: 5px;
+  box-shadow: 0 8px 28px rgba(15,30,50,.28); display: flex; flex-direction: column;
+}
+.popout-titlebar {
+  background: var(--slot-brand); color: var(--slot-brand-contrast);
+  padding: 5px 10px; font-size: var(--type-2); font-weight: 600;
+  display: flex; align-items: center; gap: 8px; cursor: move; border-radius: 4px 4px 0 0;
+}
+.popout-titlebar .sim-note { font-weight: 400; font-size: var(--type-1); opacity: .7; }
+.popout-titlebar button { margin-left: auto; background: none; border: none; color: #fff; font-size: var(--type-3); }
+.popout-body { padding: 10px 12px; overflow-y: auto; }
+.popout-body h3 { font-size: var(--type-4); color: var(--slot-brand); margin-bottom: 6px; }
+
+/* ====================== Menus, dialogs, toasts ==================== */
+.menu {
+  position: fixed; z-index: 80; background: var(--slot-panel); border: 1px solid var(--slot-border);
+  border-radius: 4px; box-shadow: 0 6px 20px rgba(15,30,50,.22); min-width: 230px; padding: 3px 0;
+}
+.menu button {
+  display: block; width: 100%; text-align: left; border: none; background: none;
+  padding: 5px 14px; font-size: var(--type-2);
+}
+.menu button:hover { background: var(--slot-row-hover); }
+.menu .menu-sep { border-top: 1px solid var(--slot-border); margin: 3px 0; }
+.menu .menu-note { font-size: var(--type-1); color: var(--slot-text-dim); padding: 2px 14px 4px; }
+
+.dialog-backdrop {
+  position: fixed; inset: 0; background: rgba(20,30,45,.35); z-index: 90;
+  display: flex; align-items: flex-start; justify-content: center; padding-top: 12vh;
+}
+.dialog {
+  background: var(--slot-panel); border-radius: 6px; width: 480px; max-width: 92vw;
+  box-shadow: 0 12px 40px rgba(10,20,35,.4); padding: 14px 16px;
+}
+.dialog h3 { font-size: var(--type-4); color: var(--slot-brand); margin-bottom: 8px; }
+.dialog .dialog-body { font-size: var(--type-2); line-height: 1.45; margin-bottom: 12px; }
+.dialog .dialog-body ul { margin: 6px 0 6px 18px; }
+.dialog .dialog-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.dialog .educate { background: var(--slot-surface); border-left: 3px solid var(--slot-info); padding: 6px 10px; margin-top: 8px; font-size: var(--type-2); }
+
+.toast {
+  position: fixed; bottom: 34px; right: 16px; z-index: 100;
+  background: var(--slot-brand); color: #fff; padding: 8px 14px; border-radius: 4px;
+  font-size: var(--type-2); box-shadow: 0 4px 14px rgba(10,20,35,.35); max-width: 380px;
+}
+
+/* Notification dropdown */
+.dropdown {
+  position: fixed; z-index: 85; background: var(--slot-panel); border: 1px solid var(--slot-border);
+  border-radius: 4px; box-shadow: 0 6px 20px rgba(15,30,50,.22); width: 360px; max-height: 60vh; overflow-y: auto;
+}
+.dropdown .dd-head { padding: 6px 12px; font-size: var(--type-1); color: var(--slot-text-dim); text-transform: uppercase; letter-spacing: .5px; border-bottom: 1px solid var(--slot-border); }
+.notif { padding: 7px 12px; border-bottom: 1px solid #eef1f4; font-size: var(--type-2); }
+.notif.unread { background: #f2f7fd; }
+.notif .n-detail { color: var(--slot-text-dim); font-size: var(--type-1); }
+.notif .n-time { color: var(--slot-text-dim); font-size: var(--type-1); }
+.notif.error .n-text { color: var(--slot-danger); }
+
+/* ============================== Home ============================== */
+.home-wrap { flex: 1; overflow-y: auto; padding: 10px 14px; }
+.home-grid { display: grid; grid-template-columns: minmax(420px, 3fr) minmax(320px, 2fr); gap: 12px; align-items: start; }
+.dashlet { background: var(--slot-panel); border: 1px solid var(--slot-border); border-radius: 5px; overflow: hidden; }
+.dashlet-head {
+  padding: 6px 10px; background: #e8ecf1; font-size: var(--type-2); font-weight: 600;
+  color: var(--slot-brand); display: flex; align-items: center; gap: 8px;
+}
+.dashlet-head .dh-note { font-weight: 400; font-size: var(--type-1); color: var(--slot-text-dim); margin-left: auto; }
+.msg { padding: 8px 12px; border-bottom: 1px solid #eef1f4; }
+.msg .m-title { font-weight: 600; font-size: var(--type-2); display: flex; gap: 8px; align-items: baseline; }
+.msg.unread .m-title::before { content: "●"; color: var(--slot-accent); font-size: 9px; }
+.msg .m-meta { font-size: var(--type-1); color: var(--slot-text-dim); margin: 1px 0 3px; }
+.msg .m-body { font-size: var(--type-2); line-height: 1.4; }
+.msg .m-ack { margin-top: 5px; }
+.msg.urgent { background: var(--slot-urgent-bg); }
+.msg .ack-done { color: var(--slot-ok); font-size: var(--type-1); font-weight: 600; }
+.mini-table { width: 100%; border-collapse: collapse; }
+.mini-table td { padding: 3px 10px; font-size: var(--type-2); border-bottom: 1px solid #eef1f4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mini-table tr:hover { background: var(--slot-row-hover); cursor: pointer; }
+
+/* ======================== Session prep/conduct ==================== */
+.prep-wrap { flex: 1; display: flex; min-width: 0; }
+.prep-main { flex: 3; overflow-y: auto; padding: 10px 14px; min-width: 0; }
+.prep-side { flex: 2; border-left: 1px solid var(--slot-border); background: var(--slot-panel); overflow-y: auto; padding: 10px 12px; min-width: 300px; }
+.prep-header { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
+.prep-header h2 { font-size: var(--type-5); color: var(--slot-brand); }
+.prep-stats { display: flex; gap: 16px; font-size: var(--type-2); color: var(--slot-text-dim); flex-wrap: wrap; }
+.prep-stats b { color: var(--slot-text); }
+.conf-bar {
+  display: flex; align-items: center; gap: 10px; background: var(--slot-panel);
+  border: 1px solid var(--slot-border); border-radius: 5px; padding: 7px 12px; margin-bottom: 10px;
+}
+.conf-bar .conf-link { font-family: Consolas, monospace; font-size: var(--type-1); color: var(--slot-text-dim); overflow: hidden; text-overflow: ellipsis; }
+.card { background: var(--slot-panel); border: 1px solid var(--slot-border); border-radius: 5px; margin-bottom: 10px; overflow: hidden; }
+.card-head { padding: 5px 10px; background: #e8ecf1; font-size: var(--type-2); font-weight: 600; color: var(--slot-brand); }
+.card-body { padding: 8px 10px; }
+.hist-item { border-left: 3px solid var(--slot-border); padding: 4px 10px; margin-bottom: 8px; }
+.hist-item .h-date { font-size: var(--type-1); color: var(--slot-text-dim); font-weight: 600; }
+.hist-item .h-notes { font-size: var(--type-2); line-height: 1.45; margin: 2px 0; }
+.hist-item ul { margin: 2px 0 2px 16px; font-size: var(--type-2); }
+.notes-editor {
+  min-height: 150px; border: 1px solid var(--slot-border); border-radius: 4px;
+  padding: 8px 10px; font-size: var(--type-2); line-height: 1.5; background: #fffdf5;
+}
+.notes-editor:focus { outline: 2px solid var(--slot-focus); outline-offset: -1px; }
+.editor-toolbar { display: flex; gap: 4px; margin-bottom: 4px; }
+.editor-toolbar button { border: 1px solid var(--slot-border); background: var(--slot-panel); border-radius: 3px; padding: 2px 8px; font-size: var(--type-1); }
+.editor-toolbar button:hover { background: var(--slot-row-hover); }
+
+/* Quick-open palette (REQ-009) */
+.palette { position: fixed; z-index: 95; top: 12vh; left: 50%; transform: translateX(-50%); width: 460px;
+  background: var(--slot-panel); border: 1px solid var(--slot-border); border-radius: 6px; box-shadow: 0 12px 40px rgba(10,20,35,.4); }
+.palette input { width: 100%; border: none; border-bottom: 1px solid var(--slot-border); padding: 10px 14px; font-size: var(--type-3); }
+.palette input:focus { outline: none; }
+.palette .p-results button { display: block; width: 100%; text-align: left; border: none; background: none; padding: 6px 14px; font-size: var(--type-2); }
+.palette .p-results button:hover { background: var(--slot-row-hover); }
+.palette .p-kind { color: var(--slot-text-dim); font-size: var(--type-1); margin-left: 6px; }
+
+.footnote { font-size: var(--type-1); color: var(--slot-text-dim); padding: 3px 12px; border-top: 1px solid var(--slot-border); background: var(--slot-surface); flex: none; }
