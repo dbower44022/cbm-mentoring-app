@@ -216,7 +216,9 @@ def test_quick_open_lists_only_reachable_destinations(
 
 
 def test_quick_open_ranks_prefix_matches_first(client: TestClient, user_id: uuid.UUID) -> None:
-    response = client.get("/shell/quick-open?q=me", headers=_headers(user_id))
+    # "men" prefixes "Mentors" and only appears inside "Active Mentors" —
+    # the prefix band outranks the alphabetical panels-then-views order.
+    response = client.get("/shell/quick-open?q=men", headers=_headers(user_id))
     data = response.json()["data"]
     assert [e["label"] for e in data["entries"]] == ["Mentors", "Active Mentors"]
     assert response.json()["meta"]["totalCount"] == 2
