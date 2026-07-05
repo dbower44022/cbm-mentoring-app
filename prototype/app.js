@@ -699,19 +699,38 @@ function renderPrep() {
 
   // ---- side column: conduct (write side)
   const side = el("div", "prep-side");
+  const toolbar = `
+    <div class="editor-toolbar">
+      <button onclick="document.execCommand('undo')" title="Undo">↶</button>
+      <button onclick="document.execCommand('redo')" title="Redo">↷</button>
+      <button onclick="document.execCommand('bold')" title="Bold"><b>B</b></button>
+      <button onclick="document.execCommand('italic')" title="Italic"><i>I</i></button>
+      <button onclick="document.execCommand('underline')" title="Underline"><u>U</u></button>
+      <button onclick="document.execCommand('strikeThrough')" title="Strikethrough"><s>S</s></button>
+      <button onclick="document.execCommand('insertUnorderedList')" title="Bulleted list">•≡</button>
+      <button onclick="document.execCommand('insertOrderedList')" title="Numbered list">1≡</button>
+      <button onclick="document.execCommand('outdent')" title="Outdent">⇤</button>
+      <button onclick="document.execCommand('indent')" title="Indent">⇥</button>
+      <button onclick="const u=prompt('Link URL:'); if(u) document.execCommand('createLink', false, u)" title="Insert link">🔗</button>
+      <button onclick="document.execCommand('removeFormat')" title="Clear formatting">⌫F</button>
+    </div>`;
   side.innerHTML = `
     <h3 style="font-size:var(--type-4);color:var(--slot-brand);margin-bottom:6px">This session — notes &amp; action items</h3>
     <p style="font-size:var(--type-1);color:var(--slot-text-dim);margin-bottom:8px">
-      Entered during the call or shortly after (REQ-082). Action items are bulleted rich text — deliberately simple, no task records in v1.</p>
-    <div class="editor-toolbar"><button onclick="document.execCommand('bold')"><b>B</b></button><button onclick="document.execCommand('italic')"><i>I</i></button><button onclick="document.execCommand('insertUnorderedList')">• List</button></div>
-    <div class="notes-editor" contenteditable="true" id="prep-notes"><p><i>Session notes…</i></p></div>
-    <h4 style="font-size:var(--type-2);margin:10px 0 4px;color:var(--slot-text-dim)">ACTION ITEMS</h4>
-    <div class="notes-editor" contenteditable="true" style="min-height:80px" id="prep-ai"><ul><li></li></ul></div>
-    <div style="display:flex;gap:8px;margin-top:10px">
+      Entered during the call or shortly after (REQ-082 — simple data model, no task records in v1).
+      Production uses a full-featured rich-text component: HTML editing with high-fidelity paste from Word, email, and other apps (REQ-090). Paste formatted content here — it's kept.</p>
+    <div class="entry-notes">${toolbar}
+      <div class="notes-editor" contenteditable="true" id="prep-notes"><p><i>Session notes…</i></p></div>
+    </div>
+    <div class="entry-ai">
+      <h4 style="font-size:var(--type-2);margin:0 0 4px;color:var(--slot-text-dim)">ACTION ITEMS</h4>
+      <div class="notes-editor" contenteditable="true" id="prep-ai"><ul><li></li></ul></div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:10px;flex:none">
       <button class="btn" onclick="toast('Notes saved to this session. The engagement rollup and every open window update immediately (same-user sync).')">Save Notes (Ctrl+S)</button>
       <button class="btn secondary" onclick="toast('Wrap-up: schedule the next session now, while concluding the call (REQ-078).')">Schedule Next Session</button>
     </div>
-    <div class="card" style="margin-top:12px">
+    <div class="card" style="margin-top:12px;flex:none">
       <div class="card-head">After the call — AI assist (REQ-083)</div>
       <div class="card-body" style="font-size:var(--type-2)">
         For meetings the app created, the transcript is retrieved from the conferencing platform and a <b>draft</b> summary with suggested action items lands here for your review — you remain the author of record. Pasting a transcript works when automation can't.
