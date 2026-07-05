@@ -4,6 +4,11 @@
   credential screens, the educate-voice outcome messages over the WTK-003
   taxonomy, and the cross-window in-place re-auth controller with
   unsaved-work preservation.
+- :mod:`~mentorapp.ui.home_panel` — home panel & admin messaging (WTK-019):
+  the REQ-003 screen frame and account menu, startup-preference resolution
+  with the broken-pin fallback, the Home dashlet composition, and the
+  per-user message center (auto-read on view, explicit acknowledgment,
+  urgent banner until read).
 """
 
 from mentorapp.ui.auth_flows import (
@@ -28,10 +33,40 @@ from mentorapp.ui.auth_flows import (
     WindowSessionController,
     login_failure_message,
 )
+from mentorapp.ui.home_panel import (
+    ACCOUNT_MENU,
+    DEFAULT_STARTUP_CHOICE,
+    HOME_DASHLETS_PREFERENCE_KEY,
+    HOME_FRAME,
+    HOME_PANEL_KEY,
+    MESSAGES_DASHLET,
+    STARTUP_FALLBACK_TO_HOME,
+    STARTUP_PREFERENCE_KEY,
+    AcknowledgmentNotRequestedError,
+    AdminMessage,
+    DashletRef,
+    HomeFrame,
+    MenuItem,
+    MessageCenter,
+    MessagePriority,
+    ResolvedDashlet,
+    StartupChoice,
+    StartupTarget,
+    UnknownMessageError,
+    dashlet_unavailable_message,
+    resolve_home_dashlets,
+    resolve_startup_panel,
+)
 
 __all__ = [
+    "ACCOUNT_MENU",
+    "DEFAULT_STARTUP_CHOICE",
     "FORGOT_PASSWORD_SCREEN",
+    "HOME_DASHLETS_PREFERENCE_KEY",
+    "HOME_FRAME",
+    "HOME_PANEL_KEY",
     "LOGIN_SCREEN",
+    "MESSAGES_DASHLET",
     "REAUTH_PROMPT",
     "REAUTH_SCREEN",
     "REAUTH_WRONG_USER",
@@ -39,15 +74,31 @@ __all__ = [
     "SESSION_ENDED",
     "SIGN_IN_CRM_UNAVAILABLE",
     "SIGN_IN_REJECTED",
+    "STARTUP_FALLBACK_TO_HOME",
+    "STARTUP_PREFERENCE_KEY",
+    "AcknowledgmentNotRequestedError",
+    "AdminMessage",
     "AuthScreen",
+    "DashletRef",
     "EducateMessage",
     "FieldControl",
+    "HomeFrame",
     "InMemorySessionChannel",
+    "MenuItem",
+    "MessageCenter",
+    "MessagePriority",
+    "ResolvedDashlet",
     "ScreenField",
     "SessionLoggedOut",
     "SessionRevived",
+    "StartupChoice",
+    "StartupTarget",
+    "UnknownMessageError",
     "UnsavedWorkGuardError",
     "WindowPhase",
     "WindowSessionController",
+    "dashlet_unavailable_message",
     "login_failure_message",
+    "resolve_home_dashlets",
+    "resolve_startup_panel",
 ]
