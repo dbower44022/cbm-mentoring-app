@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
+from datetime import timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -13,7 +14,7 @@ from mentorapp.access.grants import GrantLookup, InMemoryGrantRegistry, SourceGr
 from mentorapp.api.deps import get_session
 from mentorapp.api.routers.shell import get_shell_catalog
 from mentorapp.main import create_app
-from mentorapp.storage import UserPreference, utcnow, uuid7
+from mentorapp.storage import AppUser, Notification, UserPreference, utcnow, uuid7
 from mentorapp.ui.home_panel import HOME_FRAME
 from mentorapp.ui.navigation import (
     HOME_PANEL,
@@ -266,3 +267,86 @@ def test_opening_an_unknown_pin_is_404(
     body = response.json()
     assert body["data"] is None
     assert body["errors"][0]["code"] == "notFound"
+
+
+# --- The notification bell (REQ-014, WTK-193) ------------------------------------
+
+
+def _bell_user(session: Session, username: str = "bell-mentor") -> uuid.UUID:
+    user = AppUser(crm_user_id=f"crm-{username}", username=username)
+    session.add(user)
+    session.flush()
+    return user.user_id
+
+
+def _bell_entry(
+    session: Session, user_id: uuid.UUID, message: str, **overrides: object
+) -> Notification:
+    values: dict[str, object] = {
+        "notification_type": "jobCompleted",
+        "notification_message": message,
+        **overrides,
+    }
+    entry = Notification(user_id=user_id, **values)
+    session.add(entry)
+    return entry
+
+
+def test_bell_lists_only_the_session_users_unread_entries_newest_first(
+    client: TestClient, session: Session
+) -> None:
+    mentor = _bell_user(session)
+    neighbor = _bell_user(session, "neighbor")
+    older = _bell_entry(session, mentor, "Older export is ready.")
+    older.created_at = utcnow() - timedelta(minutes=5)
+    newer = _bell_entry(
+        session, mentor, "The export could not finish.", notification_type="jobFailed"
+    )
+    _bell_entry(session, mentor, "Seen already.", read_at=utcnow())
+    _bell_entry(session, neighbor, "A different mentor's export.")
+    session.commit()
+
+    response = client.get("/shell/bell", headers=_headers(mentor))
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["errors"] is None
+    assert body["meta"]["unreadCount"] == 2
+    entries = body["data"]["entries"]
+    # Newest first; read entries and other users' entries never appear.
+    assert [e["notificationID"] for e in entries] == [
+        str(newer.notification_id),
+        str(older.notification_id),
+    ]
+    assert entries[0]["notificationType"] == "jobFailed"
+    assert entries[0]["notificationMessage"] == "The export could not finish."
+    assert entries[0]["jobID"] is None
+    assert entries[0]["createdAt"]
+
+
+def test_bell_read_round_trip_stamps_and_clears_the_badge(
+    client: TestClient, session: Session
+) -> None:
+    mentor = _bell_user(session)
+    entries = [_bell_entry(session, mentor, f"Export {n} is ready.") for n in range(2)]
+    session.commit()
+
+    marked = client.post("/shell/bell/read", headers=_headers(mentor)).json()
+    assert marked["errors"] is None
+    assert marked["data"] == {"markedRead": 2}
+    assert marked["meta"]["unreadCount"] == 0
+
+    # Viewing stamped readAt (REQ-014): the badge clears, the rows stay live.
+    after = client.get("/shell/bell", headers=_headers(mentor)).json()
+    assert after["meta"]["unreadCount"] == 0 and after["data"]["entries"] == []
+    session.expire_all()
+    assert all(e.read_at is not None and e.deleted_at is None for e in entries)
+    assert all(e.modified_by == mentor for e in entries)
+
+    # Idempotent: a second view finds nothing unread.
+    again = client.post("/shell/bell/read", headers=_headers(mentor)).json()
+    assert again["data"] == {"markedRead": 0}
+
+
+def test_bell_requires_the_user_header(client: TestClient) -> None:
+    assert client.get("/shell/bell").status_code == 422
+    assert client.post("/shell/bell/read").status_code == 422

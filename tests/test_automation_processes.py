@@ -5,7 +5,7 @@ WTK-141)."""
 from __future__ import annotations
 
 import uuid
-from datetime import timedelta
+from datetime import UTC, timedelta
 
 import pytest
 from sqlalchemy import select
@@ -24,6 +24,7 @@ from mentorapp.automation import (
     PostalReferenceRow,
     artifact_retention_trim_job,
     claim_next_job,
+    complete_job,
     enqueue_job,
     export_job_handler,
     fail_job,
@@ -44,11 +45,13 @@ from mentorapp.automation import (
     sync_change_feed,
     trim_expired_artifacts,
 )
-from mentorapp.automation.worker import BACKOFF_BASE, BACKOFF_CAP
+from mentorapp.automation.worker import BACKOFF_BASE, BACKOFF_CAP, NOTIFICATION_RETENTION
 from mentorapp.storage import (
+    AppUser,
     BackgroundJob,
     BaseEntity,
     ChangeFeedEntry,
+    Notification,
     PostalCode,
     SchemaRegistry,
     entity_key,
@@ -181,6 +184,115 @@ def test_worker_pass_drains_only_what_is_due(session: Session) -> None:
 
     assert run_worker_pass(session, {"gridExport": handler}, now=now) == 2
     assert len(handled) == 2
+
+
+# --- bell emission on terminal transitions (REQ-014, WTK-193) ------------------
+
+
+def _requesting_user(session: Session, username: str = "mentor") -> AppUser:
+    user = AppUser(crm_user_id=f"crm-{username}", username=username)
+    session.add(user)
+    session.flush()
+    return user
+
+
+def _bell(session: Session) -> list[Notification]:
+    return list(session.scalars(select(Notification).where(Notification.deleted_at.is_(None))))
+
+
+def test_completion_rings_the_requesting_users_bell(session: Session) -> None:
+    now = utcnow()
+    user = _requesting_user(session)
+    job = enqueue_job(session, "gridExport", acting_user_id=user.user_id, run_after=now)
+    session.commit()
+
+    def export_handler(inner: Session, claimed: BackgroundJob) -> JobOutcome:
+        return JobOutcome(
+            artifact_url="https://files.example/exports/roster.csv",
+            artifact_retention=timedelta(days=7),
+        )
+
+    assert process_next_job(session, {"gridExport": export_handler}, now=now) is True
+
+    entry = session.scalars(select(Notification)).one()
+    assert entry.user_id == user.user_id
+    assert entry.job_id == job.job_id
+    assert entry.notification_type == "jobCompleted"
+    # Wording is composed at write time (WTK-023) — an artifact job speaks
+    # about the download, in the educate voice.
+    assert "ready to download" in entry.notification_message
+    assert "grid export" in entry.notification_message
+    assert entry.read_at is None
+    expires = entry.notification_expires_at
+    assert expires is not None
+    # The SQLite test dialect drops tzinfo on load; normalize before comparing.
+    assert expires.replace(tzinfo=UTC) == now + NOTIFICATION_RETENTION
+
+
+def test_parked_failure_rings_job_failed(session: Session) -> None:
+    user = _requesting_user(session)
+    job = enqueue_job(session, "gridExport", acting_user_id=user.user_id)
+    session.commit()
+
+    def broken_handler(inner: Session, claimed: BackgroundJob) -> JobOutcome | None:
+        raise PermanentJobError("payload references a deleted view")
+
+    assert process_next_job(session, {"gridExport": broken_handler}) is True
+    session.commit()
+
+    assert job.job_status == "needsAttention"
+    entry = session.scalars(select(Notification)).one()
+    assert entry.notification_type == "jobFailed"
+    assert entry.user_id == user.user_id and entry.job_id == job.job_id
+    # The educate voice, not the operator vocabulary: no "needsAttention".
+    assert "could not be completed" in entry.notification_message
+
+
+def test_transient_retry_does_not_notify(session: Session) -> None:
+    now = utcnow()
+    user = _requesting_user(session)
+    job = enqueue_job(session, "gridExport", acting_user_id=user.user_id)
+    claim_next_job(session, now=now)
+    session.commit()
+
+    fail_job(session, job, "connection reset", now=now)
+    session.commit()
+
+    # A retry is the worker's business, not news for the mentor: only the
+    # terminal transition (parked) rings the bell.
+    assert job.job_status == "pending"
+    assert _bell(session) == []
+
+
+def test_reclaimed_rerun_cannot_double_notify(session: Session) -> None:
+    now = utcnow()
+    user = _requesting_user(session)
+    job = enqueue_job(session, "gridExport", acting_user_id=user.user_id, run_after=now)
+    claim_next_job(session, now=now)
+    session.commit()
+
+    complete_job(session, job, now=now)
+    session.commit()
+    # A crash-reclaimed worker re-runs the terminal transition (at-least-once);
+    # the second write is absorbed, never a duplicate bell entry.
+    complete_job(session, job, now=now)
+    session.commit()
+
+    assert len(_bell(session)) == 1
+
+
+def test_system_job_without_requesting_user_rings_no_bell(session: Session) -> None:
+    job = enqueue_job(session, "gridExport")
+    session.commit()
+
+    def handler(inner: Session, claimed: BackgroundJob) -> None:
+        return None
+
+    assert process_next_job(session, {"gridExport": handler}) is True
+    session.commit()
+
+    assert job.job_status == "completed"
+    assert _bell(session) == []
 
 
 # --- change-feed sync (REQ-057) -----------------------------------------------
