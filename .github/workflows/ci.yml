@@ -1,7 +1,8 @@
-# The merge gates DEC-079 names: ruff + pytest for src/mentorapp, and
-# npm ci + the zero-warning check bundle (tsc, eslint, prettier) + vitest +
-# the production build for frontend/. Playwright smoke joins once WTK-200
-# lands journeys.
+# The merge gates DEC-079 names: ruff + pytest for src/mentorapp; npm ci +
+# the zero-warning check bundle (tsc, eslint, prettier) + vitest + the
+# production build for frontend/; and the Playwright smoke journeys (WTK-200)
+# over the real stack — the seeded stub-CRM harness (tests/e2e_harness.py)
+# behind the Vite dev proxy.
 name: ci
 
 on:
@@ -38,3 +39,23 @@ jobs:
       - run: npm run check
       - run: npm test
       - run: npm run build
+
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - run: uv sync
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+        working-directory: frontend
+      - run: npx playwright install --with-deps chromium
+        working-directory: frontend
+      - run: npm run e2e
+        working-directory: frontend
