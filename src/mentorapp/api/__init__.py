@@ -28,8 +28,25 @@ feature:
   change-feed append (DB-S4/S5/S12).
 - ``records`` — the shared registry/field-map/serialization primitives,
   including the custom-attribute merge into served records (DB-R3).
+- ``edit_safety`` — the REQ-013 process design over that write contract:
+  concurrent-save conflict resolution (auto-retry vs walk-through, never a
+  silent overwrite), the same-user cross-window freshness fan-out (save
+  notices ARE change-feed tuples), the dirty-window guard, and the
+  edit-collision switch.
 """
 
+from mentorapp.api.edit_safety import (
+    AlreadyCurrent,
+    DirtyWindowGuard,
+    EditCollisionSwitch,
+    EditorWindows,
+    FieldConflict,
+    ManualMerge,
+    RetrySave,
+    SaveNotice,
+    resolve_concurrent_save_conflict,
+    surface_needs_refresh,
+)
 from mentorapp.api.envelope import ApiError, Envelope, field_error, ok, request_error
 from mentorapp.api.errors import (
     ApiValidationError,
@@ -49,11 +66,19 @@ from mentorapp.api.records import registry_for, serialize_record
 from mentorapp.api.write_engine import create_record, normalize_for_match, partial_update
 
 __all__ = [
+    "AlreadyCurrent",
     "ApiError",
     "ApiValidationError",
+    "DirtyWindowGuard",
     "DuplicateCandidatesError",
+    "EditCollisionSwitch",
+    "EditorWindows",
     "Envelope",
+    "FieldConflict",
+    "ManualMerge",
     "RecordNotFoundError",
+    "RetrySave",
+    "SaveNotice",
     "StaleRowVersionError",
     "count_and_aggregates",
     "create_record",
@@ -67,6 +92,8 @@ __all__ = [
     "register_error_handlers",
     "registry_for",
     "request_error",
+    "resolve_concurrent_save_conflict",
     "serialize_record",
+    "surface_needs_refresh",
     "trigram_search_filter",
 ]
