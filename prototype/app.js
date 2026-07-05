@@ -579,9 +579,11 @@ function renderHome() {
   const wrap = $("home-grid");
   wrap.innerHTML = "";
 
-  // Admin messages dashlet (REQ-011)
+  // Admin messages dashlet (REQ-011); fills its column (REQ-091)
+  const leftCol = el("div", "home-col");
   const msgs = el("div", "dashlet");
   msgs.appendChild(el("div", "dashlet-head", `Messages from CBM <span class="dh-note">newest first · read state is per-user</span>`));
+  const msgList = el("div", "msg-list");
   ADMIN_MESSAGES.forEach(m => {
     const box = el("div", "msg" + (m.read ? "" : " unread") + (m.priority === "urgent" && !m.read ? " urgent" : ""));
     box.innerHTML = `
@@ -592,13 +594,15 @@ function renderHome() {
     if (!m.read) { m.read = true; setTimeout(renderUrgentBanner, 300); } // auto-read on view
     const ack = box.querySelector("[data-ack]");
     if (ack) ack.onclick = () => { m.acked = true; renderHome(); toast("Acknowledgment recorded — visible to the administrator."); };
-    msgs.appendChild(box);
+    msgList.appendChild(box);
   });
-  wrap.appendChild(msgs);
+  msgs.appendChild(msgList);
+  leftCol.appendChild(msgs);
+  wrap.appendChild(leftCol);
 
-  // Right column: the user's chosen dashlets (a dashlet = any view rendered small)
-  const right = el("div");
-  right.style.display = "grid"; right.style.gap = "12px";
+  // Right column: the user's chosen dashlets (a dashlet = any view rendered
+  // small); dashlets share the column height (REQ-091)
+  const right = el("div", "home-col");
 
   const pend = el("div", "dashlet");
   pend.appendChild(el("div", "dashlet-head", `Needs my acceptance <span class="dh-note">dashlet = view rendered small</span>`));

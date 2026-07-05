@@ -132,3 +132,10 @@ junky/crowded. (The grid NO-WHITE-SPACE rule, applied app-wide.)
   preview's session notes/action-item rollup) to consume the space.
 - Fixed truncation counts are replaced by fill-to-available-space sizing,
   with a continues indicator when content remains beyond the fill.
+
+## Dashlets fill the panel too (REQ-091, ruled by Doug 2026-07-05 at the prototype gate)
+
+- The fill rules apply to Home and dashboards: dashlets expand to consume
+  the panel's available space (more rows visible) rather than leaving idle
+  regions; a dashlet with more content than space scrolls within its
+  allotment. No panel type is exempt from least-white-space.

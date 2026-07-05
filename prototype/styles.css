@@ -308,14 +308,22 @@ td.check-col, th.check-col { width: 30px; text-align: center; padding: 0; }
 .notif.error .n-text { color: var(--slot-danger); }
 
 /* ============================== Home ============================== */
-.home-wrap { flex: 1; overflow-y: auto; padding: 10px 14px; }
-.home-grid { display: grid; grid-template-columns: minmax(420px, 3fr) minmax(320px, 2fr); gap: 12px; align-items: start; }
+/* Dashlets fill the panel (REQ-091): columns stretch to full height,
+   dashlets grow to consume it, overflow scrolls within the dashlet. */
+.home-wrap { flex: 1; overflow-y: auto; padding: 10px 14px; display: flex; flex-direction: column; }
+.home-grid { display: grid; grid-template-columns: minmax(420px, 3fr) minmax(320px, 2fr); gap: 12px; align-items: stretch; flex: 1; min-height: 0; }
+.home-col { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+.home-col .dashlet { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; }
+.home-col .dashlet > .msg-list, .home-col .dashlet > .mini-table { flex: 1; overflow-y: auto; min-height: 0; }
 .dashlet { background: var(--slot-panel); border: 1px solid var(--slot-border); border-radius: 5px; overflow: hidden; }
 .dashlet-head {
   padding: 6px 10px; background: #e8ecf1; font-size: var(--type-2); font-weight: 600;
   color: var(--slot-brand); display: flex; align-items: center; gap: 8px;
 }
 .dashlet-head .dh-note { font-weight: 400; font-size: var(--type-1); color: var(--slot-text-dim); margin-left: auto; }
+/* Row banding on ALL lists (REQ-092): subtle, driven by the theme's
+   --slot-row-alt slot — same slot the grid uses. */
+.msg:nth-child(even), .mini-table tr:nth-child(even) td, .notif:nth-child(even) { background: var(--slot-row-alt); }
 .msg { padding: 8px 12px; border-bottom: 1px solid #eef1f4; }
 .msg .m-title { font-weight: 600; font-size: var(--type-2); display: flex; gap: 8px; align-items: baseline; }
 .msg.unread .m-title::before { content: "●"; color: var(--slot-accent); font-size: 9px; }
@@ -326,7 +334,8 @@ td.check-col, th.check-col { width: 30px; text-align: center; padding: 0; }
 .msg .ack-done { color: var(--slot-ok); font-size: var(--type-1); font-weight: 600; }
 .mini-table { width: 100%; border-collapse: collapse; }
 .mini-table td { padding: 3px 10px; font-size: var(--type-2); border-bottom: 1px solid #eef1f4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mini-table tr:hover { background: var(--slot-row-hover); cursor: pointer; }
+.mini-table tr:hover td { background: var(--slot-row-hover); }
+.mini-table tr:hover { cursor: pointer; }
 
 /* ======================== Session prep/conduct ==================== */
 .prep-wrap { flex: 1; display: flex; min-width: 0; }
