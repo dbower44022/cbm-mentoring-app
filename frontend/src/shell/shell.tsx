@@ -15,6 +15,7 @@ import {
   useParams,
 } from "react-router-dom";
 import { type ApiError, callApi, EnvelopeError } from "../api/envelope";
+import { GridPanel } from "../grid/grid-panel";
 import { HomePanel } from "../panels/home";
 import { type SessionState, userHeaders } from "../session";
 import { UrgentBanner } from "./banner";
@@ -268,17 +269,10 @@ export function Shell({ session, onLoggedOut }: ShellProps): ReactElement {
 
 function RoutedPanel(): ReactElement {
   const { panelKey } = useParams();
-  return <PanelPlaceholder panelKey={panelKey ?? ""} />;
-}
-
-function PanelPlaceholder({ panelKey }: { panelKey: string }): ReactElement {
-  // Non-home panel content is later work: grids render with PI-003. The
-  // shell routes here today so navigation is real end to end.
-  return (
-    <p className="panel-placeholder">
-      Panel “{panelKey}” is open. Its content rendering lands with its own work task.
-    </p>
-  );
+  // Every non-home panel is a grid panel until other panel types (dashboard,
+  // Gantt, chart) ship — the grid renders its own four states, so a panel
+  // whose surface isn't served yet shows the educate-voice error, never a blank.
+  return <GridPanel panelKey={panelKey ?? ""} />;
 }
 
 function PopOutWindow({
