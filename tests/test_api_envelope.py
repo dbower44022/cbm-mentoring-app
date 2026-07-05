@@ -40,6 +40,7 @@ from mentorapp.api.routers.auth import (
     get_token_actions,
 )
 from mentorapp.api.routers.home import get_home_catalog, get_message_center
+from mentorapp.api.routers.records import get_record_catalog
 from mentorapp.crm.auth import CredentialsRejectedError
 from mentorapp.main import create_app
 from mentorapp.ui.home_panel import MessageCenter
@@ -201,6 +202,13 @@ class _SweepCatalog:
         return frozenset()
 
 
+class _SweepRecordCatalog:
+    """Know no entity types — the sweep only needs a wired backend."""
+
+    def entity_class(self, entity_type: str) -> type | None:
+        return None
+
+
 @pytest.fixture()
 def mounted_client(session: Session) -> TestClient:
     app = create_app()
@@ -220,6 +228,9 @@ def mounted_client(session: Session) -> TestClient:
     # same treatment as the auth seams above.
     app.dependency_overrides[get_home_catalog] = _SweepCatalog
     app.dependency_overrides[get_message_center] = MessageCenter
+    # The record catalog is fail-loud until the domain entities wire it
+    # (WTK-029); same treatment as the seams above.
+    app.dependency_overrides[get_record_catalog] = _SweepRecordCatalog
     return TestClient(app, raise_server_exceptions=False)
 
 
