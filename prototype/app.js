@@ -872,8 +872,10 @@ function attachZoom(panel, storageKey, { bottom = "32px" } = {}) {
 }
 
 wireSplitter($("split-preview"), $("preview-pane"), "proto.w.preview", { grow: "left" });
+wireSplitter($("split-nav"), $("side-nav"), "proto.w.nav", { grow: "right", min: 110, max: 340 });
 attachZoom($("grid-panel"), "proto.zoom.grid");
 attachZoom($("preview-pane"), "proto.zoom.preview", { bottom: "8px" });
+attachZoom($("side-nav"), "proto.zoom.nav", { bottom: "8px" });
 
 // ------------------------------------------------------------ first load
 renderUrgentBanner();
