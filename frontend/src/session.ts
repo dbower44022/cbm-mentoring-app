@@ -1,74 +1,55 @@
 /**
- * Window session state (DEC-080 §B/§J): the sessionReference + userID that
- * POST /auth/login returns, shared across windows via localStorage so every
- * window — main or pop-out — boots from the same signed-in identity.
- *
- * Identity travels as the X-User-ID header (mirrors deps.get_current_user_id,
- * the ONE identity seam server-side); when bearer auth lands it rebinds here,
- * no screen changes. Whole-session transitions broadcast on the per-user
- * BroadcastChannel so all windows move together (layout standard: logout is
- * explicit and total across windows).
+ * Window session state (DEC-080 §B/§J): storage is re-exported from
+ * api/session.ts — its ONE canonical home, shared with the envelope client so
+ * the login that writes the session and the request that reads it can never
+ * disagree on where it lives. This module owns what sits above storage:
+ * per-request identity headers and the per-user BroadcastChannel that moves
+ * whole-session transitions across windows (layout standard: logout is
+ * explicit and total; one re-login restores every window).
  */
 
-export interface SessionState {
-  sessionReference: string;
-  userID: string;
-  roleNames: string[];
-}
+import type { SessionState } from "./api/session";
 
-const STORAGE_KEY = "mentorapp:session";
-
-export function readSession(): SessionState | null {
-  const raw = localStorage.getItem(STORAGE_KEY);
-  if (raw === null) {
-    return null;
-  }
-  try {
-    const parsed = JSON.parse(raw) as Partial<SessionState>;
-    if (
-      typeof parsed.sessionReference === "string" &&
-      typeof parsed.userID === "string" &&
-      Array.isArray(parsed.roleNames)
-    ) {
-      return {
-        sessionReference: parsed.sessionReference,
-        userID: parsed.userID,
-        roleNames: parsed.roleNames.filter((r): r is string => typeof r === "string"),
-      };
-    }
-  } catch {
-    // Malformed storage degrades to signed-out, mirroring how the server
-    // parses stale navigation documents: degrade, never fail the window.
-  }
-  return null;
-}
-
-export function writeSession(session: SessionState): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
-}
-
-export function clearSession(): void {
-  localStorage.removeItem(STORAGE_KEY);
-}
+export {
+  clearSession,
+  readSession,
+  type SessionState,
+  writeSession,
+} from "./api/session";
 
 /** Request headers that carry the acting user on every non-/auth call. */
 export function userHeaders(session: SessionState): Record<string, string> {
   return { "X-User-ID": session.userID };
 }
 
-/** One cross-window message today; reauth/revive messages land with WTK-199. */
-export interface SessionBroadcast {
-  kind: "SessionLoggedOut";
-}
+/**
+ * The whole-session transitions windows broadcast to each other:
+ * SessionLoggedOut ends every window together; SessionRevived (one window's
+ * successful in-place re-auth) dismisses every sibling's prompt so held
+ * requests replay (WTK-005's cross-window contract).
+ */
+export type SessionBroadcast =
+  { kind: "SessionLoggedOut" } | { kind: "SessionRevived"; sessionReference: string };
 
 function channelName(userID: string): string {
   return `mentorapp:session:${userID}`;
 }
 
-export function broadcastSessionLoggedOut(userID: string): void {
+function broadcast(userID: string, message: SessionBroadcast): void {
   const channel = new BroadcastChannel(channelName(userID));
-  channel.postMessage({ kind: "SessionLoggedOut" } satisfies SessionBroadcast);
+  channel.postMessage(message);
   channel.close();
+}
+
+export function broadcastSessionLoggedOut(userID: string): void {
+  broadcast(userID, { kind: "SessionLoggedOut" });
+}
+
+export function broadcastSessionRevived(
+  userID: string,
+  sessionReference: string,
+): void {
+  broadcast(userID, { kind: "SessionRevived", sessionReference });
 }
 
 /** Subscribe to whole-session transitions; returns the unsubscribe. */

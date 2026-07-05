@@ -17,6 +17,10 @@ export interface SessionState {
   sessionReference: string;
   userID: string;
   roleNames: string[];
+  // Client-side fact, not served: what the user typed at sign-in. The re-auth
+  // screen pins it (only the session's owner may revive; WTK-005) and the
+  // /auth/reauth body requires it back.
+  loginName: string;
 }
 
 const STORAGE_KEY = "mentorapp.session";
@@ -29,6 +33,7 @@ function isSessionState(value: unknown): value is SessionState {
   return (
     typeof record.sessionReference === "string" &&
     typeof record.userID === "string" &&
+    typeof record.loginName === "string" &&
     Array.isArray(record.roleNames) &&
     record.roleNames.every((role) => typeof role === "string")
   );

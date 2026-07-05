@@ -54,6 +54,18 @@ from mentorapp.api.errors import (
 from mentorapp.crm.auth import CredentialsRejectedError
 from mentorapp.crm.auth import CrmUnavailableError as CrmAuthUnavailableError
 from mentorapp.observability import get_logger
+from mentorapp.ui.auth_flows import (
+    FORGOT_PASSWORD_SCREEN,
+    LOGIN_SCREEN,
+    REAUTH_PROMPT,
+    REAUTH_SCREEN,
+    REAUTH_WRONG_USER,
+    RESET_REQUESTED,
+    SESSION_ENDED,
+    SIGN_IN_CRM_UNAVAILABLE,
+    SIGN_IN_REJECTED,
+    AuthScreen,
+)
 
 router = APIRouter(prefix="/auth")
 log = get_logger(__name__)
@@ -154,6 +166,62 @@ class RedeemBody(BaseModel):
     """``POST /auth/actions/{action}/redeem`` body: the emailed link token."""
 
     action_token: str = Field(alias="actionToken")
+
+
+def _camel(name: str) -> str:
+    head, *rest = name.split("_")
+    return head + "".join(part.capitalize() for part in rest)
+
+
+def _screen_payload(screen: AuthScreen) -> dict[str, object]:
+    # Field names travel camelCase (the wire-name standard), matching the
+    # /auth body aliases the same fields post back to (emailAddress).
+    return {
+        "key": screen.key,
+        "title": screen.title,
+        "fields": [
+            {
+                "name": _camel(screen_field.name),
+                "label": screen_field.label,
+                "control": screen_field.control.value,
+                "readOnly": screen_field.read_only,
+            }
+            for screen_field in screen.fields
+        ],
+        "submitLabel": screen.submit_label,
+        "links": list(screen.links),
+        "enterSubmits": screen.enter_submits,
+    }
+
+
+@router.get("/screens")
+def get_auth_screens() -> Envelope:
+    """Serve the WTK-005 credential screens and educate messages verbatim.
+
+    The shell renders these payloads as-is (DEC-080: view-models are served,
+    never re-decided client-side), so the auth_flows declarations stay the one
+    canonical home for field order, masking, and the educate wording — the
+    outage message stays distinct from the rejection message by construction.
+    Unauthenticated by design: the login screen renders before any session
+    exists, and nothing here is secret. Always succeeds.
+    """
+    return ok(
+        data={
+            "screens": {
+                LOGIN_SCREEN.key: _screen_payload(LOGIN_SCREEN),
+                FORGOT_PASSWORD_SCREEN.key: _screen_payload(FORGOT_PASSWORD_SCREEN),
+                REAUTH_SCREEN.key: _screen_payload(REAUTH_SCREEN),
+            },
+            "messages": {
+                "signInRejected": SIGN_IN_REJECTED.as_payload(),
+                "signInCrmUnavailable": SIGN_IN_CRM_UNAVAILABLE.as_payload(),
+                "resetRequested": RESET_REQUESTED.as_payload(),
+                "reauthPrompt": REAUTH_PROMPT.as_payload(),
+                "reauthWrongUser": REAUTH_WRONG_USER.as_payload(),
+                "sessionEnded": SESSION_ENDED.as_payload(),
+            },
+        }
+    )
 
 
 def _session_payload(reference: str, identity: VerifiedIdentity) -> dict[str, object]:
