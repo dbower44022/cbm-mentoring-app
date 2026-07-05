@@ -20,6 +20,7 @@ from mentorapp.access import (
     TokenActionService,
     VerifiedIdentity,
 )
+from mentorapp.access.grants import GrantLookup, InMemoryGrantRegistry
 from mentorapp.api.deps import get_session
 from mentorapp.api.envelope import Envelope, field_error, ok, request_error
 from mentorapp.api.errors import (
@@ -41,9 +42,11 @@ from mentorapp.api.routers.auth import (
 )
 from mentorapp.api.routers.home import get_home_catalog, get_message_center
 from mentorapp.api.routers.records import get_record_catalog
+from mentorapp.api.routers.shell import get_shell_catalog
 from mentorapp.crm.auth import CredentialsRejectedError
 from mentorapp.main import create_app
 from mentorapp.ui.home_panel import MessageCenter
+from mentorapp.ui.navigation import Panel, ViewRecord
 
 
 def test_ok_envelope_shape() -> None:
@@ -209,6 +212,28 @@ class _SweepRecordCatalog:
         return None
 
 
+class _SweepShellCatalog:
+    """Know no panels, views, or grants — the sweep only needs a wired backend."""
+
+    def panel(self, panel_key: str) -> Panel | None:
+        return None
+
+    def view(self, view_key: str) -> ViewRecord | None:
+        return None
+
+    def panels(self) -> tuple[Panel, ...]:
+        return ()
+
+    def views(self) -> tuple[ViewRecord, ...]:
+        return ()
+
+    def grants(self) -> GrantLookup:
+        return InMemoryGrantRegistry()
+
+    def user_roles(self, user_id: uuid.UUID) -> frozenset[str]:
+        return frozenset()
+
+
 @pytest.fixture()
 def mounted_client(session: Session) -> TestClient:
     app = create_app()
@@ -231,6 +256,9 @@ def mounted_client(session: Session) -> TestClient:
     # The record catalog is fail-loud until the domain entities wire it
     # (WTK-029); same treatment as the seams above.
     app.dependency_overrides[get_record_catalog] = _SweepRecordCatalog
+    # The shell catalog is fail-loud until the panel catalog wires it
+    # (WTK-035); same treatment as the seams above.
+    app.dependency_overrides[get_shell_catalog] = _SweepShellCatalog
     return TestClient(app, raise_server_exceptions=False)
 
 
