@@ -19,15 +19,23 @@ identity bridge they all stand on:
 Persistence of grant/session/token records is the storage layer's design
 (WTK-001); these processes speak to it through the narrow store protocols
 defined alongside each process, with in-memory reference implementations
-carrying the design-gate tests.
+carrying the design-gate tests. Grants have their stored implementation
+here too (WTK-007): :class:`StoredGrantRegistry` over the WTK-001 rows,
+with :func:`run_stored_data_source` as the API-facing entry point.
 """
 
 from mentorapp.access.grants import (
     DataSourceAccessError,
+    DataSourceNotFoundError,
     InMemoryGrantRegistry,
     SourceGrant,
+    StoredGrantRegistry,
     authorize_data_source,
+    grant_data_source_role,
+    load_stored_source,
+    revoke_data_source_role,
     run_data_source,
+    run_stored_data_source,
 )
 from mentorapp.access.identity import IdentityBridge, VerifiedIdentity
 from mentorapp.access.sessions import (
@@ -54,6 +62,7 @@ from mentorapp.access.tokens import (
 
 __all__ = [
     "DataSourceAccessError",
+    "DataSourceNotFoundError",
     "IdentityBridge",
     "IdentityMismatchError",
     "InMemoryGrantRegistry",
@@ -66,6 +75,7 @@ __all__ = [
     "SessionRecord",
     "SessionState",
     "SourceGrant",
+    "StoredGrantRegistry",
     "TokenActionError",
     "TokenActionRecord",
     "TokenActionService",
@@ -76,5 +86,9 @@ __all__ = [
     "TokenRevokedError",
     "VerifiedIdentity",
     "authorize_data_source",
+    "grant_data_source_role",
+    "load_stored_source",
+    "revoke_data_source_role",
     "run_data_source",
+    "run_stored_data_source",
 ]
