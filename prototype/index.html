@@ -50,7 +50,7 @@
 
     <!-- ============ SCREEN A: Engagements triage grid ============ -->
     <section class="screen active" id="screen-engagements">
-      <div class="grid-panel">
+      <div class="grid-panel panel-zoomable" id="grid-panel">
         <!-- Action bar: view selector left, search middle, actions right (SKL-112) -->
         <div class="action-bar">
           <div class="view-select">
@@ -98,8 +98,10 @@
           <span class="status-right" id="status-right"></span>
         </div>
       </div>
+      <!-- Wide, clearly grabbable panel border (REQ-087) -->
+      <div class="splitter" id="split-preview" title="Drag to resize — panel dimensions are remembered (REQ-087)"></div>
       <!-- Docked read-optimized preview, follows selection (REQ-012/073) -->
-      <aside class="preview-pane" id="preview-pane"></aside>
+      <aside class="preview-pane panel-zoomable" id="preview-pane"></aside>
     </section>
 
     <!-- ============ SCREEN C: Session prep / conduct ============ -->

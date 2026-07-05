@@ -277,6 +277,7 @@ function renderPreview() {
   pane.querySelectorAll("dd.editable").forEach(dd => {
     dd.ondblclick = () => perFieldEditWindow(r, "Summary", dd.textContent);
   });
+  attachZoom(pane, "proto.zoom.preview", { bottom: "8px" }); // re-attach after innerHTML render
 }
 
 // Per-field edit window (REQ-035) — simulated pop-out.
@@ -602,6 +603,7 @@ function renderHome() {
   right.appendChild(up);
 
   wrap.appendChild(right);
+  attachZoom(document.querySelector("#screen-home .home-wrap"), "proto.zoom.home", { bottom: "8px" });
 }
 
 // Urgent banner across every panel until read (REQ-011).
@@ -698,8 +700,17 @@ function renderPrep() {
     </div>`;
 
   wrap.appendChild(main);
+  // Wide grabbable border between the prep panels too (REQ-087).
+  const split = el("div", "splitter");
+  split.title = "Drag to resize — panel dimensions are remembered (REQ-087)";
+  wrap.appendChild(split);
   wrap.appendChild(side);
   host.appendChild(wrap);
+  side.style.flex = "none";
+  side.style.width = (localStorage.getItem("proto.w.prepside") || 480) + "px";
+  wireSplitter(split, side, "proto.w.prepside", { grow: "left", min: 300, max: 800 });
+  attachZoom(main, "proto.zoom.prepmain", { bottom: "8px" });
+  attachZoom(side, "proto.zoom.prepside", { bottom: "8px" });
 }
 
 // ------------------------------------------------------ screen switching
@@ -812,6 +823,57 @@ document.addEventListener("keydown", (e) => {
     closeDialogs();
   }
 });
+
+// ---------------------------------------------- panel resize & zoom (REQ-087)
+// All panels resizable via a wide, clearly visible border; dimensions and
+// per-panel zoom persist (localStorage stands in for per-user server state).
+function wireSplitter(splitter, panel, storageKey, { grow = "left", min = 260, max = 900 } = {}) {
+  const saved = localStorage.getItem(storageKey);
+  if (saved) panel.style.width = saved + "px";
+  splitter.onmousedown = (e) => {
+    e.preventDefault();
+    splitter.classList.add("dragging");
+    const startX = e.clientX, startW = panel.getBoundingClientRect().width;
+    const move = (ev) => {
+      const dx = ev.clientX - startX;
+      const w = Math.max(min, Math.min(max, grow === "left" ? startW - dx : startW + dx));
+      panel.style.width = w + "px";
+      panel.style.flex = "none";
+    };
+    const up = () => {
+      splitter.classList.remove("dragging");
+      localStorage.setItem(storageKey, Math.round(panel.getBoundingClientRect().width));
+      statusMsg("Panel size saved — restored next time you open the app (REQ-087).");
+      document.removeEventListener("mousemove", move); document.removeEventListener("mouseup", up);
+    };
+    document.addEventListener("mousemove", move); document.addEventListener("mouseup", up);
+  };
+}
+
+function attachZoom(panel, storageKey, { bottom = "32px" } = {}) {
+  panel.classList.add("panel-zoomable");
+  let z = parseInt(localStorage.getItem(storageKey) || "100", 10);
+  const apply = () => {
+    panel.style.zoom = z / 100;
+    const label = panel.querySelector(":scope > .zoom-ctl .zoom-val");
+    if (label) label.textContent = z + "%";
+    localStorage.setItem(storageKey, z);
+  };
+  let ctl = panel.querySelector(":scope > .zoom-ctl");
+  if (!ctl) {
+    ctl = el("div", "zoom-ctl");
+    ctl.title = "Panel zoom — set it and it's remembered (REQ-087)";
+    ctl.style.top = "auto"; ctl.style.bottom = bottom;
+    ctl.innerHTML = `<button data-z="-10">−</button><span class="zoom-val">100%</span><button data-z="10">+</button>`;
+    ctl.querySelectorAll("button").forEach(b => b.onclick = () => { z = Math.max(60, Math.min(160, z + (+b.dataset.z))); apply(); });
+    panel.appendChild(ctl);
+  }
+  apply();
+}
+
+wireSplitter($("split-preview"), $("preview-pane"), "proto.w.preview", { grow: "left" });
+attachZoom($("grid-panel"), "proto.zoom.grid");
+attachZoom($("preview-pane"), "proto.zoom.preview", { bottom: "8px" });
 
 // ------------------------------------------------------------ first load
 renderUrgentBanner();
