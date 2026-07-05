@@ -19,7 +19,9 @@ The write-contract failure semantics (REQ-059, DB-S12, DB-S4):
   login vs wrong password, unknown vs ended session, and every token
   refusal each share one wording, so a response can never be used to
   enumerate accounts, references, or tokens. Codes stay precise where that
-  is safe (see the token handler) so the client can still pick a next step.
+  is safe (see the token handler and the re-auth mismatch) so the client
+  can still pick a next step. A CRM outage is NOT a refusal and never
+  presents as one (``crmUnavailable``, 503).
 """
 
 from __future__ import annotations
@@ -32,7 +34,6 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from mentorapp.access import (
-    IdentityMismatchError,
     ReauthRequiredError,
     SessionEndedError,
     SessionNotFoundError,
@@ -54,8 +55,10 @@ CODE_DUPLICATE_CANDIDATES: Final = "duplicateCandidates"
 CODE_NOT_FOUND: Final = "notFound"
 CODE_INTERNAL: Final = "internalError"
 CODE_INVALID_CREDENTIALS: Final = "invalidCredentials"
+CODE_CRM_UNAVAILABLE: Final = "crmUnavailable"
 CODE_UNAUTHENTICATED: Final = "unauthenticated"
 CODE_REAUTH_REQUIRED: Final = "reauthRequired"
+CODE_REAUTH_IDENTITY_MISMATCH: Final = "reauthIdentityMismatch"
 CODE_TOKEN_INVALID: Final = "tokenInvalid"
 CODE_TOKEN_EXPIRED: Final = "tokenExpired"
 CODE_TOKEN_REVOKED: Final = "tokenRevoked"
@@ -64,8 +67,14 @@ CODE_TOKEN_EXHAUSTED: Final = "tokenExhausted"
 # One wording per refusal family — tests pin these; a per-cause variation is
 # an enumeration channel, not a UX improvement.
 _MSG_INVALID_CREDENTIALS: Final = "The login name or password is incorrect."
+_MSG_CRM_UNAVAILABLE: Final = (
+    "The system that verifies sign-ins is not reachable right now; try again shortly."
+)
 _MSG_UNAUTHENTICATED: Final = "A valid session is required; sign in again."
 _MSG_REAUTH_REQUIRED: Final = "The session expired; re-authenticate to continue."
+_MSG_REAUTH_IDENTITY_MISMATCH: Final = (
+    "That sign-in belongs to a different user; sign back in as this session's user."
+)
 _MSG_TOKEN_REFUSED: Final = "This link cannot be used; request a new one if you still need it."
 
 
@@ -104,9 +113,30 @@ class DuplicateCandidatesError(Exception):
 class InvalidCredentialsError(Exception):
     """Login or re-auth presented credentials that do not verify (REQ-008).
 
-    Deliberately detail-free: unknown login name, wrong password, and a
-    re-auth identity mismatch all surface as this one refusal, so the
-    response cannot be used to tell which accounts exist.
+    Deliberately detail-free: unknown login name and wrong password surface
+    as this one refusal, so the response cannot be used to tell which
+    accounts exist.
+    """
+
+
+class CrmUnavailableError(Exception):
+    """The CRM could not answer the verification exchange (outage/network).
+
+    Deliberately carries NO account information so it stays non-enumerating,
+    and is REQUIRED to be distinct from ``invalidCredentials``: a CRM outage
+    must never present as a wrong password (the WTK-003 invariant; the UI
+    branches on exactly this distinction to say "not your fault").
+    """
+
+
+class ReauthIdentityMismatchError(Exception):
+    """Re-auth presented valid credentials for a user other than the session's.
+
+    Only raisable on an established session whose owner is already displayed
+    to the caller (the re-auth screen pins the username), so distinguishing
+    it discloses nothing enumerable. The distinct code keeps the session
+    revivable and lets the UI say "that sign-in belongs to a different user"
+    (WTK-005 ``REAUTH_WRONG_USER``).
     """
 
 
@@ -182,13 +212,21 @@ def register_error_handlers(app: FastAPI) -> None:
         error = request_error(CODE_INVALID_CREDENTIALS, _MSG_INVALID_CREDENTIALS)
         return _respond(401, fail([error]))
 
-    @app.exception_handler(IdentityMismatchError)
-    async def _identity_mismatch(
-        _request: Request, _exc: IdentityMismatchError
+    @app.exception_handler(CrmUnavailableError)
+    async def _crm_unavailable(_request: Request, _exc: CrmUnavailableError) -> JSONResponse:
+        # 503, not 401: nothing about the credentials was judged, and the
+        # client must be able to branch on outage-vs-refusal.
+        error = request_error(CODE_CRM_UNAVAILABLE, _MSG_CRM_UNAVAILABLE)
+        return _respond(503, fail([error]))
+
+    @app.exception_handler(ReauthIdentityMismatchError)
+    async def _reauth_identity_mismatch(
+        _request: Request, _exc: ReauthIdentityMismatchError
     ) -> JSONResponse:
-        # Valid credentials for the WRONG user must read exactly like a bad
-        # password — anything more specific confirms who owns the session.
-        error = request_error(CODE_INVALID_CREDENTIALS, _MSG_INVALID_CREDENTIALS)
+        # Distinct from invalidCredentials by design: the session's owner is
+        # already on the caller's screen, so naming the mismatch discloses
+        # nothing — and the UI needs it to render REAUTH_WRONG_USER.
+        error = request_error(CODE_REAUTH_IDENTITY_MISMATCH, _MSG_REAUTH_IDENTITY_MISMATCH)
         return _respond(401, fail([error]))
 
     @app.exception_handler(SessionNotFoundError)

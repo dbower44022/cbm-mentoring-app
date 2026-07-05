@@ -1,9 +1,10 @@
 """EspoCRM authentication integration design (WTK-003): seams and the Espo plug.
 
 Covers the four designed behaviours — login verification producing
-``VerifiedIdentity``, the connected forgot-password flow, user-as-user
-``CrmAccess`` execution, and the failure-outcome taxonomy — over a fake
-:class:`EspoTransport`, plus the credential-never-in-repr guarantee.
+``CrmVerifiedIdentity`` (with the CRM-sourced ``role_names``), the connected
+forgot-password flow, user-as-user ``CrmAccess`` execution, and the
+failure-outcome taxonomy — over a fake :class:`EspoTransport`, plus the
+credential-never-in-repr guarantee.
 """
 
 from __future__ import annotations
@@ -65,6 +66,7 @@ LOGIN_OK = EspoResponse(
             "userName": "mentor.jane",
             "name": "Jane Mentor",
             "emailAddress": "jane@example.org",
+            "teamsNames": {"team-1": "Mentors", "team-2": "Program Staff"},
         },
     },
 )
@@ -82,6 +84,9 @@ def test_verify_produces_identity_holding_the_issued_token_not_the_password() ->
     assert identity.username == "mentor.jane"
     assert identity.display_name == "Jane Mentor"
     assert identity.email_address == "jane@example.org"
+    # The same exchange names the user's teams — the CRM-side staff roles the
+    # app maps to its grant vocabulary, refreshed on every login/reauth.
+    assert identity.role_names == frozenset({"Mentors", "Program Staff"})
     assert identity.credential.secret == "espo-token-123"
     assert "pa55word" not in identity.credential.secret
 

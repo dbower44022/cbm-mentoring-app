@@ -13,7 +13,9 @@ How each seam maps onto Espo:
   base64 ``username:password`` pair and ``Espo-Authorization-Create-Token``
   set, so the same exchange that proves the credentials issues the per-user
   auth token. The password is used for that one request and discarded — the
-  :class:`~mentorapp.crm.auth.CrmUserCredential` holds the issued token. A
+  :class:`~mentorapp.crm.auth.CrmUserCredential` holds the issued token. The
+  same answer names the user's teams, which the identity captures as
+  ``role_names`` — Espo is the role source, re-read on every login/reauth. A
   success without a token is treated as :class:`CrmUnavailableError`, not
   papered over by keeping the password.
 - **ForgotPassword** is ``POST User/passwordChangeRequest``: Espo sends its
@@ -38,7 +40,7 @@ from mentorapp.crm.auth import (
     CrmCredentialExpiredError,
     CrmUnavailableError,
     CrmUserCredential,
-    VerifiedIdentity,
+    CrmVerifiedIdentity,
 )
 from mentorapp.observability import get_logger
 
@@ -122,7 +124,7 @@ class EspoAuthGateway:
             )
             raise CrmUnavailableError("EspoCRM did not answer") from exc
 
-    def verify(self, username: str, password: str) -> VerifiedIdentity:
+    def verify(self, username: str, password: str) -> CrmVerifiedIdentity:
         """Prove ``username``/``password`` against Espo; capture the user token.
 
         Raises :class:`CredentialsRejectedError` on Espo's 401 and
@@ -159,13 +161,25 @@ class EspoAuthGateway:
                 },
             )
             raise CrmUnavailableError("EspoCRM login answer carried no usable user/token")
-        return VerifiedIdentity(
+        # Espo's login answer names the user's teams as an id → name mapping
+        # (``teamsNames``); those team names are the CRM-side staff roles the
+        # app maps onto its grant vocabulary. Captured here, on every
+        # login/reauth, so the CRM stays the one role source — a user with no
+        # teams simply carries no roles.
+        teams_names = user.get("teamsNames")
+        role_names = (
+            frozenset(str(name) for name in teams_names.values())
+            if isinstance(teams_names, Mapping)
+            else frozenset()
+        )
+        return CrmVerifiedIdentity(
             crm_user_id=str(user["id"]),
             username=str(user.get("userName") or username),
             display_name=str(user.get("name") or username),
             email_address=(
                 str(user["emailAddress"]) if user.get("emailAddress") is not None else None
             ),
+            role_names=role_names,
             credential=CrmUserCredential(username=username, secret=str(token)),
         )
 

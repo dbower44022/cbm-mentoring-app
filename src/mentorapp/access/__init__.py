@@ -1,7 +1,11 @@
 """Access layer: who may see and do what, decided server-side (PI-001).
 
-Three processes over the storage primitives, one module each:
+Three processes over the storage primitives, one module each, plus the
+identity bridge they all stand on:
 
+- :mod:`~mentorapp.access.identity` — the one seam where a CRM-verified
+  identity becomes the app-side :class:`VerifiedIdentity` (find-or-provision
+  the ``appUser``, map CRM roles to grant vocabulary, carry the credential).
 - :mod:`~mentorapp.access.grants` — DataSourceAccessControl (REQ-006):
   per-source role grants as the approval boundary, composed with the
   admin-SQL executor's server-bound user row filter.
@@ -25,6 +29,7 @@ from mentorapp.access.grants import (
     authorize_data_source,
     run_data_source,
 )
+from mentorapp.access.identity import IdentityBridge, VerifiedIdentity
 from mentorapp.access.sessions import (
     IdentityMismatchError,
     InMemorySessionStore,
@@ -34,7 +39,6 @@ from mentorapp.access.sessions import (
     SessionNotFoundError,
     SessionRecord,
     SessionState,
-    VerifiedIdentity,
 )
 from mentorapp.access.tokens import (
     InMemoryTokenActionStore,
@@ -50,6 +54,7 @@ from mentorapp.access.tokens import (
 
 __all__ = [
     "DataSourceAccessError",
+    "IdentityBridge",
     "IdentityMismatchError",
     "InMemoryGrantRegistry",
     "InMemorySessionStore",

@@ -28,6 +28,7 @@ from mentorapp.access import (
     VerifiedIdentity,
     run_data_source,
 )
+from mentorapp.crm.auth import CrmUserCredential
 from mentorapp.storage import AdminSqlError, AdminSqlSource
 
 
@@ -47,8 +48,14 @@ def clock() -> FakeClock:
     return FakeClock()
 
 
-def _identity(roles: frozenset[str] = frozenset({"mentor"})) -> VerifiedIdentity:
-    return VerifiedIdentity(user_id=uuid.uuid4(), role_names=roles)
+def _identity(
+    roles: frozenset[str] = frozenset({"mentor"}), *, secret: str = "espo-token-1"
+) -> VerifiedIdentity:
+    return VerifiedIdentity(
+        user_id=uuid.uuid4(),
+        role_names=roles,
+        crm_credential=CrmUserCredential(username="mentor.jane", secret=secret),
+    )
 
 
 # --- DataSourceAccessControl (REQ-006) ---------------------------------------
@@ -211,6 +218,44 @@ def test_one_relogin_restores_all_windows(
         sessions.resolve(reference)
 
 
+def test_session_takes_custody_of_the_crm_credential_and_reauth_refreshes_it(
+    sessions: SessionManagement, store: InMemorySessionStore, clock: FakeClock
+) -> None:
+    identity = _identity(secret="espo-token-old")
+    reference, record = sessions.establish(identity)
+    # Establishment copies the bridge-carried credential onto the record —
+    # the session is the credential's one custodian (WTK-003).
+    assert store.records[record.session_id].crm_credential is identity.crm_credential
+    clock.advance(timedelta(minutes=31))
+    with pytest.raises(ReauthRequiredError):
+        sessions.resolve(reference)
+    fresh = VerifiedIdentity(
+        user_id=identity.user_id,
+        role_names=identity.role_names,
+        crm_credential=CrmUserCredential(username="mentor.jane", secret="espo-token-new"),
+    )
+    sessions.reauthenticate(record.session_id, fresh)
+    # Revival recaptured the fresh CRM token; the stale one is gone.
+    assert store.records[record.session_id].crm_credential is fresh.crm_credential
+
+
+def test_require_reauth_flips_an_active_session_to_the_dirty_window_guard(
+    sessions: SessionManagement, store: InMemorySessionStore
+) -> None:
+    # The CrmCredentialExpiredError path: the CRM dropped the stored token
+    # mid-session, so the caller forces the SAME revivable state as expiry.
+    identity = _identity()
+    reference, record = sessions.establish(identity)
+    sessions.require_reauth(record.session_id)
+    assert store.records[record.session_id].state is SessionState.REAUTH_PENDING
+    assert store.records[record.session_id].reauth_deadline is not None
+    with pytest.raises(ReauthRequiredError):
+        sessions.resolve(reference)
+    # One re-login restores the windows, exactly as after natural expiry.
+    new_reference = sessions.reauthenticate(record.session_id, identity)
+    assert sessions.resolve(new_reference).state is SessionState.ACTIVE
+
+
 def test_reauth_refuses_a_different_user(
     sessions: SessionManagement, store: InMemorySessionStore, clock: FakeClock
 ) -> None:
@@ -260,7 +305,7 @@ def tokens(token_store: InMemoryTokenActionStore, clock: FakeClock) -> TokenActi
 
 def _mint(tokens: TokenActionService, clock: FakeClock, **overrides: object) -> str:
     kwargs: dict = {
-        "user_id": MENTOR_USER,
+        "token_identity": "mentor@example.org",
         "action_name": "acceptAssignment",
         "expires_at": clock.now() + timedelta(days=3),
     }
@@ -273,9 +318,20 @@ def test_mint_redeem_and_audit_trail(
 ) -> None:
     token = _mint(tokens, clock)
     record = tokens.redeem(token, expected_action="acceptAssignment")
-    assert record.user_id == MENTOR_USER
+    # The identity is a value (email-shaped, may predate any appUser row);
+    # user_id binds only when the minter already resolved one.
+    assert record.token_identity == "mentor@example.org"
+    assert record.user_id is None
     assert record.use_count == 1
     assert [e.event_name for e in token_store.audit] == ["minted", "redeemed"]
+
+
+def test_mint_binds_a_user_when_the_identity_already_resolves(
+    tokens: TokenActionService, clock: FakeClock
+) -> None:
+    token = _mint(tokens, clock, user_id=MENTOR_USER)
+    record = tokens.redeem(token, expected_action="acceptAssignment")
+    assert record.user_id == MENTOR_USER
 
 
 def test_single_use_token_exhausts(tokens: TokenActionService, clock: FakeClock) -> None:

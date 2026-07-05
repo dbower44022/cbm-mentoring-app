@@ -1,12 +1,12 @@
-"""Auth and data-source entities (WTK-001).
+"""Auth and data-source entities (WTK-001, reconciled to WTK-002/WTK-003).
 
 Creates the auth/access platform tables: ``appUser``, ``authSession``,
-``actionToken``, ``accessGrant``, ``dataSource``, and the ``userCrmAccount``
-and ``userDataSourceGrant`` associations. Same structural rules as 0001:
-UUIDv7 app-generated keys (REQ-047), the eight structural system columns
-(REQ-053), and partial live-row indexes (REQ-052). These are platform tables
-— no schema-registry rows and no read views, so sessions, tokens, and grants
-never surface through the admin read surface.
+``actionToken``, ``tokenAuditEvent``, ``accessGrant``, ``dataSource``, and
+the ``userCrmAccount`` and ``dataSourceRoleGrant`` associations. Same
+structural rules as 0001: UUIDv7 app-generated keys (REQ-047), the eight
+structural system columns (REQ-053), and partial live-row indexes (REQ-052).
+These are platform tables — no schema-registry rows and no read views, so
+sessions, tokens, and grants never surface through the admin read surface.
 
 Revision ID: 0002
 Revises: 0001
@@ -43,29 +43,6 @@ def _structural_columns() -> list[sa.Column]:
 
 def upgrade() -> None:
     op.create_table(
-        "actionToken",
-        sa.Column("actionTokenID", sa.Uuid(), nullable=False),
-        sa.Column("tokenAction", sa.String(length=100), nullable=False),
-        sa.Column("tokenIdentity", sa.String(length=320), nullable=False),
-        sa.Column("tokenExpiresAt", sa.DateTime(timezone=True), nullable=False),
-        sa.Column("tokenSignature", sa.String(length=500), nullable=False),
-        sa.Column("tokenUseCount", sa.Integer(), nullable=False),
-        *_structural_columns(),
-        sa.PrimaryKeyConstraint("actionTokenID", name=op.f("pk_actionToken")),
-    )
-    with op.batch_alter_table("actionToken", schema=None) as batch_op:
-        batch_op.create_index(
-            batch_op.f("ix_actionToken_modifiedAt"), ["modifiedAt"], unique=False
-        )
-        batch_op.create_index(
-            "uq_actionToken_signature_live",
-            ["tokenSignature"],
-            unique=True,
-            sqlite_where=_LIVE,
-            postgresql_where=_LIVE,
-        )
-
-    op.create_table(
         "appUser",
         sa.Column("userID", sa.Uuid(), nullable=False),
         sa.Column("crmUserID", sa.String(length=100), nullable=False),
@@ -88,6 +65,56 @@ def upgrade() -> None:
             unique=True,
             sqlite_where=_LIVE,
             postgresql_where=_LIVE,
+        )
+
+    # After appUser: actionToken carries a nullable userID FK. No signature
+    # column and no reference index — the HMAC is recomputed per presentation
+    # and lookup is by primary key (WTK-002).
+    op.create_table(
+        "actionToken",
+        sa.Column("actionTokenID", sa.Uuid(), nullable=False),
+        sa.Column("tokenAction", sa.String(length=100), nullable=False),
+        sa.Column("tokenIdentity", sa.String(length=320), nullable=False),
+        sa.Column("userID", sa.Uuid(), nullable=True),
+        sa.Column("tokenExpiresAt", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("tokenMaxUses", sa.Integer(), nullable=False),
+        sa.Column("tokenUseCount", sa.Integer(), nullable=False),
+        sa.Column("tokenRevokedAt", sa.DateTime(timezone=True), nullable=True),
+        *_structural_columns(),
+        sa.ForeignKeyConstraint(
+            ["userID"], ["appUser.userID"], name=op.f("fk_actionToken_userID_appUser")
+        ),
+        sa.PrimaryKeyConstraint("actionTokenID", name=op.f("pk_actionToken")),
+    )
+    with op.batch_alter_table("actionToken", schema=None) as batch_op:
+        batch_op.create_index(
+            batch_op.f("ix_actionToken_modifiedAt"), ["modifiedAt"], unique=False
+        )
+
+    op.create_table(
+        "tokenAuditEvent",
+        sa.Column("tokenAuditEventID", sa.Uuid(), nullable=False),
+        sa.Column("actionTokenID", sa.Uuid(), nullable=False),
+        sa.Column("tokenEventName", sa.String(length=50), nullable=False),
+        sa.Column("tokenEventOccurredAt", sa.DateTime(timezone=True), nullable=False),
+        *_structural_columns(),
+        sa.ForeignKeyConstraint(
+            ["actionTokenID"],
+            ["actionToken.actionTokenID"],
+            name=op.f("fk_tokenAuditEvent_actionTokenID_actionToken"),
+        ),
+        sa.PrimaryKeyConstraint("tokenAuditEventID", name=op.f("pk_tokenAuditEvent")),
+    )
+    with op.batch_alter_table("tokenAuditEvent", schema=None) as batch_op:
+        batch_op.create_index(
+            "ix_tokenAuditEvent_actionTokenID_live",
+            ["actionTokenID"],
+            unique=False,
+            sqlite_where=_LIVE,
+            postgresql_where=_LIVE,
+        )
+        batch_op.create_index(
+            batch_op.f("ix_tokenAuditEvent_modifiedAt"), ["modifiedAt"], unique=False
         )
 
     op.create_table(
@@ -139,11 +166,13 @@ def upgrade() -> None:
         "authSession",
         sa.Column("authSessionID", sa.Uuid(), nullable=False),
         sa.Column("userID", sa.Uuid(), nullable=False),
-        sa.Column("sessionOpaqueReference", sa.String(length=200), nullable=False),
+        sa.Column("sessionSecretHash", sa.String(length=64), nullable=False),
+        sa.Column("sessionState", sa.String(length=20), nullable=False),
         sa.Column("sessionExpiresAt", sa.DateTime(timezone=True), nullable=False),
-        sa.Column("sessionIdleTimeoutSeconds", sa.Integer(), nullable=False),
+        sa.Column("sessionReauthDeadline", sa.DateTime(timezone=True), nullable=True),
         sa.Column("sessionLastSeenAt", sa.DateTime(timezone=True), nullable=False),
-        sa.Column("sessionRevokedFlag", sa.Boolean(), nullable=False),
+        sa.Column("sessionRoleNames", _JSON_OBJECT, nullable=True),
+        sa.Column("crmCredentialEncrypted", sa.Text(), nullable=True),
         *_structural_columns(),
         sa.ForeignKeyConstraint(
             ["userID"], ["appUser.userID"], name=op.f("fk_authSession_userID_appUser")
@@ -160,13 +189,6 @@ def upgrade() -> None:
         )
         batch_op.create_index(
             batch_op.f("ix_authSession_modifiedAt"), ["modifiedAt"], unique=False
-        )
-        batch_op.create_index(
-            "uq_authSession_opaqueReference_live",
-            ["sessionOpaqueReference"],
-            unique=True,
-            sqlite_where=_LIVE,
-            postgresql_where=_LIVE,
         )
 
     op.create_table(
@@ -193,35 +215,32 @@ def upgrade() -> None:
         )
 
     op.create_table(
-        "userDataSourceGrant",
-        sa.Column("userDataSourceGrantID", sa.Uuid(), nullable=False),
-        sa.Column("userID", sa.Uuid(), nullable=False),
+        "dataSourceRoleGrant",
+        sa.Column("dataSourceRoleGrantID", sa.Uuid(), nullable=False),
         sa.Column("dataSourceID", sa.Uuid(), nullable=False),
+        sa.Column("roleName", sa.String(length=100), nullable=False),
         *_structural_columns(),
         sa.ForeignKeyConstraint(
             ["dataSourceID"],
             ["dataSource.dataSourceID"],
-            name=op.f("fk_userDataSourceGrant_dataSourceID_dataSource"),
+            name=op.f("fk_dataSourceRoleGrant_dataSourceID_dataSource"),
         ),
-        sa.ForeignKeyConstraint(
-            ["userID"], ["appUser.userID"], name=op.f("fk_userDataSourceGrant_userID_appUser")
-        ),
-        sa.PrimaryKeyConstraint("userDataSourceGrantID", name=op.f("pk_userDataSourceGrant")),
+        sa.PrimaryKeyConstraint("dataSourceRoleGrantID", name=op.f("pk_dataSourceRoleGrant")),
     )
-    with op.batch_alter_table("userDataSourceGrant", schema=None) as batch_op:
+    with op.batch_alter_table("dataSourceRoleGrant", schema=None) as batch_op:
         batch_op.create_index(
-            "ix_userDataSourceGrant_dataSourceID_live",
-            ["dataSourceID"],
+            "ix_dataSourceRoleGrant_roleName_live",
+            ["roleName"],
             unique=False,
             sqlite_where=_LIVE,
             postgresql_where=_LIVE,
         )
         batch_op.create_index(
-            batch_op.f("ix_userDataSourceGrant_modifiedAt"), ["modifiedAt"], unique=False
+            batch_op.f("ix_dataSourceRoleGrant_modifiedAt"), ["modifiedAt"], unique=False
         )
         batch_op.create_index(
-            "uq_userDataSourceGrant_user_source_live",
-            ["userID", "dataSourceID"],
+            "uq_dataSourceRoleGrant_source_role_live",
+            ["dataSourceID", "roleName"],
             unique=True,
             sqlite_where=_LIVE,
             postgresql_where=_LIVE,
@@ -229,20 +248,20 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    with op.batch_alter_table("userDataSourceGrant", schema=None) as batch_op:
+    with op.batch_alter_table("dataSourceRoleGrant", schema=None) as batch_op:
         batch_op.drop_index(
-            "uq_userDataSourceGrant_user_source_live",
+            "uq_dataSourceRoleGrant_source_role_live",
             sqlite_where=_LIVE,
             postgresql_where=_LIVE,
         )
-        batch_op.drop_index(batch_op.f("ix_userDataSourceGrant_modifiedAt"))
+        batch_op.drop_index(batch_op.f("ix_dataSourceRoleGrant_modifiedAt"))
         batch_op.drop_index(
-            "ix_userDataSourceGrant_dataSourceID_live",
+            "ix_dataSourceRoleGrant_roleName_live",
             sqlite_where=_LIVE,
             postgresql_where=_LIVE,
         )
 
-    op.drop_table("userDataSourceGrant")
+    op.drop_table("dataSourceRoleGrant")
     with op.batch_alter_table("userCrmAccount", schema=None) as batch_op:
         batch_op.drop_index(
             "uq_userCrmAccount_user_account_live",
@@ -253,11 +272,6 @@ def downgrade() -> None:
 
     op.drop_table("userCrmAccount")
     with op.batch_alter_table("authSession", schema=None) as batch_op:
-        batch_op.drop_index(
-            "uq_authSession_opaqueReference_live",
-            sqlite_where=_LIVE,
-            postgresql_where=_LIVE,
-        )
         batch_op.drop_index(batch_op.f("ix_authSession_modifiedAt"))
         batch_op.drop_index(
             "ix_authSession_userID_live",
@@ -297,13 +311,17 @@ def downgrade() -> None:
         )
         batch_op.drop_index(batch_op.f("ix_appUser_modifiedAt"))
 
-    op.drop_table("appUser")
-    with op.batch_alter_table("actionToken", schema=None) as batch_op:
+    with op.batch_alter_table("tokenAuditEvent", schema=None) as batch_op:
+        batch_op.drop_index(batch_op.f("ix_tokenAuditEvent_modifiedAt"))
         batch_op.drop_index(
-            "uq_actionToken_signature_live",
+            "ix_tokenAuditEvent_actionTokenID_live",
             sqlite_where=_LIVE,
             postgresql_where=_LIVE,
         )
+
+    op.drop_table("tokenAuditEvent")
+    with op.batch_alter_table("actionToken", schema=None) as batch_op:
         batch_op.drop_index(batch_op.f("ix_actionToken_modifiedAt"))
 
     op.drop_table("actionToken")
+    op.drop_table("appUser")

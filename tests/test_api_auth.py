@@ -1,8 +1,12 @@
 """``POST /auth/*`` — the authentication surface contract (WTK-004, REQ-005/007/008).
 
-The design-gate assertions: opaque references only, and every refusal
-generic — the indistinguishability tests compare whole response bodies, not
-just status codes, because a differing message IS the enumeration channel.
+The design-gate assertions: opaque references only, and every refusal generic
+where genericity protects something — the indistinguishability tests compare
+whole response bodies, not just status codes, because a differing message IS
+the enumeration channel. Two outcomes are asserted DISTINCT by design: a CRM
+outage (503 ``crmUnavailable``, never a wrong password) and the re-auth
+identity mismatch (``reauthIdentityMismatch``), both of which disclose
+nothing enumerable.
 """
 
 from __future__ import annotations
@@ -29,6 +33,11 @@ from mentorapp.api.routers.auth import (
     get_session_management,
     get_token_actions,
 )
+from mentorapp.crm.auth import (
+    CredentialsRejectedError,
+    CrmUnavailableError,
+    CrmUserCredential,
+)
 from mentorapp.main import create_app
 from mentorapp.storage import uuid7
 
@@ -48,14 +57,21 @@ class Clock:
 
 @dataclass
 class FakeVerifier:
-    """CredentialVerifier double: a fixed login table; None on any failure."""
+    """CredentialVerifier double: a fixed login table; raises the typed outcome.
+
+    ``crm_down`` simulates an outage: every verify raises the crm-layer
+    ``CrmUnavailableError`` before any account is consulted.
+    """
 
     accounts: dict[str, tuple[str, VerifiedIdentity]] = field(default_factory=dict)
+    crm_down: bool = False
 
-    def verify(self, login_name: str, password: str) -> VerifiedIdentity | None:
+    def verify(self, login_name: str, password: str) -> VerifiedIdentity:
+        if self.crm_down:
+            raise CrmUnavailableError("the CRM did not answer")
         entry = self.accounts.get(login_name)
         if entry is None or entry[0] != password:
-            return None
+            raise CredentialsRejectedError("the CRM refused the credentials")
         return entry[1]
 
 
@@ -63,14 +79,22 @@ class FakeVerifier:
 class RecordingForgotPasswordFlow:
     """ForgotPasswordFlow double that records every initiation."""
 
-    initiated: list[str] = field(default_factory=list)
+    initiated: list[tuple[str, str]] = field(default_factory=list)
 
-    def initiate(self, login_name: str) -> None:
-        self.initiated.append(login_name)
+    def initiate(self, login_name: str, email_address: str) -> None:
+        self.initiated.append((login_name, email_address))
 
 
-MENTOR = VerifiedIdentity(user_id=uuid7(), role_names=frozenset({"mentor"}))
-OTHER = VerifiedIdentity(user_id=uuid7(), role_names=frozenset({"mentor"}))
+def _app_identity(username: str) -> VerifiedIdentity:
+    return VerifiedIdentity(
+        user_id=uuid7(),
+        role_names=frozenset({"mentor"}),
+        crm_credential=CrmUserCredential(username=username, secret="espo-token"),
+    )
+
+
+MENTOR = _app_identity("mentor.jane")
+OTHER = _app_identity("other.sam")
 MENTOR_LOGIN = "mentor@cbm.org"
 MENTOR_PASSWORD = "correct-horse"
 
@@ -98,17 +122,22 @@ def forgot_flow() -> RecordingForgotPasswordFlow:
 
 
 @pytest.fixture()
-def client(
-    sessions: SessionManagement,
-    tokens: TokenActionService,
-    forgot_flow: RecordingForgotPasswordFlow,
-) -> TestClient:
-    verifier = FakeVerifier(
+def verifier() -> FakeVerifier:
+    return FakeVerifier(
         accounts={
             MENTOR_LOGIN: (MENTOR_PASSWORD, MENTOR),
             "other@cbm.org": ("battery-staple", OTHER),
         }
     )
+
+
+@pytest.fixture()
+def client(
+    sessions: SessionManagement,
+    tokens: TokenActionService,
+    forgot_flow: RecordingForgotPasswordFlow,
+    verifier: FakeVerifier,
+) -> TestClient:
     app = create_app()
     app.dependency_overrides[get_session_management] = lambda: sessions
     app.dependency_overrides[get_credential_verifier] = lambda: verifier
@@ -152,6 +181,19 @@ def test_login_refusals_are_indistinguishable(client: TestClient) -> None:
     assert unknown_user.json()["errors"][0]["code"] == "invalidCredentials"
 
 
+def test_a_crm_outage_never_reads_as_a_wrong_password(
+    client: TestClient, verifier: FakeVerifier
+) -> None:
+    verifier.crm_down = True
+    response = _login(client)
+    # 503 with the distinct code: the credentials were never judged, and the
+    # body carries no account information — non-enumerating by construction.
+    assert response.status_code == 503
+    body = response.json()
+    assert body["errors"][0]["code"] == "crmUnavailable"
+    assert MENTOR_LOGIN not in str(body)
+
+
 def test_logout_ends_the_session_and_is_generic_for_unknown_references(
     client: TestClient, sessions: SessionManagement
 ) -> None:
@@ -190,16 +232,22 @@ def test_reauth_refreshes_an_active_session_too(client: TestClient) -> None:
     assert response.json()["data"]["sessionReference"] != old
 
 
-def test_reauth_as_a_different_user_reads_exactly_like_a_bad_password(
-    client: TestClient, clock: Clock
+def test_reauth_as_a_different_user_is_the_distinct_mismatch_refusal(
+    client: TestClient, clock: Clock, sessions: SessionManagement
 ) -> None:
     reference = _login(client).json()["data"]["sessionReference"]
     clock.advance(timedelta(minutes=31))
     mismatch = _reauth(client, reference, "other@cbm.org", "battery-staple")
     bad_password = _reauth(client, reference, MENTOR_LOGIN, "wrong")
+    # Distinct code by design (WTK-005 REAUTH_WRONG_USER): the session's
+    # owner is already on the caller's screen, so nothing enumerable leaks —
+    # and the UI can say "that sign-in belongs to a different user".
     assert mismatch.status_code == bad_password.status_code == 401
-    assert mismatch.json() == bad_password.json()
-    assert mismatch.json()["errors"][0]["code"] == "invalidCredentials"
+    assert mismatch.json()["errors"][0]["code"] == "reauthIdentityMismatch"
+    assert bad_password.json()["errors"][0]["code"] == "invalidCredentials"
+    # The refusal left the session revivable: the right user still gets in.
+    revived = _reauth(client, reference, MENTOR_LOGIN, MENTOR_PASSWORD)
+    assert revived.status_code == 200
 
 
 def test_reauth_after_the_grace_window_requires_a_fresh_login(
@@ -218,28 +266,38 @@ def test_reauth_after_the_grace_window_requires_a_fresh_login(
 def test_forgot_password_answers_identically_for_unknown_accounts(
     client: TestClient, forgot_flow: RecordingForgotPasswordFlow
 ) -> None:
-    known = client.post("/auth/forgot-password", json={"loginName": MENTOR_LOGIN})
-    unknown = client.post("/auth/forgot-password", json={"loginName": "nobody@cbm.org"})
+    known = client.post(
+        "/auth/forgot-password",
+        json={"loginName": MENTOR_LOGIN, "emailAddress": "mentor@cbm.org"},
+    )
+    unknown = client.post(
+        "/auth/forgot-password",
+        json={"loginName": "nobody@cbm.org", "emailAddress": "nobody@cbm.org"},
+    )
     assert known.status_code == unknown.status_code == 200
     assert known.json() == unknown.json()
     assert known.json()["data"] == {"resetRequestAccepted": True}
-    # Both reach the seam — deciding whether the account exists is the flow's
-    # job, behind the constant response, never the endpoint's.
-    assert forgot_flow.initiated == [MENTOR_LOGIN, "nobody@cbm.org"]
+    # Both identifiers reach the seam (EspoCRM's passwordChangeRequest needs
+    # the pair) — deciding whether the account exists is the CRM's job,
+    # behind the constant response, never the endpoint's.
+    assert forgot_flow.initiated == [
+        (MENTOR_LOGIN, "mentor@cbm.org"),
+        ("nobody@cbm.org", "nobody@cbm.org"),
+    ]
 
 
 def test_redeeming_an_action_token_spends_a_use_and_names_no_identity(
     client: TestClient, clock: Clock, tokens: TokenActionService
 ) -> None:
     token = tokens.mint(
-        user_id=MENTOR.user_id,
-        action_name="passwordReset",
+        token_identity="mentor@cbm.org",
+        action_name="magicLink",
         expires_at=clock.current + timedelta(hours=1),
     )
-    response = client.post("/auth/actions/passwordReset/redeem", json={"actionToken": token})
+    response = client.post("/auth/actions/magicLink/redeem", json={"actionToken": token})
     assert response.status_code == 200
-    assert response.json()["data"] == {"actionName": "passwordReset", "usesRemaining": 0}
-    second = client.post("/auth/actions/passwordReset/redeem", json={"actionToken": token})
+    assert response.json()["data"] == {"actionName": "magicLink", "usesRemaining": 0}
+    second = client.post("/auth/actions/magicLink/redeem", json={"actionToken": token})
     assert second.status_code == 403
     assert second.json()["errors"][0]["code"] == "tokenExhausted"
 
@@ -248,8 +306,8 @@ def test_token_refusals_share_one_generic_message(
     client: TestClient, clock: Clock, tokens: TokenActionService
 ) -> None:
     token = tokens.mint(
-        user_id=MENTOR.user_id,
-        action_name="passwordReset",
+        token_identity="mentor@cbm.org",
+        action_name="magicLink",
         expires_at=clock.current + timedelta(hours=1),
     )
 
@@ -259,9 +317,9 @@ def test_token_refusals_share_one_generic_message(
         )
 
     wrong_action = redeem("confirmAttendance", token)
-    garbage = redeem("passwordReset", "not-a-token")
+    garbage = redeem("magicLink", "not-a-token")
     clock.advance(timedelta(hours=2))
-    expired = redeem("passwordReset", token)
+    expired = redeem("magicLink", token)
     assert wrong_action.status_code == garbage.status_code == expired.status_code == 403
     # Codes stay precise (the holder proved possession via the signature);
     # the human message is one wording for every refusal.

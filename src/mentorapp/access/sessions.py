@@ -17,8 +17,9 @@ multi-window guarantees mechanical rather than coordinated:
   next request fails closed.
 
 Credential verification is deliberately not here (REQ-008): establishment
-consumes a :class:`VerifiedIdentity` produced by the pluggable verifier (the
-ESPO integration today; SSO/MFA later) and never sees credentials.
+consumes a :class:`VerifiedIdentity` produced by the pluggable verifier and
+resolved through the identity bridge (``access/identity.py``) — this module
+never sees credentials, only the CRM token the bridge carried through.
 """
 
 from __future__ import annotations
@@ -33,18 +34,12 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Protocol
 
+from mentorapp.access.identity import VerifiedIdentity
+from mentorapp.crm.auth import CrmUserCredential
 from mentorapp.observability import get_logger
 from mentorapp.storage import uuid7
 
 log = get_logger(__name__)
-
-
-@dataclass(frozen=True)
-class VerifiedIdentity:
-    """The verifier seam's output: who the user is, proven, with their roles."""
-
-    user_id: uuid.UUID
-    role_names: frozenset[str]
 
 
 class SessionState(enum.StrEnum):
@@ -79,7 +74,14 @@ class IdentityMismatchError(Exception):
 
 @dataclass
 class SessionRecord:
-    """The server-side session; the browser never sees anything but the reference."""
+    """The server-side session; the browser never sees anything but the reference.
+
+    ``crm_credential`` is the session-scoped custody of the CRM-issued
+    act-as-user token for :class:`~mentorapp.crm.auth.CrmAccess` — WTK-003
+    assigns custody here, not to any per-user store. At rest it lives
+    AEAD-encrypted on ``authSession`` (``crmCredentialEncrypted``), never
+    plaintext; each login/reauth recaptures it fresh.
+    """
 
     session_id: uuid.UUID
     user_id: uuid.UUID
@@ -90,6 +92,7 @@ class SessionRecord:
     last_seen_at: datetime
     expires_at: datetime
     reauth_deadline: datetime | None = None
+    crm_credential: CrmUserCredential | None = None
 
 
 class SessionStore(Protocol):
@@ -152,6 +155,7 @@ class SessionManagement:
             created_at=now,
             last_seen_at=now,
             expires_at=now + self._absolute_lifetime,
+            crm_credential=identity.crm_credential,
         )
         self._store.save(record)
         log.info(
@@ -214,6 +218,9 @@ class SessionManagement:
         reference, secret_hash = self._mint_reference(session_id)
         record.secret_hash = secret_hash
         record.role_names = identity.role_names
+        # The fresh verification exchange issued a fresh CRM token; the stale
+        # one (expired or dropped by the CRM) is replaced, never kept around.
+        record.crm_credential = identity.crm_credential
         record.state = SessionState.ACTIVE
         record.reauth_deadline = None
         record.last_seen_at = now
@@ -224,6 +231,31 @@ class SessionManagement:
             extra={"context": {"sessionID": str(session_id), "userID": str(record.user_id)}},
         )
         return reference
+
+    def require_reauth(self, session_id: uuid.UUID) -> None:
+        """Force an ACTIVE session into the in-place re-auth flow.
+
+        The :class:`~mentorapp.crm.auth.CrmCredentialExpiredError` path: when
+        the CRM stops honouring the stored credential mid-session, the caller
+        flips the session to the SAME revivable ``REAUTH_PENDING`` state as
+        natural expiry — every window gets the in-place challenge, one
+        re-login restores them all and recaptures a fresh credential. A
+        session already pending keeps its deadline (idempotent); an ended
+        session stays ended.
+        """
+        record = self._store.load(session_id)
+        if record is None:
+            raise SessionNotFoundError("unknown session")
+        if record.state is SessionState.ENDED:
+            raise SessionEndedError("session ended")
+        if record.state is SessionState.ACTIVE:
+            record.state = SessionState.REAUTH_PENDING
+            record.reauth_deadline = self._now() + self._reauth_grace
+            self._store.save(record)
+            log.info(
+                "session forced to reauth-pending",
+                extra={"context": {"sessionID": str(record.session_id)}},
+            )
 
     def logout(self, reference: str) -> None:
         """Explicit logout: end the shared record, so every window fails closed.

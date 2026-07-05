@@ -25,8 +25,9 @@ from mentorapp.storage.auth import (
     AppUser,
     AuthSession,
     DataSource,
+    DataSourceRoleGrant,
+    TokenAuditEvent,
     UserCrmAccount,
-    UserDataSourceGrant,
 )
 from mentorapp.storage.base import StructuralColumnsMixin, utcnow
 from mentorapp.storage.entity import (
@@ -93,6 +94,7 @@ __all__ = [
     "BuiltInField",
     "ChangeFeedEntry",
     "DataSource",
+    "DataSourceRoleGrant",
     "DriftFinding",
     "DuplicateOverride",
     "FieldChange",
@@ -104,8 +106,8 @@ __all__ = [
     "SchemaDriftError",
     "SchemaRegistry",
     "StructuralColumnsMixin",
+    "TokenAuditEvent",
     "UserCrmAccount",
-    "UserDataSourceGrant",
     "UserPreference",
     "WorkprocessRegistration",
     "admin_sql_role_ddl",
