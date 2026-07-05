@@ -1,4 +1,4 @@
-"""Production auth wiring: DB-backed stores + the Espo verifier behind the router seams.
+"""Production wiring: DB-backed stores behind the auth and home router seams.
 
 :func:`install_auth_wiring` binds the four fail-loud providers of
 ``mentorapp.api.routers.auth`` (WTK-191) so the endpoints run against real
@@ -47,6 +47,7 @@ from mentorapp.access import (
     VerifiedIdentity,
 )
 from mentorapp.api.deps import get_session
+from mentorapp.api.messages import StoredMessageCenter
 from mentorapp.api.routers.auth import (
     CredentialVerifier,
     ForgotPasswordFlow,
@@ -55,6 +56,7 @@ from mentorapp.api.routers.auth import (
     get_session_management,
     get_token_actions,
 )
+from mentorapp.api.routers.home import get_message_admin, get_message_center
 from mentorapp.crm.espo import EspoAuthGateway, EspoResponse, EspoTransport
 
 _SessionDep = Annotated[Session, Depends(get_session)]
@@ -197,3 +199,21 @@ def install_auth_wiring(app: FastAPI) -> None:
     app.dependency_overrides[get_credential_verifier] = provide_credential_verifier
     app.dependency_overrides[get_token_actions] = provide_token_actions
     app.dependency_overrides[get_forgot_password_flow] = provide_forgot_password_flow
+
+
+def provide_message_center(session: _SessionDep) -> StoredMessageCenter:
+    """The production ``get_message_center``/``get_message_admin`` backing (WTK-192)."""
+    return StoredMessageCenter(session)
+
+
+def install_home_wiring(app: FastAPI) -> None:
+    """Bind stored admin-message persistence onto the home router's seams (WTK-192).
+
+    Both message seams resolve to one :class:`StoredMessageCenter` over the
+    request session, so the user surface and the admin surface read the same
+    rows. ``get_home_catalog`` stays deliberately unwired — that binding
+    belongs to the WTK-025 panel-catalog derivation, and a stub here would
+    silently serve an empty permissioned world instead of a clear error.
+    """
+    app.dependency_overrides[get_message_center] = provide_message_center
+    app.dependency_overrides[get_message_admin] = provide_message_center

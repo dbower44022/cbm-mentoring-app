@@ -15,16 +15,22 @@ only speaks it over the envelope.
   ``POST /home/messages/{key}/acknowledge`` is the only way acknowledgment
   ever happens (explicit click, never implicit).
 - ``POST /home/messages`` publishes and ``GET /home/messages/{key}/
-  acknowledgments`` is the admin's who-has-not-acknowledged audit.
+  acknowledgments`` is the admin's who-has-not-acknowledged audit. The rest
+  of the admin CRUD (WTK-192): ``GET /home/messages`` lists the corpus
+  INCLUDING expired messages, ``PATCH /home/messages/{key}`` edits under the
+  write contract (only changed fields travel, ``rowVersion`` round-trips,
+  stale → 409 with the current record), ``DELETE`` soft-deletes.
 
-Two provider seams follow the auth-router pattern (fail loudly until wired;
+Three provider seams follow the auth-router pattern (fail loudly until wired;
 tests and deployments override the provider keys): :func:`get_home_catalog`
 for the grant-derived Areas/views the composition needs (REQ-006 — the
 WTK-025 derivation, bound when the panel catalog lands), and
-:func:`get_message_center` for message persistence — the storage area backs
-:class:`~mentorapp.ui.home_panel.MessageCenter` with a table and rebinds the
-provider; an in-process default here would silently drop read and
-acknowledgment state on every restart, which is worse than a clear error.
+:func:`get_message_center` / :func:`get_message_admin` for message
+persistence — backed by the ``adminMessage``/``adminMessageReceipt`` tables
+via :class:`~mentorapp.api.messages.StoredMessageCenter`, bound in production
+by ``wiring.install_home_wiring``; an in-process default here would silently
+drop read and acknowledgment state on every restart, which is worse than a
+clear error.
 
 The user's dashlet arrangement rides the one preference mechanism (REQ-060)
 under ``home.dashlets`` — read here with the same own-row-else-org-default
@@ -105,10 +111,44 @@ def get_message_center() -> MessageCenter:
     )
 
 
+class MessageAdmin(Protocol):
+    """The admin CRUD surface over the message corpus (WTK-192).
+
+    A separate seam from :func:`get_message_center` because the reference
+    :class:`~mentorapp.ui.home_panel.MessageCenter` deliberately has no
+    update/delete — those exist only where persistence does. Production
+    binds both seams to the same stored center, so the two surfaces can
+    never disagree.
+    """
+
+    def list_messages(self) -> list[dict[str, Any]]:
+        """Every live message, newest first, INCLUDING expired ones."""
+        ...
+
+    def update_message(
+        self, message_key: str, changes: dict[str, Any], row_version: int
+    ) -> dict[str, Any]:
+        """Per-field PATCH; stale ``row_version`` raises StaleRowVersionError."""
+        ...
+
+    def delete_message(self, message_key: str, deleted_by: uuid.UUID) -> None:
+        """Soft-delete one message; receipts remain as audit."""
+        ...
+
+
+def get_message_admin() -> MessageAdmin:
+    """Provide the admin CRUD backing; fail-loud exactly like the center seam."""
+    raise RuntimeError(
+        "message admin provider is not wired; install home wiring or "
+        "override get_message_admin."
+    )
+
+
 _SessionDep = Annotated[Session, Depends(get_session)]
 _UserDep = Annotated[uuid.UUID, Depends(get_current_user_id)]
 _CatalogDep = Annotated[HomeCatalog, Depends(get_home_catalog)]
 _CenterDep = Annotated[MessageCenter, Depends(get_message_center)]
+_AdminDep = Annotated[MessageAdmin, Depends(get_message_admin)]
 
 
 def _frame_payload() -> dict[str, Any]:
@@ -269,6 +309,72 @@ def post_message(body: MessagePostBody, user_id: _UserDep, center: _CenterDep) -
     )
     center.post(message)
     return ok(data=_message_payload(center, message, str(user_id)))
+
+
+@router.get("/home/messages")
+def list_messages(admin: _AdminDep, user_id: _UserDep) -> Envelope:
+    """The admin's message corpus: every live message, newest first (WTK-192).
+
+    Unlike every user path this INCLUDES expired messages — the admin manages
+    the corpus and reads acknowledgment reports after expiry. Each record
+    carries ``rowVersion`` so an edit can round-trip it (DB-S4).
+    """
+    return ok(data={"messages": admin.list_messages()})
+
+
+class MessagePatchBody(BaseModel):
+    """PATCH body: only the changed fields plus the mandatory ``rowVersion``."""
+
+    row_version: int = Field(alias="rowVersion")
+    title: str | None = Field(default=None, min_length=1)
+    body: str | None = Field(default=None, min_length=1)
+    priority: MessagePriority | None = None
+    requires_acknowledgment: bool | None = Field(default=None, alias="requiresAcknowledgment")
+    # Nullable AND omittable: null clears the expiration, absence leaves it —
+    # fields_set is what distinguishes them (the per-field PATCH contract).
+    expires_at: AwareDatetime | None = Field(default=None, alias="expiresAt")
+
+
+@router.patch("/home/messages/{message_key}")
+def patch_message(message_key: str, body: MessagePatchBody, admin: _AdminDep) -> Envelope:
+    """Edit one message under the write contract (DB-S12): PATCH, never PUT.
+
+    Only fields present in the request travel to storage; a stale
+    ``rowVersion`` returns 409 with the current record in ``data``. 404 for
+    unknown and deleted keys; expired messages stay editable (extending an
+    expiration is a legitimate admin act).
+    """
+    changes = {
+        field: getattr(body, attr)
+        for attr, field in (
+            ("title", "title"),
+            ("body", "body"),
+            ("requires_acknowledgment", "requiresAcknowledgment"),
+            ("expires_at", "expiresAt"),
+        )
+        if attr in body.model_fields_set
+    }
+    if "priority" in body.model_fields_set and body.priority is not None:
+        changes["priority"] = body.priority.value
+    try:
+        record = admin.update_message(message_key, changes, body.row_version)
+    except UnknownMessageError:
+        raise RecordNotFoundError(_MESSAGE_ENTITY, message_key) from None
+    return ok(data=record)
+
+
+@router.delete("/home/messages/{message_key}")
+def delete_message(message_key: str, admin: _AdminDep, user_id: _UserDep) -> Envelope:
+    """Soft-delete one message (DB-S3): it leaves every surface immediately.
+
+    Receipts are untouched — the acknowledgment audit survives the message,
+    exactly as it survives expiration.
+    """
+    try:
+        admin.delete_message(message_key, user_id)
+    except UnknownMessageError:
+        raise RecordNotFoundError(_MESSAGE_ENTITY, message_key) from None
+    return ok(data={"messageKey": message_key, "deleted": True})
 
 
 @router.post("/home/messages/{message_key}/read")
