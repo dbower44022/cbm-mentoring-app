@@ -128,10 +128,24 @@ test("urgent banner and admin-message acknowledgment", async ({ page, request })
 
   // Land on a NON-Home panel: Home's render is itself the read act
   // (REQ-011), which would clear the banner before it could be asserted.
-  await signIn(page);
-  await page.getByRole("button", { name: "Active Mentors" }).click();
+  // Sign in through the API and inject the stored session so Home never
+  // mounts on the way in.
+  const login = await request.post(`${API}/auth/login`, {
+    data: { loginName: LOGIN, password: PASSWORD },
+  });
+  const session = (
+    (await login.json()) as {
+      data: { sessionReference: string; userID: string; roleNames: string[] };
+    }
+  ).data;
+  await page.addInitScript(
+    (stored) => {
+      localStorage.setItem("mentorapp.session", JSON.stringify(stored));
+    },
+    { ...session, loginName: LOGIN },
+  );
+  await page.goto("/panel/mentors");
   await expect(page.getByText("Panel “mentors” is open")).toBeVisible();
-  await page.reload();
 
   // The urgent banner banners across panels until read; opening it is the
   // read, and the acknowledgment is its own explicit click.
@@ -143,8 +157,12 @@ test("urgent banner and admin-message acknowledgment", async ({ page, request })
   await expect(banner).toContainText("The CRM pauses at 22:00 for maintenance.");
   await banner.getByRole("button", { name: "Acknowledge" }).click();
   await expect(banner.getByText("Acknowledged.")).toBeVisible();
+  // Dismiss removes the expanded message; the banner region itself only
+  // clears on the next fetch of read state (Home's view triggers one).
   await banner.getByRole("button", { name: "Dismiss" }).click();
-  await expect(banner).toHaveCount(0);
+  await expect(
+    banner.getByText("The CRM pauses at 22:00 for maintenance."),
+  ).toHaveCount(0);
 
   // Home's dashlet shows the normal message with its own acknowledgment.
   await page.goto("/");

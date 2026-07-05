@@ -20,6 +20,22 @@ const API_TARGET = "http://127.0.0.1:8000";
 export default defineConfig({
   plugins: [react()],
   server: {
-    proxy: Object.fromEntries(API_PREFIXES.map((p) => [p, { target: API_TARGET }])),
+    proxy: Object.fromEntries(
+      API_PREFIXES.map((p) => [
+        p,
+        {
+          target: API_TARGET,
+          // A browser NAVIGATION under an API prefix is an app route, not an
+          // API call — /records/:type/:id is the pop-out window (app.tsx).
+          // Serve the SPA for document requests; proxy everything else.
+          bypass: (req: import("node:http").IncomingMessage) =>
+            req.headers.accept?.includes("text/html") ? "/index.html" : undefined,
+        },
+      ]),
+    ),
+    // The Playwright run (playwright.config.ts sets MENTORAPP_E2E) needs no
+    // hot reload, and CI-class hosts can exhaust inotify instances under the
+    // watcher — E2E serves without watching instead of failing to boot.
+    ...(process.env.MENTORAPP_E2E ? { watch: null } : {}),
   },
 });
