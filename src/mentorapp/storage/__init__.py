@@ -3,9 +3,10 @@
 Implements the ENG-004 data-model standard: ``entity`` carries the declarative
 base, structural system columns, and key-naming policy (WTK-125); ``models``
 carries the schema registry, option sets, background jobs, and change feed
-(WTK-126/WTK-127); ``registry_seed`` seeds built-in registry rows from the
-column-site definitions the drift check verifies (WTK-134). One declarative
-``Base`` spans them all.
+(WTK-126/WTK-127); ``auth`` carries users, sessions, action tokens, access
+grants, and data sources (WTK-001); ``registry_seed`` seeds built-in registry
+rows from the column-site definitions the drift check verifies (WTK-134). One
+declarative ``Base`` spans them all.
 """
 
 from mentorapp.storage.adminsql import (
@@ -17,6 +18,15 @@ from mentorapp.storage.adminsql import (
     admin_sql_role_ddl,
     execute_admin_sql,
     validate_admin_sql,
+)
+from mentorapp.storage.auth import (
+    AccessGrant,
+    ActionToken,
+    AppUser,
+    AuthSession,
+    DataSource,
+    UserCrmAccount,
+    UserDataSourceGrant,
 )
 from mentorapp.storage.base import StructuralColumnsMixin, utcnow
 from mentorapp.storage.entity import (
@@ -71,13 +81,18 @@ __all__ = [
     "JOB_STATUSES",
     "SELECTION_CONTRACTS",
     "STRUCTURAL_COLUMN_NAMES",
+    "AccessGrant",
+    "ActionToken",
     "AdminSqlError",
     "AdminSqlSource",
+    "AppUser",
+    "AuthSession",
     "BackgroundJob",
     "Base",
     "BaseEntity",
     "BuiltInField",
     "ChangeFeedEntry",
+    "DataSource",
     "DriftFinding",
     "DuplicateOverride",
     "FieldChange",
@@ -89,6 +104,8 @@ __all__ = [
     "SchemaDriftError",
     "SchemaRegistry",
     "StructuralColumnsMixin",
+    "UserCrmAccount",
+    "UserDataSourceGrant",
     "UserPreference",
     "WorkprocessRegistration",
     "admin_sql_role_ddl",
