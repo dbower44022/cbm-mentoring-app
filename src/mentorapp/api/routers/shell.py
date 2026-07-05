@@ -15,6 +15,11 @@ one home for the behavior, this router only speaks it over the envelope.
 - ``POST /shell/navigation/pins/{pinKey}/open`` activates one pin at click
   time: a healthy pin answers with its panel opening, a broken one with the
   explanation dialog and its two choices (REQ-015) — never a dead control.
+- ``GET /shell/bell`` / ``POST /shell/bell/read`` are the notification bell
+  the header renders (REQ-014, WTK-023): the session user's unread entries
+  (the badge count rides ``meta.unreadCount``), and the read stamp the moment
+  the user views them. Emission lives in the worker
+  (:mod:`mentorapp.automation.worker`); this surface only reads and stamps.
 
 The navigation profile is SETTINGS: it lives as the ``navigation`` preference
 document under the REQ-060 pair (own row overrides the org default, exactly
@@ -45,7 +50,7 @@ from mentorapp.api.deps import get_current_user_id, get_session
 from mentorapp.api.envelope import Envelope, ok
 from mentorapp.api.errors import RecordNotFoundError
 from mentorapp.observability import get_logger
-from mentorapp.storage import UserPreference
+from mentorapp.storage import Notification, UserPreference, utcnow
 from mentorapp.ui.navigation import (
     HOME_PANEL_KEY,
     NAVIGATION_PREFERENCE_KEY,
@@ -296,3 +301,65 @@ def open_navigation_pin(
             "dialog": None,
         }
     )
+
+
+def _unread_notifications(session: Session, user_id: uuid.UUID) -> list[Notification]:
+    """The session user's live unread bell entries, newest first (REQ-014).
+
+    ``createdAt`` with the UUIDv7 ID as tiebreak — the DB-S8 sort shape, and
+    insertion order for same-instant writes. The predicate is exactly the
+    ``ix_notification_unread`` badge scan.
+    """
+    return list(
+        session.scalars(
+            select(Notification)
+            .where(Notification.deleted_at.is_(None))
+            .where(Notification.user_id == user_id)
+            .where(Notification.read_at.is_(None))
+            .order_by(Notification.created_at.desc(), Notification.notification_id.desc())
+        )
+    )
+
+
+def _bell_entry_payload(entry: Notification) -> dict[str, Any]:
+    return {
+        "notificationID": str(entry.notification_id),
+        "notificationType": entry.notification_type,
+        "notificationMessage": entry.notification_message,
+        "jobID": str(entry.job_id) if entry.job_id is not None else None,
+        "createdAt": entry.created_at.isoformat(),
+    }
+
+
+@router.get("/shell/bell")
+def get_bell(session: _SessionDep, user_id: _UserDep) -> Envelope:
+    """The bell dropdown: the session user's unread entries (REQ-014).
+
+    ``meta.unreadCount`` is the badge number — the header may poll this
+    endpoint for the count alone. Reading does NOT stamp ``readAt``: a GET
+    stays safe to repeat, and the client acknowledges the view explicitly
+    via ``POST /shell/bell/read`` when the dropdown opens.
+    """
+    entries = _unread_notifications(session, user_id)
+    return ok(
+        data={"entries": [_bell_entry_payload(entry) for entry in entries]},
+        meta={"unreadCount": len(entries)},
+    )
+
+
+@router.post("/shell/bell/read")
+def mark_bell_read(session: _SessionDep, user_id: _UserDep) -> Envelope:
+    """Viewing the bell stamps every unread entry (REQ-014).
+
+    A versioned update like any other write (DB-S4), never a delete — the
+    entries stay in the notification table, only the badge predicate stops
+    matching them. Idempotent: a second view finds nothing unread and stamps
+    nothing, so ``data.markedRead`` reports what THIS view cleared.
+    """
+    viewed_at = utcnow()
+    entries = _unread_notifications(session, user_id)
+    for entry in entries:
+        entry.read_at = viewed_at
+        entry.modified_by = user_id
+    session.commit()
+    return ok(data={"markedRead": len(entries)}, meta={"unreadCount": 0})
