@@ -5,10 +5,11 @@ once for every login path:
 
 - **The app never keeps passwords.** Login hands the submitted credentials to
   a :class:`CredentialVerification` plug, which proves them against the CRM
-  and produces a :class:`VerifiedIdentity` — the only object the session
-  layer (WTK-002) may mint an ``authSession`` from. ``appUser`` anchors to
-  the CRM via ``crmUserID`` (``storage/auth.py``), so
-  ``VerifiedIdentity.crm_user_id`` is the find-or-provision join point.
+  and produces a :class:`CrmVerifiedIdentity` — the CRM-side identity the
+  identity bridge (``access/identity.py``) resolves into the app-side
+  identity the session layer (WTK-002) mints an ``authSession`` from.
+  ``appUser`` anchors to the CRM via ``crmUserID`` (``storage/auth.py``), so
+  ``CrmVerifiedIdentity.crm_user_id`` is the find-or-provision join point.
 - **Two failure outcomes, never conflated.** :class:`CredentialsRejectedError`
   means the CRM said no; :class:`CrmUnavailableError` means the CRM could not
   answer. A CRM outage must never present as a wrong password — the login UI
@@ -78,19 +79,24 @@ class CrmUserCredential:
 
 
 @dataclass(frozen=True)
-class VerifiedIdentity:
+class CrmVerifiedIdentity:
     """What a successful credential verification proves.
 
     ``crm_user_id`` is the CRM's own identifier — the join point to
-    ``appUser.crmUserID``. ``credential`` rides along because the same
-    exchange that proves the identity issues the user's CRM token; the
-    session layer stores it session-scoped for :class:`CrmAccess`.
+    ``appUser.crmUserID``. ``role_names`` are the CRM-side staff roles/teams
+    captured in the same exchange; the app maps them to its grant role
+    vocabulary — the CRM is the role source, refreshed at every login/reauth,
+    so no role assignment is ever persisted app-side. ``credential`` rides
+    along because the same exchange that proves the identity issues the
+    user's CRM token; the session layer stores it session-scoped for
+    :class:`CrmAccess`.
     """
 
     crm_user_id: str
     username: str
     display_name: str
     email_address: str | None
+    role_names: frozenset[str]
     credential: CrmUserCredential
 
 
@@ -102,7 +108,7 @@ class CredentialVerification(Protocol):
     on proof.
     """
 
-    def verify(self, username: str, password: str) -> VerifiedIdentity: ...
+    def verify(self, username: str, password: str) -> CrmVerifiedIdentity: ...
 
 
 class ForgotPassword(Protocol):

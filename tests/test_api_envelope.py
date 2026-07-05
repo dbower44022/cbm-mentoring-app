@@ -38,6 +38,7 @@ from mentorapp.api.routers.auth import (
     get_session_management,
     get_token_actions,
 )
+from mentorapp.crm.auth import CredentialsRejectedError
 from mentorapp.main import create_app
 
 
@@ -176,14 +177,14 @@ def _probe_targets() -> list[tuple[str, str]]:
 class _SweepVerifier:
     """Refuse every credential pair — the sweep only needs a wired backend."""
 
-    def verify(self, login_name: str, password: str) -> VerifiedIdentity | None:
-        return None
+    def verify(self, login_name: str, password: str) -> VerifiedIdentity:
+        raise CredentialsRejectedError("sweep probe")
 
 
 class _SweepForgotFlow:
     """Accept and drop every initiation — the sweep only needs a wired backend."""
 
-    def initiate(self, login_name: str) -> None:
+    def initiate(self, login_name: str, email_address: str) -> None:
         return None
 
 

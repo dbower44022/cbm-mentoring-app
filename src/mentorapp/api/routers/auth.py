@@ -6,12 +6,16 @@ designed over the access-layer processes:
 - The browser only ever holds the opaque session reference minted by
   :class:`SessionManagement`; expiry, roles, and revocation live server-side,
   so nothing security-relevant is parsed out of client input.
-- Every refusal is generic by construction: unknown login name, wrong
-  password, and re-auth identity mismatch are one indistinguishable
+- Every refusal is generic where genericity protects something: unknown
+  login name and wrong password are one indistinguishable
   ``invalidCredentials`` response; forgot-password answers identically
   whether or not the account exists; action-token redemption never names the
-  identity it runs as. The handlers in ``mentorapp.api.errors`` own the
-  refusal envelopes — no endpoint here builds an error response.
+  identity it runs as. Two outcomes are deliberately DISTINCT because they
+  disclose nothing enumerable: a CRM outage (``crmUnavailable``, 503 — never
+  a wrong password) and a re-auth identity mismatch
+  (``reauthIdentityMismatch`` — the session's owner is already on screen).
+  The handlers in ``mentorapp.api.errors`` own the refusal envelopes — no
+  endpoint here builds an error response.
 - Credential verification stays behind the pluggable
   :class:`CredentialVerifier` seam (REQ-008: the ESPO integration today,
   SSO/MFA later) — this router never sees how a password is checked, only
@@ -30,6 +34,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
 from mentorapp.access import (
+    IdentityMismatchError,
     ReauthRequiredError,
     SessionManagement,
     SessionNotFoundError,
@@ -37,7 +42,17 @@ from mentorapp.access import (
     VerifiedIdentity,
 )
 from mentorapp.api.envelope import Envelope, ok
-from mentorapp.api.errors import InvalidCredentialsError
+from mentorapp.api.errors import (
+    CrmUnavailableError,
+    InvalidCredentialsError,
+    ReauthIdentityMismatchError,
+)
+
+# The crm-layer outcome and the api-layer error share a name on purpose (one
+# concept, two layers); the alias keeps this module able to catch one and
+# raise the other.
+from mentorapp.crm.auth import CredentialsRejectedError
+from mentorapp.crm.auth import CrmUnavailableError as CrmAuthUnavailableError
 from mentorapp.observability import get_logger
 
 router = APIRouter(prefix="/auth")
@@ -47,25 +62,33 @@ log = get_logger(__name__)
 class CredentialVerifier(Protocol):
     """The REQ-008 verification seam: prove who a credential pair belongs to.
 
-    Returns the :class:`VerifiedIdentity` on success and ``None`` on ANY
-    failure — the protocol deliberately cannot say why, so no caller can
-    distinguish an unknown account from a wrong password.
+    Returns the access-layer :class:`VerifiedIdentity` (post-bridge — CRM
+    verification and the ``access/identity.py`` resolve composed) on proof,
+    and raises :class:`~mentorapp.crm.auth.CredentialsRejectedError` or
+    :class:`~mentorapp.crm.auth.CrmUnavailableError` otherwise. An earlier
+    None-on-any-failure protocol conflated outage with rejection, which the
+    design forbids — a CRM outage must never present as a wrong password.
+    Anti-enumeration lives in the ERROR MAPPING below, not in erasing the
+    cause.
     """
 
-    def verify(self, login_name: str, password: str) -> VerifiedIdentity | None: ...
+    def verify(self, login_name: str, password: str) -> VerifiedIdentity: ...
 
 
 class ForgotPasswordFlow(Protocol):
-    """Start a password reset for a login name, enumeration-proof by contract.
+    """Start a password reset — the CRM's own connected flow, enumeration-proof.
 
-    Implementations own the account lookup, minting the single-use
-    ``passwordReset`` action token (:class:`TokenActionService`), and
-    enqueueing the reset email job — and MUST behave identically for unknown
-    accounts (no exception, no timing shortcut), because the endpoint's
-    constant response is only as generic as this seam is.
+    The CRM owns the credentials, so recovery is the CRM's: the
+    implementation forwards EspoCRM's ``User/passwordChangeRequest``
+    (``crm/espo.py``) and the CRM sends its recovery email — the app mints NO
+    token and sends NO email. It MUST behave identically whether or not the
+    account exists (no exception, no timing shortcut), because the endpoint's
+    constant response is only as generic as this seam is; it raises
+    :class:`~mentorapp.crm.auth.CrmUnavailableError` only when the CRM cannot
+    take the request at all (→ 503).
     """
 
-    def initiate(self, login_name: str) -> None: ...
+    def initiate(self, login_name: str, email_address: str) -> None: ...
 
 
 def get_session_management() -> SessionManagement:
@@ -116,9 +139,15 @@ class ReauthBody(BaseModel):
 
 
 class ForgotPasswordBody(BaseModel):
-    """``POST /auth/forgot-password`` body: only the login name, never a password."""
+    """``POST /auth/forgot-password`` body: identifiers only, never a password.
+
+    Both identifiers travel because EspoCRM's ``passwordChangeRequest``
+    requires the username+email pair — matching WTK-005's
+    ``FORGOT_PASSWORD_SCREEN``.
+    """
 
     login_name: str = Field(alias="loginName")
+    email_address: str = Field(alias="emailAddress")
 
 
 class RedeemBody(BaseModel):
@@ -145,15 +174,21 @@ def login(
 ) -> Envelope:
     """Verify credentials and open a session; return the opaque reference.
 
-    Failure is the one generic ``invalidCredentials`` 401 regardless of
-    cause. The refusal is logged without the login name: a failed login
-    field routinely contains a password typed into the wrong box, so the
-    attempted identifier never reaches the log stream.
+    Rejection is the one generic ``invalidCredentials`` 401 regardless of
+    which credential was wrong; a CRM outage is the distinct
+    ``crmUnavailable`` 503 — the credentials were never judged, and that
+    must never read as a wrong password. The refusal is logged without the
+    login name: a failed login field routinely contains a password typed
+    into the wrong box, so the attempted identifier never reaches the log
+    stream.
     """
-    identity = verifier.verify(body.login_name, body.password)
-    if identity is None:
+    try:
+        identity = verifier.verify(body.login_name, body.password)
+    except CredentialsRejectedError:
         log.info("login refused")
-        raise InvalidCredentialsError()
+        raise InvalidCredentialsError() from None
+    except CrmAuthUnavailableError as exc:
+        raise CrmUnavailableError() from exc
     reference, _record = sessions.establish(identity)
     return ok(data=_session_payload(reference, identity))
 
@@ -190,19 +225,28 @@ def reauth(
     session. Credentials are checked before the session is touched, so the
     ``invalidCredentials`` refusal is identical whether or not the reference
     is live. A dead session (ended, or grace lapsed) answers the generic
-    ``unauthenticated`` 401 — fresh login required; presenting another
-    user's valid credentials reads exactly like a wrong password.
+    ``unauthenticated`` 401 — fresh login required. Presenting another
+    user's VALID credentials is the distinct ``reauthIdentityMismatch``
+    refusal: the session's owner is already on the caller's screen, so the
+    precise code discloses nothing and the session stays revivable by the
+    right user.
     """
-    identity = verifier.verify(body.login_name, body.password)
-    if identity is None:
+    try:
+        identity = verifier.verify(body.login_name, body.password)
+    except CredentialsRejectedError:
         log.info("reauth refused")
-        raise InvalidCredentialsError()
+        raise InvalidCredentialsError() from None
+    except CrmAuthUnavailableError as exc:
+        raise CrmUnavailableError() from exc
     try:
         session_id = sessions.resolve(body.session_reference).session_id
     except ReauthRequiredError as exc:
         # The expired-but-revivable state this endpoint exists for.
         session_id = exc.session_id
-    reference = sessions.reauthenticate(session_id, identity)
+    try:
+        reference = sessions.reauthenticate(session_id, identity)
+    except IdentityMismatchError:
+        raise ReauthIdentityMismatchError() from None
     return ok(data=_session_payload(reference, identity))
 
 
@@ -213,12 +257,17 @@ def forgot_password(
 ) -> Envelope:
     """Start a password reset; the answer never says whether the account exists.
 
-    The seam owns lookup, token mint, and the email job (see
+    The seam forwards to the CRM's own connected recovery flow (see
     :class:`ForgotPasswordFlow`); this endpoint's whole contract is the
-    constant response. Reset links land the recipient on action-token
-    redemption — no credential or session state changes here.
+    constant response. Reset links land the recipient on the CRM's own flow,
+    not app action-token redemption — no app credential or session state
+    changes here. Only a CRM outage breaks the constant answer (503, which
+    says nothing about any account).
     """
-    flow.initiate(body.login_name)
+    try:
+        flow.initiate(body.login_name, body.email_address)
+    except CrmAuthUnavailableError as exc:
+        raise CrmUnavailableError() from exc
     return ok(data={"resetRequestAccepted": True})
 
 

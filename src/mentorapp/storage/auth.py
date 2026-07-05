@@ -1,19 +1,21 @@
 """Auth and access entities: users, sessions, action tokens, and data-source grants.
 
-Persistence model for authentication and authorization (WTK-001). ``appUser``
-is the app-local identity anchored to the CRM system of record via
-``crmUserID``; ``authSession`` is the server-side session behind the opaque
-cookie reference; ``actionToken`` is the single-purpose signed token (invite,
-password reset, magic link) with a use counter; ``accessGrant`` names a user's
-app-level capabilities; ``dataSource`` persists the admin-authored SQL sources
-that ``mentorapp.storage.adminsql`` executes, including the DB-S9 user-row
-scoping declaration (``userRowFilter``).
+Persistence model for authentication and authorization (WTK-001, reconciled
+to the WTK-002/WTK-003 processes). ``appUser`` is the app-local identity
+anchored to the CRM system of record via ``crmUserID``; ``authSession`` is
+the persisted form of the SessionManagement record (``access/sessions.py``)
+behind the opaque cookie reference; ``actionToken`` is the single-purpose
+token (invite, magic link) with a use budget, ``tokenAuditEvent`` its
+append-only mint/redeem/revoke trail; ``accessGrant`` names a user's
+app-level capabilities; ``dataSource`` persists the admin-authored SQL
+sources that ``mentorapp.storage.adminsql`` executes, including the DB-S9
+user-row scoping declaration (``userRowFilter``).
 
 Associations: ``userCrmAccount`` maps a user to the CRM accounts they act
 over (CRM identifiers are soft references — the CRM is the system of record,
-so there is nothing local to foreign-key); ``userDataSourceGrant`` is the
-per-source run permission the read-surface standard names as the security
-boundary for admin SQL.
+so there is nothing local to foreign-key); ``dataSourceRoleGrant`` is the
+per-source, role-keyed run permission the read-surface standard names as the
+security boundary for admin SQL.
 
 These are platform tables (``StructuralColumnsMixin`` + ``Base``, not
 ``BaseEntity``): like the registry, jobs, and the feed they get no registry
@@ -29,7 +31,7 @@ from datetime import datetime
 from sqlalchemy import DateTime, ForeignKey, Index, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from mentorapp.storage.base import Base, StructuralColumnsMixin, utcnow, uuid7
+from mentorapp.storage.base import Base, JsonValue, StructuralColumnsMixin, utcnow, uuid7
 
 # Same partial live-row predicate as models.py (DB-S3): unique constraints and
 # lookup indexes never pay for soft-deleted rows or collide with corpses.
@@ -70,26 +72,20 @@ class AppUser(StructuralColumnsMixin, Base):
 
 
 class AuthSession(StructuralColumnsMixin, Base):
-    """One server-side login session behind an opaque client-held reference.
+    """One server-side login session — the persisted SessionManagement record.
 
-    The client holds only ``sessionOpaqueReference`` — a random lookup value
-    with no derivable meaning; the row is the session state. A session ends
-    three ways: the absolute cap ``sessionExpiresAt`` passes, it idles past
-    ``sessionIdleTimeoutSeconds`` since ``sessionLastSeenAt``, or it is
-    revoked (``sessionRevokedFlag`` — an explicit flag, not a soft delete, so
-    revocation is queryable state distinct from record lifecycle).
+    ``authSessionID`` IS the process's ``session_id``: the client-visible half
+    of the reference ``<sessionID hex>.<secret>`` (``access/sessions.py``,
+    WTK-002 — the authority on reference handling). Lookup is by primary key,
+    never by a stored reference — the row keeps only ``sessionSecretHash``,
+    so a leaked table yields no usable references. Idle timeout is
+    SessionManagement service configuration, not per-row state; the row
+    carries only what must survive the process (state, deadlines, roles, and
+    the encrypted CRM credential).
     """
 
     __tablename__ = "authSession"
     __table_args__ = (
-        # The per-request lookup: cookie reference → session row.
-        Index(
-            "uq_authSession_opaqueReference_live",
-            "sessionOpaqueReference",
-            unique=True,
-            sqlite_where=_LIVE,
-            postgresql_where=_LIVE,
-        ),
         # The revocation sweep: every session of one user (logout-everywhere).
         Index(
             "ix_authSession_userID_live",
@@ -105,46 +101,62 @@ class AuthSession(StructuralColumnsMixin, Base):
     user_id: Mapped[uuid.UUID] = mapped_column(
         "userID", ForeignKey("appUser.userID"), nullable=False
     )
-    session_opaque_reference: Mapped[str] = mapped_column(
-        "sessionOpaqueReference", String(200), nullable=False
+    # SHA-256 hex of the reference secret; the store never holds the raw
+    # secret. Not unique — the secret is 256 random bits and lookup is by PK.
+    session_secret_hash: Mapped[str] = mapped_column(
+        "sessionSecretHash", String(64), nullable=False
+    )
+    # Vocabulary active/reauthPending/ended — data validated by the process,
+    # not a DB enum (DB-S7). The REQ-005 dirty-window guard and one-relogin-
+    # restores-all-windows require the revivable REAUTH_PENDING state to be
+    # persistent, which is why this is a state, not a revoked flag.
+    session_state: Mapped[str] = mapped_column(
+        "sessionState", String(20), nullable=False, default="active"
     )
     session_expires_at: Mapped[datetime] = mapped_column(
         "sessionExpiresAt", DateTime(timezone=True), nullable=False
     )
-    session_idle_timeout_seconds: Mapped[int] = mapped_column(
-        "sessionIdleTimeoutSeconds", nullable=False
+    # Non-null only in reauthPending: the grace deadline after which the
+    # session is unrevivable and ends.
+    session_reauth_deadline: Mapped[datetime | None] = mapped_column(
+        "sessionReauthDeadline", DateTime(timezone=True), default=None
     )
     # Idle timeout is only enforceable against a last-activity stamp; the API
     # refreshes this on every authenticated request.
     session_last_seen_at: Mapped[datetime] = mapped_column(
         "sessionLastSeenAt", DateTime(timezone=True), nullable=False, default=utcnow
     )
-    session_revoked_flag: Mapped[bool] = mapped_column(
-        "sessionRevokedFlag", nullable=False, default=False
+    # Role names captured at login. Roles are session-scoped, refreshed at
+    # each login/reauth — there is no persistent user-role table; the CRM is
+    # the role source.
+    session_role_names: Mapped[list[str] | None] = mapped_column(
+        "sessionRoleNames", JsonValue, default=None
+    )
+    # The CRM-issued act-as-user token, AEAD-encrypted under a server key
+    # (same key-management family as the token signing key); never plaintext,
+    # never in any read view; null once the session ends (the WTK-003/FND-006
+    # custody decision: the session owns the credential).
+    crm_credential_encrypted: Mapped[str | None] = mapped_column(
+        "crmCredentialEncrypted", Text(), default=None
     )
 
 
 class ActionToken(StructuralColumnsMixin, Base):
-    """One single-purpose signed token: invite, reset, verification, magic link.
+    """One single-purpose signed token: invite, verification, magic link.
 
-    ``tokenIdentity`` is who the token asserts (typically an email address —
-    it can predate any ``appUser`` row, so it is a value, not a foreign key).
-    ``tokenSignature`` is the server-computed MAC the presented token must
-    match; ``tokenUseCount`` counts redemptions so single-use enforcement is
-    an increment-and-check, never a delete (the row is the audit trail).
+    ``tokenIdentity`` is who the token asserts (WTK-001 is the authority
+    here: email-shaped, it may predate any ``appUser`` row, so it is a value,
+    not a foreign key); ``userID`` is bound only when the identity already
+    resolves to a user (e.g. a password-less magic link for an existing
+    account). No signature is stored: the HMAC is recomputed from the server
+    signing key on every presentation and lookup is by the primary key
+    ``actionTokenID`` (WTK-002 ``tokens.py`` is the authority). Use budget
+    and revocation live on the row (``tokenMaxUses``/``tokenUseCount``,
+    ``tokenRevokedAt``) so enforcement is an increment-and-check, never a
+    delete.
     """
 
     __tablename__ = "actionToken"
-    __table_args__ = (
-        # The redemption lookup: presented token → row, live rows only.
-        Index(
-            "uq_actionToken_signature_live",
-            "tokenSignature",
-            unique=True,
-            sqlite_where=_LIVE,
-            postgresql_where=_LIVE,
-        ),
-    )
 
     action_token_id: Mapped[uuid.UUID] = mapped_column(
         "actionTokenID", primary_key=True, default=uuid7
@@ -152,11 +164,51 @@ class ActionToken(StructuralColumnsMixin, Base):
     token_action: Mapped[str] = mapped_column("tokenAction", String(100), nullable=False)
     # 320 covers the maximal RFC email shape, the common identity here.
     token_identity: Mapped[str] = mapped_column("tokenIdentity", String(320), nullable=False)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        "userID", ForeignKey("appUser.userID"), default=None
+    )
     token_expires_at: Mapped[datetime] = mapped_column(
         "tokenExpiresAt", DateTime(timezone=True), nullable=False
     )
-    token_signature: Mapped[str] = mapped_column("tokenSignature", String(500), nullable=False)
+    token_max_uses: Mapped[int] = mapped_column("tokenMaxUses", nullable=False, default=1)
     token_use_count: Mapped[int] = mapped_column("tokenUseCount", nullable=False, default=0)
+    token_revoked_at: Mapped[datetime | None] = mapped_column(
+        "tokenRevokedAt", DateTime(timezone=True), default=None
+    )
+
+
+class TokenAuditEvent(StructuralColumnsMixin, Base):
+    """One accountable moment in a token's life: minted, redeemed, or revoked.
+
+    Append-only: every mint, redemption, and revocation appends exactly one
+    row — the audit trail is part of the token contract (WTK-002), which
+    supersedes WTK-001's "the row is the audit trail". Rows are never
+    updated or deleted; the token's current state lives on ``actionToken``,
+    its history lives here.
+    """
+
+    __tablename__ = "tokenAuditEvent"
+    __table_args__ = (
+        # The trail read: every event of one token, in insertion order.
+        Index(
+            "ix_tokenAuditEvent_actionTokenID_live",
+            "actionTokenID",
+            sqlite_where=_LIVE,
+            postgresql_where=_LIVE,
+        ),
+    )
+
+    token_audit_event_id: Mapped[uuid.UUID] = mapped_column(
+        "tokenAuditEventID", primary_key=True, default=uuid7
+    )
+    action_token_id: Mapped[uuid.UUID] = mapped_column(
+        "actionTokenID", ForeignKey("actionToken.actionTokenID"), nullable=False
+    )
+    # minted/redeemed/revoked — process vocabulary, not a DB enum (DB-S7).
+    token_event_name: Mapped[str] = mapped_column("tokenEventName", String(50), nullable=False)
+    token_event_occurred_at: Mapped[datetime] = mapped_column(
+        "tokenEventOccurredAt", DateTime(timezone=True), nullable=False
+    )
 
 
 class AccessGrant(StructuralColumnsMixin, Base):
@@ -254,40 +306,42 @@ class UserCrmAccount(StructuralColumnsMixin, Base):
     crm_account_id: Mapped[str] = mapped_column("crmAccountID", String(100), nullable=False)
 
 
-class UserDataSourceGrant(StructuralColumnsMixin, Base):
-    """The user ↔ data-source run permission — admin SQL's security boundary.
+class DataSourceRoleGrant(StructuralColumnsMixin, Base):
+    """The role ↔ data-source run permission — admin SQL's security boundary.
 
-    The read-surface standard places per-source grants in app tables; a live
-    row here is what lets a user run that source. Revoking is a soft delete,
-    so the grant history survives.
+    The read-surface standard (SKL-120/DB-S9) keys per-source grants by STAFF
+    ROLE — "which staff roles may run a data source... that is the security
+    boundary" — matching ``access/grants.py`` ``SourceGrant``/``GrantLookup``.
+    A user's roles come from the session (captured from the CRM at login), so
+    a live row here is what lets any holder of ``roleName`` run the source;
+    deny-by-default means a source with no grant rows is closed to everyone.
+    Revoking is a soft delete, so the grant history survives.
     """
 
-    __tablename__ = "userDataSourceGrant"
+    __tablename__ = "dataSourceRoleGrant"
     __table_args__ = (
         Index(
-            "uq_userDataSourceGrant_user_source_live",
-            "userID",
+            "uq_dataSourceRoleGrant_source_role_live",
             "dataSourceID",
+            "roleName",
             unique=True,
             sqlite_where=_LIVE,
             postgresql_where=_LIVE,
         ),
-        # The admin read "who may run this source"; the unique above leads
-        # with userID so it cannot serve this scan.
+        # The admin read "what may this role run"; the unique above leads
+        # with dataSourceID so it cannot serve this scan.
         Index(
-            "ix_userDataSourceGrant_dataSourceID_live",
-            "dataSourceID",
+            "ix_dataSourceRoleGrant_roleName_live",
+            "roleName",
             sqlite_where=_LIVE,
             postgresql_where=_LIVE,
         ),
     )
 
-    user_data_source_grant_id: Mapped[uuid.UUID] = mapped_column(
-        "userDataSourceGrantID", primary_key=True, default=uuid7
-    )
-    user_id: Mapped[uuid.UUID] = mapped_column(
-        "userID", ForeignKey("appUser.userID"), nullable=False
+    data_source_role_grant_id: Mapped[uuid.UUID] = mapped_column(
+        "dataSourceRoleGrantID", primary_key=True, default=uuid7
     )
     data_source_id: Mapped[uuid.UUID] = mapped_column(
         "dataSourceID", ForeignKey("dataSource.dataSourceID"), nullable=False
     )
+    role_name: Mapped[str] = mapped_column("roleName", String(100), nullable=False)

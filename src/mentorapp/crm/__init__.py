@@ -13,8 +13,8 @@ from mentorapp.crm.auth import (
     CrmCredentialExpiredError,
     CrmUnavailableError,
     CrmUserCredential,
+    CrmVerifiedIdentity,
     ForgotPassword,
-    VerifiedIdentity,
 )
 from mentorapp.crm.espo import (
     EspoAuthGateway,
@@ -31,10 +31,10 @@ __all__ = [
     "CrmCredentialExpiredError",
     "CrmUnavailableError",
     "CrmUserCredential",
+    "CrmVerifiedIdentity",
     "EspoAuthGateway",
     "EspoOperationRejectedError",
     "EspoResponse",
     "EspoTransport",
     "ForgotPassword",
-    "VerifiedIdentity",
 ]

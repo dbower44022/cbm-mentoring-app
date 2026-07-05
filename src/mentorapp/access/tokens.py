@@ -53,13 +53,20 @@ class TokenExhaustedError(TokenActionError):
 
 @dataclass
 class TokenActionRecord:
-    """The server-side truth about one action link."""
+    """The server-side truth about one action link.
+
+    ``token_identity`` is who the token asserts — email-shaped, a value that
+    may predate any ``appUser`` row (WTK-001), so it is never a foreign key.
+    ``user_id`` is bound only when the identity already resolves to a user
+    (e.g. a password-less magic link for an existing account).
+    """
 
     token_action_id: uuid.UUID
-    user_id: uuid.UUID
+    token_identity: str
     action_name: str
     expires_at: datetime
     max_uses: int
+    user_id: uuid.UUID | None = None
     use_count: int = 0
     revoked_at: datetime | None = None
 
@@ -119,21 +126,28 @@ class TokenActionService:
     def mint(
         self,
         *,
-        user_id: uuid.UUID,
+        token_identity: str,
         action_name: str,
         expires_at: datetime,
         max_uses: int = 1,
+        user_id: uuid.UUID | None = None,
     ) -> str:
-        """Create a token bound to one identity and one action; return the link token."""
+        """Create a token bound to one identity and one action; return the link token.
+
+        ``token_identity`` is the asserted identity (email-shaped; it need
+        not name an existing account); pass ``user_id`` only when the
+        identity already resolves to an ``appUser`` row.
+        """
         if max_uses < 1:
             raise ValueError("max_uses must be at least 1")
         token_action_id = uuid7()
         record = TokenActionRecord(
             token_action_id=token_action_id,
-            user_id=user_id,
+            token_identity=token_identity,
             action_name=action_name,
             expires_at=expires_at,
             max_uses=max_uses,
+            user_id=user_id,
         )
         self._store.save(record)
         self._audit(record, "minted")
@@ -201,13 +215,15 @@ class TokenActionService:
                 occurred_at=self._now(),
             )
         )
+        # The log context deliberately omits the token identity: identities
+        # are email addresses, and PII stays out of the log stream. The
+        # tokenActionID is enough to join back to the audit trail.
         log.info(
             "token action " + event_name,
             extra={
                 "context": {
                     "tokenActionID": str(record.token_action_id),
                     "actionName": record.action_name,
-                    "userID": str(record.user_id),
                     "useCount": record.use_count,
                 }
             },
