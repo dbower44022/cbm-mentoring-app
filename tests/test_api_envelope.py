@@ -40,6 +40,7 @@ from mentorapp.api.routers.auth import (
     get_session_management,
     get_token_actions,
 )
+from mentorapp.api.routers.grids import get_grid_entity_catalog
 from mentorapp.api.routers.home import get_home_catalog, get_message_center
 from mentorapp.api.routers.records import get_record_catalog
 from mentorapp.api.routers.shell import get_shell_catalog
@@ -212,6 +213,13 @@ class _SweepRecordCatalog:
         return None
 
 
+class _SweepGridCatalog:
+    """Know no entity-backed data sources — the sweep only needs a wired backend."""
+
+    def entity_for(self, data_source_key: str) -> tuple[str, type] | None:
+        return None
+
+
 class _SweepShellCatalog:
     """Know no panels, views, or grants — the sweep only needs a wired backend."""
 
@@ -256,6 +264,9 @@ def mounted_client(session: Session) -> TestClient:
     # The record catalog is fail-loud until the domain entities wire it
     # (WTK-029); same treatment as the seams above.
     app.dependency_overrides[get_record_catalog] = _SweepRecordCatalog
+    # The grid entity catalog is fail-loud until the grids wiring lands
+    # (WTK-047); same treatment as the seams above.
+    app.dependency_overrides[get_grid_entity_catalog] = _SweepGridCatalog
     # The shell catalog is fail-loud until the panel catalog wires it
     # (WTK-035); same treatment as the seams above.
     app.dependency_overrides[get_shell_catalog] = _SweepShellCatalog
