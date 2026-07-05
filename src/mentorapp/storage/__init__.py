@@ -38,6 +38,17 @@ from mentorapp.storage.entity import (
     live_index,
     live_unique,
 )
+from mentorapp.storage.grids import (
+    SORT_DIRECTIONS,
+    VIEW_TYPES,
+    Grid,
+    GridDeepLink,
+    GridLastUsedView,
+    GridSessionState,
+    GridState,
+    GridView,
+    SortSpec,
+)
 from mentorapp.storage.ids import uuid7, uuid7_created_at
 from mentorapp.storage.messages import AdminMessage, AdminMessageReceipt
 from mentorapp.storage.models import (
@@ -85,7 +96,9 @@ __all__ = [
     "JOB_STATUSES",
     "NOTIFICATION_TYPES",
     "SELECTION_CONTRACTS",
+    "SORT_DIRECTIONS",
     "STRUCTURAL_COLUMN_NAMES",
+    "VIEW_TYPES",
     "AccessGrant",
     "ActionToken",
     "AdminMessage",
@@ -104,6 +117,12 @@ __all__ = [
     "DriftFinding",
     "DuplicateOverride",
     "FieldChange",
+    "Grid",
+    "GridDeepLink",
+    "GridLastUsedView",
+    "GridSessionState",
+    "GridState",
+    "GridView",
     "Notification",
     "OptionSet",
     "OptionValue",
@@ -112,6 +131,7 @@ __all__ = [
     "RegistrySeedResult",
     "SchemaDriftError",
     "SchemaRegistry",
+    "SortSpec",
     "StructuralColumnsMixin",
     "TokenAuditEvent",
     "UserCrmAccount",

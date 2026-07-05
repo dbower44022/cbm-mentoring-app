@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import DateTime, ForeignKey, Index, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column
@@ -274,6 +275,17 @@ class DataSource(StructuralColumnsMixin, Base):
     data_source_sql: Mapped[str] = mapped_column("dataSourceSql", Text(), nullable=False)
     user_row_filter: Mapped[str | None] = mapped_column(
         "userRowFilter", String(200), default=None
+    )
+    # REQ-019 authoring modes (WTK-041): null = authored as raw SQL; non-null
+    # = the visual-builder document (joins, filters, calculated fields) that
+    # compiles into dataSourceSql — the SQL stays the one executable form.
+    visual_query_definition: Mapped[dict[str, Any] | None] = mapped_column(
+        "visualQueryDefinition", JsonValue, default=None
+    )
+    # The fields the source exposes — the bound on what its views may display
+    # and sort (REQ-019); the API validates gridView writes against this list.
+    exposed_fields: Mapped[list[str]] = mapped_column(
+        "exposedFields", JsonValue, nullable=False, default=list
     )
 
 
