@@ -1,11 +1,26 @@
 #!/usr/bin/env bash
-# Governance enforcement gate — pre-push backstop (REQ-320 / PI-287).
-# Re-validates every code-touching, non-merge commit in the pushed range.
+# Governance enforcement gate — pre-push backstop for the CBM Mentoring App
+# repo (ENG-004). Re-validates every code-touching, non-merge commit in the
+# pushed range against the cloud store via the crmbuilder installation's gate
+# module (same wiring as commit-msg). Mode: CRMBUILDER_GOVERNANCE_GATE =
+# off | warn (default) | enforce. Resilient per REQ-449: tooling breakage
+# (missing checkout/venv/module) degrades to allow with a warning; only the
+# validator's own verdict blocks (in enforce mode).
 mode="${CRMBUILDER_GOVERNANCE_GATE:-warn}"
 [ "$mode" = "off" ] && exit 0
-root="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
-py="$root/.venv/bin/python3"
-[ -x "$py" ] || py="$(command -v python3 || true)"
-[ -x "$py" ] || exit 0
-PYTHONPATH="$root/crmbuilder-v2/src${PYTHONPATH:+:$PYTHONPATH}" \
-  "$py" -m crmbuilder_v2.governance_gate pre-push --mode "$mode"
+CRM_ROOT="${CRMBUILDER_REPO:-/home/doug/Dropbox/Projects/crmbuilder}"
+CRM_ENV="$CRM_ROOT/crmbuilder-v2/data/crmbuilder.env"
+set -a
+[ -f "$CRM_ENV" ] && . "$CRM_ENV"
+set +a
+export CRMBUILDER_V2_API_BASE="${CRMBUILDER_V2_API_BASE_URL:-https://api.crmbuilder.ai}"
+export CRMBUILDER_V2_GATE_TOKEN="${CRMBUILDER_V2_API_TOKEN:-}"
+export CRMBUILDER_V2_GATE_ENGAGEMENT="ENG-004"
+py="$CRM_ROOT/.venv/bin/python3"
+[ -x "$py" ] || { echo "[governance-gate] crmbuilder venv missing — skipping" >&2; exit 0; }
+export PYTHONPATH="$CRM_ROOT/crmbuilder-v2/src${PYTHONPATH:+:$PYTHONPATH}"
+"$py" -c "import crmbuilder_v2.governance_gate" 2>/dev/null || {
+  echo "[governance-gate] gate module unavailable — skipping (REQ-449 degrade)" >&2
+  exit 0
+}
+exec "$py" -m crmbuilder_v2.governance_gate pre-push --mode "$mode"
