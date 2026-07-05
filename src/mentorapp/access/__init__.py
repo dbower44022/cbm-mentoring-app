@@ -9,6 +9,10 @@ identity bridge they all stand on:
 - :mod:`~mentorapp.access.grants` — DataSourceAccessControl (REQ-006):
   per-source role grants as the approval boundary, composed with the
   admin-SQL executor's server-bound user row filter.
+- :mod:`~mentorapp.access.areas` — UserAreaAccess (WTK-025, REQ-003/REQ-015):
+  which Areas a user may enter, derived from the same grant boundary — the
+  ``accessible_panel_keys`` input the Home rail and the startup/deep-link
+  fallbacks consume; never a second per-user assignment table.
 - :mod:`~mentorapp.access.sessions` — SessionManagement (REQ-005):
   server-side sessions behind an opaque browser reference, with in-place
   re-authentication, the dirty-window guard, and cross-window logout.
@@ -27,6 +31,12 @@ here too (WTK-007): :class:`StoredGrantRegistry` over the WTK-001 rows,
 with :func:`run_stored_data_source` as the API-facing entry point.
 """
 
+from mentorapp.access.areas import (
+    AreaDescriptor,
+    accessible_area_keys,
+    authorize_area,
+    is_area_accessible,
+)
 from mentorapp.access.credentials import CredentialCipher, CredentialSealError
 from mentorapp.access.grants import (
     DataSourceAccessError,
@@ -38,6 +48,7 @@ from mentorapp.access.grants import (
     grant_data_source_role,
     load_stored_source,
     revoke_data_source_role,
+    roles_cover_data_source,
     run_data_source,
     run_stored_data_source,
 )
@@ -69,6 +80,7 @@ from mentorapp.access.tokens import (
 from mentorapp.access.verification import CrmCredentialVerifier, CrmForgotPasswordFlow
 
 __all__ = [
+    "AreaDescriptor",
     "CredentialCipher",
     "CredentialSealError",
     "CrmCredentialVerifier",
@@ -101,10 +113,14 @@ __all__ = [
     "TokenInvalidError",
     "TokenRevokedError",
     "VerifiedIdentity",
+    "accessible_area_keys",
+    "authorize_area",
     "authorize_data_source",
     "grant_data_source_role",
+    "is_area_accessible",
     "load_stored_source",
     "revoke_data_source_role",
+    "roles_cover_data_source",
     "run_data_source",
     "run_stored_data_source",
 ]

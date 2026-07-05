@@ -72,6 +72,20 @@ class InMemoryGrantRegistry:
         )
 
 
+def roles_cover_data_source(
+    lookup: GrantLookup, *, data_source_key: str, user_roles: frozenset[str]
+) -> bool:
+    """Whether any of the user's roles is granted on the source.
+
+    The one grant decision, in its quiet form: deriving what to SHOW (the
+    Areas rail, WTK-025) asks this once per area on every render, where a
+    miss means "not yours to see" — not the audit-relevant denial an actual
+    open attempt is. :func:`authorize_data_source` wraps this same decision
+    with the denial log and typed error for the attempt path.
+    """
+    return bool(user_roles & lookup.roles_granted(data_source_key))
+
+
 def authorize_data_source(
     lookup: GrantLookup,
     *,
@@ -84,9 +98,9 @@ def authorize_data_source(
     Denials are logged with the source and user — the grant list is the
     security boundary, so refusals are an audit-relevant signal, not noise.
     """
-    granted = lookup.roles_granted(data_source_key)
-    if user_roles & granted:
+    if roles_cover_data_source(lookup, data_source_key=data_source_key, user_roles=user_roles):
         return
+    granted = lookup.roles_granted(data_source_key)
     log.info(
         "data source access denied",
         extra={
