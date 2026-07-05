@@ -15,6 +15,9 @@ identity bridge they all stand on:
 - :mod:`~mentorapp.access.tokens` — TokenAction (REQ-007): signed expiring
   action links, use-accounted server-side, with a full mint/redeem/revoke
   audit trail.
+- :mod:`~mentorapp.access.verification` — the wired login seams (REQ-008):
+  CRM credential verification composed with the identity bridge into the
+  auth endpoints' verifier, and the CRM-connected forgot-password flow.
 
 Persistence of grant/session/token records is the storage layer's design
 (WTK-001); these processes speak to it through the narrow store protocols
@@ -63,10 +66,13 @@ from mentorapp.access.tokens import (
     TokenInvalidError,
     TokenRevokedError,
 )
+from mentorapp.access.verification import CrmCredentialVerifier, CrmForgotPasswordFlow
 
 __all__ = [
     "CredentialCipher",
     "CredentialSealError",
+    "CrmCredentialVerifier",
+    "CrmForgotPasswordFlow",
     "DataSourceAccessError",
     "DataSourceNotFoundError",
     "IdentityBridge",
