@@ -129,9 +129,7 @@ def client(session: Session) -> TestClient:
 
 
 def _rows(client: TestClient, view_id: uuid.UUID, **params: Any) -> dict[str, Any]:
-    response = client.get(
-        f"/grids/{GRID_KEY}/rows", params={"view_id": str(view_id), **params}
-    )
+    response = client.get(f"/grids/{GRID_KEY}/rows", params={"view_id": str(view_id), **params})
     assert response.status_code == 200, response.text
     return response.json()
 
@@ -189,12 +187,8 @@ def test_recent_searches_stack_most_recent_first(
     assert body["meta"]["recentSearches"] == ["eug", "lan"]
 
 
-def test_aggregates_span_the_whole_filtered_set(
-    client: TestClient, view_id: uuid.UUID
-) -> None:
-    response = client.get(
-        f"/grids/{GRID_KEY}/aggregates", params={"view_id": str(view_id)}
-    )
+def test_aggregates_span_the_whole_filtered_set(client: TestClient, view_id: uuid.UUID) -> None:
+    response = client.get(f"/grids/{GRID_KEY}/aggregates", params={"view_id": str(view_id)})
     assert response.status_code == 200, response.text
     data = response.json()["data"]
     # Never cursor-bounded: 3 live OR rows whatever the page size was.
@@ -290,12 +284,8 @@ def test_print_enqueues_without_a_format_choice(
 def test_unknown_grid_and_mismatched_view_are_honest_404s(
     client: TestClient, view_id: uuid.UUID
 ) -> None:
+    assert client.get("/grids/nope/rows", params={"view_id": str(view_id)}).status_code == 404
     assert (
-        client.get("/grids/nope/rows", params={"view_id": str(view_id)}).status_code == 404
-    )
-    assert (
-        client.get(
-            f"/grids/{GRID_KEY}/rows", params={"view_id": str(uuid7())}
-        ).status_code
+        client.get(f"/grids/{GRID_KEY}/rows", params={"view_id": str(uuid7())}).status_code
         == 404
     )

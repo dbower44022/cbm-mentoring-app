@@ -193,8 +193,12 @@ def _view_predicates(
     entity_type: str,
     entity_cls: type[Any],
     search: str,
-) -> list[ColumnElement[bool]]:
-    """View filters + the optional search predicate ON TOP — never instead (REQ-020)."""
+) -> tuple[list[ColumnElement[bool]], bool]:
+    """View filters + the optional search predicate ON TOP — never instead (REQ-020).
+
+    Returns ``(predicates, search_applied)`` — ``search_applied`` is False for
+    sub-minimum text, which simply never armed the search.
+    """
     predicates = view_filter_predicates(entity_cls, view.view_filters)
     search_predicate = grid_search_filter(
         session,
@@ -205,7 +209,7 @@ def _view_predicates(
     )
     if search_predicate is not None:
         predicates.append(search_predicate)
-    return predicates
+    return predicates, search_predicate is not None
 
 
 def _remember_recent_search(
@@ -269,8 +273,9 @@ def get_grid_rows(
     """
     view = _live_grid_and_view(session, grid_key, view_id)
     entity_type, entity_cls = _view_entity(session, view, catalog)
-    predicates = _view_predicates(session, view, entity_type, entity_cls, search)
-    search_applied = len(predicates) > len(view_filter_predicates(entity_cls, view.view_filters))
+    predicates, search_applied = _view_predicates(
+        session, view, entity_type, entity_cls, search
+    )
     specs = view.sort_specs
     sort_field = specs[0].sort_field_name if specs else primary_key_field(entity_cls)[0]
     rows, next_cursor = keyset_page(
@@ -314,7 +319,7 @@ def get_grid_aggregates(
     """
     view = _live_grid_and_view(session, grid_key, view_id)
     entity_type, entity_cls = _view_entity(session, view, catalog)
-    predicates = _view_predicates(session, view, entity_type, entity_cls, search)
+    predicates, _ = _view_predicates(session, view, entity_type, entity_cls, search)
     specs = [
         AggregateSpec(entry["function"], entry["fieldName"])
         for entry in (view.view_aggregates or [])
@@ -340,9 +345,7 @@ def get_grid_aggregates(
         if group_fields
         else None
     )
-    return ok(
-        data={"totalCount": total_count, "aggregates": totals, "groupRows": group_rows}
-    )
+    return ok(data={"totalCount": total_count, "aggregates": totals, "groupRows": group_rows})
 
 
 class GridPrintBody(BaseModel):
