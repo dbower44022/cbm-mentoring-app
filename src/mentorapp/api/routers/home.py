@@ -47,7 +47,6 @@ from mentorapp.api.envelope import Envelope, field_error, ok
 from mentorapp.api.errors import ApiValidationError, RecordNotFoundError
 from mentorapp.observability import get_logger
 from mentorapp.storage import UserPreference, utcnow, uuid7
-from mentorapp.ui.auth_flows import EducateMessage
 from mentorapp.ui.home_panel import (
     HOME_DASHLETS_PREFERENCE_KEY,
     HOME_FRAME,
@@ -110,16 +109,6 @@ _SessionDep = Annotated[Session, Depends(get_session)]
 _UserDep = Annotated[uuid.UUID, Depends(get_current_user_id)]
 _CatalogDep = Annotated[HomeCatalog, Depends(get_home_catalog)]
 _CenterDep = Annotated[MessageCenter, Depends(get_message_center)]
-
-
-def _educate_payload(notice: EducateMessage | None) -> dict[str, str] | None:
-    if notice is None:
-        return None
-    return {
-        "whatHappened": notice.what_happened,
-        "why": notice.why,
-        "whatNext": notice.what_next,
-    }
 
 
 def _frame_payload() -> dict[str, Any]:
@@ -217,7 +206,7 @@ def get_home(
                 {
                     "viewKey": d.view_key,
                     "title": d.title,
-                    "notice": _educate_payload(d.notice),
+                    "notice": d.notice.as_payload() if d.notice else None,
                 }
                 for d in dashlets
             ],
