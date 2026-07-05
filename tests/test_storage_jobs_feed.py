@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import timedelta
 
 import pytest
-from sqlalchemy import or_, select, tuple_
+from sqlalchemy import func, or_, select, tuple_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -221,6 +221,91 @@ def test_bell_reads_split_unread_from_read(session: Session) -> None:
         )
     )
     assert unread_ids == {unread.notification_id}
+
+
+def test_bell_list_is_scoped_to_one_user_and_speaks_the_type_vocabulary(
+    session: Session,
+) -> None:
+    mentor = _mentor_user(session, "mentor-a")
+    neighbor = _mentor_user(session, "mentor-b")
+    session.add_all(
+        [
+            Notification(
+                user_id=mentor.user_id,
+                notification_type="jobCompleted",
+                notification_message="Your export is ready.",
+            ),
+            Notification(
+                user_id=mentor.user_id,
+                notification_type="jobFailed",
+                notification_message="The export could not finish; try a smaller date range.",
+            ),
+            Notification(
+                user_id=neighbor.user_id,
+                notification_type="jobCompleted",
+                notification_message="A different mentor's export.",
+            ),
+        ]
+    )
+    session.commit()
+
+    # The bell list read (REQ-014): one user's live entries — a mentor can
+    # never see a peer's notifications, and every entry carries its type so
+    # the bell can render success and failure entries differently.
+    bell = session.scalars(
+        select(Notification).where(
+            Notification.user_id == mentor.user_id,
+            Notification.deleted_at.is_(None),
+        )
+    ).all()
+    assert len(bell) == 2
+    assert {n.notification_type for n in bell} == {"jobCompleted", "jobFailed"}
+    assert {n.notification_type for n in bell} <= set(NOTIFICATION_TYPES)
+
+
+def test_read_on_view_stamps_entries_and_clears_the_badge(session: Session) -> None:
+    user = _mentor_user(session)
+    entries = [
+        Notification(
+            user_id=user.user_id,
+            notification_type="jobCompleted",
+            notification_message=f"Export {n} is ready.",
+        )
+        for n in range(2)
+    ]
+    session.add_all(entries)
+    session.commit()
+    versions_before = {e.notification_id: e.row_version for e in entries}
+
+    def badge_count() -> int:
+        return (
+            session.scalar(
+                select(func.count())
+                .select_from(Notification)
+                .where(
+                    Notification.user_id == user.user_id,
+                    Notification.deleted_at.is_(None),
+                    Notification.read_at.is_(None),
+                )
+            )
+            or 0
+        )
+
+    assert badge_count() == 2
+
+    # Viewing the bell stamps readAt (REQ-014): the entries stay live in the
+    # list — only the badge predicate stops matching them — and the stamp is
+    # a versioned update like any other write (DB-S4), never a delete.
+    viewed_at = utcnow()
+    for entry in entries:
+        entry.read_at = viewed_at
+    session.commit()
+
+    assert badge_count() == 0
+    live = session.scalars(select(Notification).where(Notification.deleted_at.is_(None))).all()
+    assert len(live) == 2
+    assert all(n.read_at is not None for n in live)
+    assert all(n.row_version == versions_before[n.notification_id] + 1 for n in live)
 
 
 def test_a_reclaimed_rerun_cannot_double_notify(session: Session) -> None:

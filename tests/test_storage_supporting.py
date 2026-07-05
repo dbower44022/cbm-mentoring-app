@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import uuid
 from datetime import timedelta
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -120,6 +121,61 @@ def test_user_preference_org_default_and_user_override_coexist(session: Session)
         )
     ).all()
     assert {r.user_id for r in rows} == {None, user}
+
+
+def test_user_preference_resolution_prefers_user_row_per_namespace(session: Session) -> None:
+    mentor = uuid7()
+    other_mentor = uuid7()
+    session.add_all(
+        [
+            UserPreference(
+                preference_key="grid.mentorRoster.columns",
+                preference_value={"columns": ["mentorName"]},
+            ),
+            UserPreference(
+                preference_key="nav.startupView",
+                preference_value={"view": "home"},
+            ),
+            UserPreference(
+                user_id=mentor,
+                preference_key="grid.mentorRoster.columns",
+                preference_value={"columns": ["mentorName", "engagementStatus"]},
+            ),
+        ]
+    )
+    session.commit()
+
+    def resolve(user: uuid.UUID, key: str) -> UserPreference | None:
+        # The GET /preferences/{key} read (DB-S13, REQ-060): the user's live
+        # row wins, the org default answers otherwise — resolved per key, so
+        # an override in one namespace never shadows another.
+        rows = session.scalars(
+            select(UserPreference).where(
+                UserPreference.preference_key == key,
+                UserPreference.deleted_at.is_(None),
+                or_(UserPreference.user_id == user, UserPreference.user_id.is_(None)),
+            )
+        ).all()
+        own = [r for r in rows if r.user_id == user]
+        return own[0] if own else next((r for r in rows if r.user_id is None), None)
+
+    grid = resolve(mentor, "grid.mentorRoster.columns")
+    assert grid is not None
+    assert grid.preference_value == {"columns": ["mentorName", "engagementStatus"]}
+    # No override in the nav namespace — the grid override must not leak into it.
+    nav = resolve(mentor, "nav.startupView")
+    assert nav is not None and nav.user_id is None
+    # Another user never sees a peer's override, only the org default.
+    other = resolve(other_mentor, "grid.mentorRoster.columns")
+    assert other is not None and other.user_id is None
+    assert other.preference_value == {"columns": ["mentorName"]}
+
+    # Soft-deleting the override reverts the user to the org default (DB-S3:
+    # reads exclude deleted rows by default — a reset needs no hard delete).
+    session.get_one(UserPreference, grid.user_preference_id).deleted_at = utcnow()
+    session.commit()
+    reverted = resolve(mentor, "grid.mentorRoster.columns")
+    assert reverted is not None and reverted.user_id is None
 
 
 def test_user_preference_one_live_row_per_user_and_key(session: Session) -> None:
