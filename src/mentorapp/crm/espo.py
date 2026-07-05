@@ -4,8 +4,9 @@
 — :class:`~mentorapp.crm.auth.CredentialVerification`,
 :class:`~mentorapp.crm.auth.ForgotPassword` and
 :class:`~mentorapp.crm.auth.CrmAccess` — onto EspoCRM's REST API, over an
-injected :class:`EspoTransport` (the ``FeedPushTransport`` pattern: WTK-010
-supplies the real HTTP transport; tests plug fakes).
+injected :class:`EspoTransport` (the ``FeedPushTransport`` pattern: the real
+HTTP transport is :class:`~mentorapp.crm.http.HttpxEspoTransport`; tests plug
+fakes).
 
 How each seam maps onto Espo:
 
