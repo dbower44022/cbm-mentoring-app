@@ -4,11 +4,20 @@
  * shared across windows; a window without one renders the signed-out state —
  * the login screen itself renders with WTK-199. A SessionLoggedOut broadcast
  * from any window ends this one too: logout is explicit and total.
+ *
+ * Signed in, the routes split by window kind (WTK-198, replacing the WTK-194
+ * boot screen): `/records/:entityType/:recordId` is the pop-out record
+ * window; every other path renders the shell, whose Home panel hosts the
+ * messaging surfaces. Every surface renders server view-models verbatim —
+ * the Python modules in src/mentorapp/ui/ stay the single source of behavior.
  */
 
 import { type ReactElement, useEffect, useState } from "react";
+import { Route, Routes } from "react-router-dom";
+
 import { onSessionBroadcast, readSession, type SessionState } from "./session";
 import { Shell } from "./shell/shell";
+import { RecordWindow } from "./windows/record";
 
 export function App(): ReactElement {
   const [session, setSession] = useState<SessionState | null>(readSession);
@@ -38,11 +47,19 @@ export function App(): ReactElement {
   }
 
   return (
-    <Shell
-      session={session}
-      onLoggedOut={() => {
-        setSession(null);
-      }}
-    />
+    <Routes>
+      <Route path="/records/:entityType/:recordId" element={<RecordWindow />} />
+      <Route
+        path="*"
+        element={
+          <Shell
+            session={session}
+            onLoggedOut={() => {
+              setSession(null);
+            }}
+          />
+        }
+      />
+    </Routes>
   );
 }

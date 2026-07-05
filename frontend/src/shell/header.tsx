@@ -10,6 +10,7 @@
 import { type ReactElement, useEffect, useRef, useState } from "react";
 import { callApi } from "../api/envelope";
 import { broadcastSessionLoggedOut, clearSession, type SessionState } from "../session";
+import { NotificationBell } from "./bell";
 import type { HeaderPayload, MenuItemPayload } from "./payloads";
 
 export interface HeaderProps {
@@ -49,18 +50,7 @@ export function Header({
       </span>
     ),
     navigation: () => navigation ?? null,
-    // The bell zone renders its place in the header; badge polling and the
-    // dropdown are WTK-198's rendering of GET /shell/bell.
-    notificationBell: () => (
-      <button
-        key="notificationBell"
-        type="button"
-        className="header-bell"
-        title="Notifications"
-      >
-        🔔
-      </button>
-    ),
+    notificationBell: () => <NotificationBell key="notificationBell" />,
     help: () => (
       <button
         key="help"
