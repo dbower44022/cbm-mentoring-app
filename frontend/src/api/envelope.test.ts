@@ -14,6 +14,7 @@ const SESSION: SessionState = {
   sessionReference: "ref-1",
   userID: "user-1",
   roleNames: ["mentor"],
+  loginName: "mentor-1",
 };
 
 function memoryStorage(): Pick<Storage, "getItem" | "setItem" | "removeItem"> {

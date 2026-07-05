@@ -201,3 +201,69 @@ body {
 .panel-placeholder {
   padding: 0.75rem;
 }
+
+.auth-screen {
+  max-width: 22rem;
+  margin: 3rem auto 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem;
+}
+
+.auth-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.auth-field input[readonly] {
+  background: #f0f0f0;
+  color: #333;
+}
+
+.auth-submit {
+  margin-top: 0.5rem;
+  padding: 0.4rem;
+  font-weight: 600;
+}
+
+.auth-link {
+  background: none;
+  border: none;
+  color: #1a5dab;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0.15rem;
+}
+
+.educate-message {
+  background: #fff8e1;
+  border: 1px solid #e0c96a;
+  padding: 0.35rem 0.5rem;
+}
+
+/* The session overlays sit OVER the window; the work behind stays mounted
+   and untouched (never lose user work — layout standard). */
+.auth-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  z-index: 100;
+}
+
+.auth-overlay-panel {
+  background: #fff;
+  margin-top: 4rem;
+  padding: 0.75rem 1rem;
+  max-width: 24rem;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.35);
+}
+
+.auth-overlay-panel .auth-screen {
+  margin: 0;
+  padding: 0.5rem 0 0;
+}

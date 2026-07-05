@@ -1,48 +1,42 @@
 /**
  * App root (DEC-080 §B): establish session state, then render the shell for
- * this window's kind. The stored session (written by POST /auth/login) is
- * shared across windows; a window without one renders the signed-out state —
- * the login screen itself renders with WTK-199. A SessionLoggedOut broadcast
- * from any window ends this one too: logout is explicit and total.
+ * this window's kind. Signed out renders the served login screen (WTK-199);
+ * signed in wraps the shell in the SessionBoundary — the window session
+ * controller that overlays in-place re-auth on expiry (unsaved work survives
+ * behind it; one re-login restores every window) and keeps an ended session's
+ * work on screen until the user explicitly leaves.
  */
 
-import { type ReactElement, useEffect, useState } from "react";
-import { onSessionBroadcast, readSession, type SessionState } from "./session";
+import { type ReactElement, useState } from "react";
+import { readSession, type SessionState } from "./session";
+import { SessionBoundary } from "./auth/session-boundary";
+import { SignIn } from "./auth/sign-in";
 import { Shell } from "./shell/shell";
 
 export function App(): ReactElement {
   const [session, setSession] = useState<SessionState | null>(readSession);
 
-  useEffect(() => {
-    if (session === null) {
-      return;
-    }
-    // SessionLoggedOut is the only broadcast today; reauth messages (WTK-199)
-    // will branch on message.kind when they join the union.
-    return onSessionBroadcast(session.userID, () => {
-      setSession(null);
-    });
-  }, [session]);
-
   if (session === null) {
-    return (
-      <div className="shell-boot">
-        <p>You are signed out.</p>
-        <p>
-          Signing in ends up here once the sign-in screen ships (WTK-199). Until then, a
-          session established by POST /auth/login is picked up from this browser
-          automatically.
-        </p>
-      </div>
-    );
+    return <SignIn onSignedIn={setSession} />;
   }
 
   return (
-    <Shell
+    <SessionBoundary
+      // Remount per identity: a different user signing in must never inherit
+      // the previous session's phase or held state.
+      key={session.userID}
       session={session}
-      onLoggedOut={() => {
+      onSessionChanged={setSession}
+      onSignedOut={() => {
         setSession(null);
       }}
-    />
+    >
+      <Shell
+        session={session}
+        onLoggedOut={() => {
+          setSession(null);
+        }}
+      />
+    </SessionBoundary>
   );
 }
