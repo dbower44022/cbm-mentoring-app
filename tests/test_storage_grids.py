@@ -10,17 +10,17 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from mentorapp.api.grid_surface import last_view_preference_key, recent_searches_key
 from mentorapp.storage import (
     SORT_DIRECTIONS,
     VIEW_TYPES,
     AppUser,
     AuthSession,
+    Base,
     DataSource,
     Grid,
     GridDeepLink,
-    GridLastUsedView,
     GridSessionState,
-    GridState,
     GridView,
     SortSpec,
     utcnow,
@@ -180,40 +180,32 @@ def test_sort_specs_are_ordered_and_positions_unique_per_view(session: Session) 
         session.commit()
 
 
-def test_last_used_view_is_one_row_per_user_and_grid(session: Session) -> None:
+def test_per_user_grid_state_lives_in_the_preference_mechanism_not_tables() -> None:
+    # FND-017/FND-018 (DB-S13): recent searches and the last-used view are
+    # userPreference keys, never grid tables — no table read path remains.
+    assert "gridState" not in Base.metadata.tables
+    assert "gridLastUsedView" not in Base.metadata.tables
+    assert recent_searches_key("mentorRoster") == "grid.mentorRoster.recentSearches"
+    assert last_view_preference_key("mentorRoster") == "grid.mentorRoster.lastView"
+
+
+def test_view_declares_its_own_aggregates_and_round_trips(session: Session) -> None:
+    # FND-019: the VIEW owns the aggregate declaration — an aggregate depends
+    # on the view's data source; grid.statusBarConfig stays presentation-only.
     grid = _grid(session)
     source = _data_source(session)
     view = _view(session, grid, source)
-    user = _user(session)
-    session.add(
-        GridLastUsedView(
-            user_id=user.user_id, grid_id=grid.grid_id, grid_view_id=view.grid_view_id
-        )
-    )
     session.commit()
+    assert view.view_aggregates is None  # a view need not declare any
 
-    session.add(
-        GridLastUsedView(
-            user_id=user.user_id, grid_id=grid.grid_id, grid_view_id=view.grid_view_id
-        )
-    )
-    with pytest.raises(IntegrityError):
-        session.commit()
-
-
-def test_grid_state_keeps_recent_searches_per_user_and_grid(session: Session) -> None:
-    grid = _grid(session)
-    user = _user(session)
-    state = GridState(
-        user_id=user.user_id,
-        grid_id=grid.grid_id,
-        recent_searches=["smith", "jones"],
-    )
-    session.add(state)
+    declared = [
+        {"function": "sum", "fieldName": "duesAmount"},
+        {"function": "count", "fieldName": "mentorName"},
+    ]
+    view.view_aggregates = declared
     session.commit()
-
-    found = session.scalars(select(GridState).where(GridState.user_id == user.user_id)).one()
-    assert found.recent_searches == ["smith", "jones"]
+    session.refresh(view)
+    assert view.view_aggregates == declared
 
 
 def test_session_state_round_trips_the_restore_payload(session: Session) -> None:

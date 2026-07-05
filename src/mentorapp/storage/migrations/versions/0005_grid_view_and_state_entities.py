@@ -1,12 +1,15 @@
 """Grid, view, sort-spec, and grid-state entities (WTK-041, REQ-016..REQ-031).
 
-Creates the grid platform tables: ``grid``, ``gridView``, ``sortSpec``, the
-``gridLastUsedView`` association, ``gridState``, ``gridSessionState``, and
-``gridDeepLink``; extends ``dataSource`` with the REQ-019 authoring columns
-(``visualQueryDefinition``, ``exposedFields``). Same structural rules as
-0001/0002: UUIDv7 app-generated keys (REQ-047), the eight structural system
-columns (REQ-053), and partial live-row indexes (REQ-052). Platform tables —
-no schema-registry rows and no read views.
+Creates the grid platform tables: ``grid``, ``gridView`` (including its
+``viewAggregates`` declaration, FND-019), ``sortSpec``, ``gridSessionState``,
+and ``gridDeepLink``; extends ``dataSource`` with the REQ-019 authoring
+columns (``visualQueryDefinition``, ``exposedFields``). Durable per-user grid
+state gets NO table here: the recent searches (FND-017) and the last-used
+view (FND-018) ride the ``userPreference`` mechanism per DB-S13 — see
+``storage/grids.py``. Same structural rules as 0001/0002: UUIDv7
+app-generated keys (REQ-047), the eight structural system columns (REQ-053),
+and partial live-row indexes (REQ-052). Platform tables — no schema-registry
+rows and no read views.
 
 Revision ID: 0005
 Revises: 0004
@@ -97,6 +100,9 @@ def upgrade() -> None:
         sa.Column("rowTheme", _JSON_OBJECT, nullable=True),
         sa.Column("viewFilters", _JSON_OBJECT, nullable=True),
         sa.Column("adHocFilterFlag", sa.Boolean(), nullable=False),
+        # FND-019: the view's own per-column aggregate declaration — the grid's
+        # statusBarConfig is presentation-only and never chooses aggregates.
+        sa.Column("viewAggregates", _JSON_OBJECT, nullable=True),
         *_structural_columns(),
         sa.ForeignKeyConstraint(
             ["gridID"], ["grid.gridID"], name=op.f("fk_gridView_gridID_grid")
@@ -166,65 +172,6 @@ def upgrade() -> None:
         batch_op.create_index(
             "uq_sortSpec_view_field_live",
             ["gridViewID", "sortFieldName"],
-            unique=True,
-            sqlite_where=_LIVE,
-            postgresql_where=_LIVE,
-        )
-
-    op.create_table(
-        "gridLastUsedView",
-        sa.Column("gridLastUsedViewID", sa.Uuid(), nullable=False),
-        sa.Column("userID", sa.Uuid(), nullable=False),
-        sa.Column("gridID", sa.Uuid(), nullable=False),
-        sa.Column("gridViewID", sa.Uuid(), nullable=False),
-        *_structural_columns(),
-        sa.ForeignKeyConstraint(
-            ["userID"], ["appUser.userID"], name=op.f("fk_gridLastUsedView_userID_appUser")
-        ),
-        sa.ForeignKeyConstraint(
-            ["gridID"], ["grid.gridID"], name=op.f("fk_gridLastUsedView_gridID_grid")
-        ),
-        sa.ForeignKeyConstraint(
-            ["gridViewID"],
-            ["gridView.gridViewID"],
-            name=op.f("fk_gridLastUsedView_gridViewID_gridView"),
-        ),
-        sa.PrimaryKeyConstraint("gridLastUsedViewID", name=op.f("pk_gridLastUsedView")),
-    )
-    with op.batch_alter_table("gridLastUsedView", schema=None) as batch_op:
-        batch_op.create_index(
-            batch_op.f("ix_gridLastUsedView_modifiedAt"), ["modifiedAt"], unique=False
-        )
-        batch_op.create_index(
-            "uq_gridLastUsedView_user_grid_live",
-            ["userID", "gridID"],
-            unique=True,
-            sqlite_where=_LIVE,
-            postgresql_where=_LIVE,
-        )
-
-    op.create_table(
-        "gridState",
-        sa.Column("gridStateID", sa.Uuid(), nullable=False),
-        sa.Column("userID", sa.Uuid(), nullable=False),
-        sa.Column("gridID", sa.Uuid(), nullable=False),
-        sa.Column("recentSearches", _JSON_OBJECT, nullable=False),
-        *_structural_columns(),
-        sa.ForeignKeyConstraint(
-            ["userID"], ["appUser.userID"], name=op.f("fk_gridState_userID_appUser")
-        ),
-        sa.ForeignKeyConstraint(
-            ["gridID"], ["grid.gridID"], name=op.f("fk_gridState_gridID_grid")
-        ),
-        sa.PrimaryKeyConstraint("gridStateID", name=op.f("pk_gridState")),
-    )
-    with op.batch_alter_table("gridState", schema=None) as batch_op:
-        batch_op.create_index(
-            batch_op.f("ix_gridState_modifiedAt"), ["modifiedAt"], unique=False
-        )
-        batch_op.create_index(
-            "uq_gridState_user_grid_live",
-            ["userID", "gridID"],
             unique=True,
             sqlite_where=_LIVE,
             postgresql_where=_LIVE,
@@ -316,24 +263,6 @@ def downgrade() -> None:
         )
         batch_op.drop_index(batch_op.f("ix_gridSessionState_modifiedAt"))
     op.drop_table("gridSessionState")
-
-    with op.batch_alter_table("gridState", schema=None) as batch_op:
-        batch_op.drop_index(
-            "uq_gridState_user_grid_live",
-            sqlite_where=_LIVE,
-            postgresql_where=_LIVE,
-        )
-        batch_op.drop_index(batch_op.f("ix_gridState_modifiedAt"))
-    op.drop_table("gridState")
-
-    with op.batch_alter_table("gridLastUsedView", schema=None) as batch_op:
-        batch_op.drop_index(
-            "uq_gridLastUsedView_user_grid_live",
-            sqlite_where=_LIVE,
-            postgresql_where=_LIVE,
-        )
-        batch_op.drop_index(batch_op.f("ix_gridLastUsedView_modifiedAt"))
-    op.drop_table("gridLastUsedView")
 
     with op.batch_alter_table("sortSpec", schema=None) as batch_op:
         batch_op.drop_index(

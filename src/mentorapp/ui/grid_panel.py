@@ -46,6 +46,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Final
 
+from mentorapp.api import grid_surface as _grid_surface
 from mentorapp.api.grid_surface import (
     MIN_SEARCH_LENGTH,
     RECENT_SEARCH_LIMIT,
@@ -179,13 +180,13 @@ class ViewSelection:
         return ViewSelectorState(self._active, tuple(self._modifications))
 
 
-def last_view_preference_key(grid_id: str) -> str:
-    """The ``userPreference`` key persisting a grid's last-displayed view.
-
-    The view choice is the ONE long-term piece of grid state (REQ-031);
-    everything else in :data:`STATE_RESTORATION` is session-only.
-    """
-    return f"grid.{grid_id}.lastView"
+# The ``userPreference`` key persisting a grid's last-displayed view: the ONE
+# long-term piece of grid state (REQ-031); everything else in
+# :data:`STATE_RESTORATION` is session-only. The definition lives in
+# ``api.grid_surface`` (FND-018, DB-S13 — the last-used view is preference
+# state, not a table) and is shared here, not duplicated, so the panel and
+# the server's deep-link fallback can never format the key differently.
+last_view_preference_key = _grid_surface.last_view_preference_key
 
 
 # --- Sorting: header clicks, arrow + position badge (REQ-025) ----------------------

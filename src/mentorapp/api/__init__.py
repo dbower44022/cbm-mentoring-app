@@ -36,10 +36,12 @@ feature:
 - ``grid_surface`` — the grid server API surface design (WTK-042,
   REQ-020/023/026/027/028): the five endpoint contracts with their DB-S11
   over-ten-seconds declarations, whole-filtered-set footer/group aggregates,
-  the selection wire shape (explicit vs filteredSet select-all), the
-  selection-else-filtered export/print scope rule and job payload contract,
-  displayed-column live search, and deep-link resolution (links are
-  references, never grants).
+  the selection wire shape (explicit vs filteredSet select-all, opaque
+  data-source record identifiers — FND-020), the selection-else-filtered
+  export/print scope rule and job payload contract (carrying the full
+  directional sort, FND-021), the per-user grid preference keys (recent
+  searches and last view — FND-017/FND-018, DB-S13), displayed-column live
+  search, and deep-link resolution (links are references, never grants).
 """
 
 from mentorapp.api.edit_safety import (
@@ -74,12 +76,14 @@ from mentorapp.api.grid_surface import (
     LinkAccessDenied,
     OpenLinkedView,
     Selection,
+    SortKey,
     aggregate_expressions,
     export_job_payload,
     grid_search_filter,
     group_row_aggregates,
     hidden_rows_confirmation,
     hidden_selection_count,
+    last_view_preference_key,
     parse_selection,
     print_job_payload,
     recent_searches_key,
@@ -123,6 +127,7 @@ __all__ = [
     "RetrySave",
     "SaveNotice",
     "Selection",
+    "SortKey",
     "StaleRowVersionError",
     "aggregate_expressions",
     "count_and_aggregates",
@@ -136,6 +141,7 @@ __all__ = [
     "hidden_rows_confirmation",
     "hidden_selection_count",
     "keyset_page",
+    "last_view_preference_key",
     "normalize_for_match",
     "ok",
     "parse_selection",

@@ -200,7 +200,7 @@ def gate(view: ViewFacts, *, user_id: uuid.UUID, roles: frozenset[str]) -> objec
         has_data_source_access=roles_cover_data_source(
             GRANTS, data_source_key="engagementsForMentor", user_roles=roles
         ),
-        last_used_view_id=None,
+        last_view_preference=None,
     )
 
 

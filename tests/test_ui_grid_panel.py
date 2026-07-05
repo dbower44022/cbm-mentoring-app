@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import pytest
 
+from mentorapp.api import grid_surface
 from mentorapp.api.grid_surface import MIN_SEARCH_LENGTH, RECENT_SEARCH_LIMIT
 from mentorapp.ui.grid_panel import (
     GRID_FRAME,
@@ -315,6 +316,12 @@ def test_only_the_view_choice_persists_long_term() -> None:
     assert {"searchText", "scrollPosition", "selection", "focusedRow"} <= scopes.keys()
     assert RESTORED_DATA_REFRESHES is True
     assert last_view_preference_key("engagements") == "grid.engagements.lastView"
+
+
+def test_last_view_preference_key_is_the_one_server_definition() -> None:
+    # FND-018: ONE key definition — the panel shares api.grid_surface's, so
+    # the UI and the deep-link fallback can never format the key differently.
+    assert last_view_preference_key is grid_surface.last_view_preference_key
 
 
 # --- REQ-030: the four grid states ------------------------------------------------------

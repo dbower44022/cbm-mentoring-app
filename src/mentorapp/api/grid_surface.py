@@ -26,10 +26,11 @@ the shared engines — never re-implementing them:
   ``jobID``; progress reaches the status bar through ``GET /jobs/{jobID}``
   and completion through the change feed — no second notification path.
   :func:`export_job_payload` / :func:`print_job_payload` fix the payload
-  contract: the resolved view rendering (columns in display order, sort)
-  travels IN the payload so the artifact matches what the grid showed, and
-  scope is the :func:`resolve_export_scope` rule — the selection if one
-  exists, else the entire filtered set.
+  contract: the resolved view rendering (columns in display order, the FULL
+  directional sort — every key, in priority order, FND-021) travels IN the
+  payload so the artifact matches what the grid showed, and scope is the
+  :func:`resolve_export_scope` rule — the selection if one exists, else the
+  entire filtered set.
 - **Deep-link resolution** (REQ-028) — a grid URL names the grid and view;
   :func:`resolve_grid_link` is the whole decision: links are references,
   never grants.
@@ -38,10 +39,13 @@ Selection (REQ-023) is a first-class wire value (:func:`parse_selection`):
 ``explicit`` carries IDs; ``filteredSet`` means "everything the current
 filters match" MINUS explicit exclusions — select-all over the whole
 filtered result set without ever shipping every ID through the client.
+Record identifiers are opaque data-source strings end-to-end (FND-020):
+bounded, never parsed for meaning.
 """
 
 from __future__ import annotations
 
+import unicodedata
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -63,6 +67,7 @@ CODE_INVALID_SELECTION = "invalidSelection"
 CODE_UNKNOWN_AGGREGATE_FUNCTION = "unknownAggregateFunction"
 CODE_UNKNOWN_AGGREGATE_FIELD = "unknownAggregateField"
 CODE_UNSUPPORTED_EXPORT_FORMAT = "unsupportedExportFormat"
+CODE_INVALID_SORT = "invalidSort"
 
 
 # --- The endpoint contracts -------------------------------------------------------
@@ -133,13 +138,30 @@ GRID_SURFACE: Final = (
 MIN_SEARCH_LENGTH: Final = 3
 
 # The action bar remembers the last five searches per grid (REQ-020), persisted
-# through the one preference mechanism (DB-S13) — never a new table or column.
+# through the one preference mechanism (FND-017, DB-S13) — never a new table
+# or column.
 RECENT_SEARCH_LIMIT: Final = 5
 
 
 def recent_searches_key(grid_id: str) -> str:
-    """The ``userPreference`` key holding one grid's recent-search list."""
+    """The ``userPreference`` key holding one grid's recent-search list.
+
+    The single home for remembered searches (FND-017, DB-S13) — storage
+    deliberately tables no per-user grid state.
+    """
     return f"grid.{grid_id}.recentSearches"
+
+
+def last_view_preference_key(grid_id: str) -> str:
+    """The ``userPreference`` key persisting a grid's last-displayed view.
+
+    The view choice is the ONE long-term piece of grid state (REQ-017,
+    REQ-031), and per-user state rides the one preference mechanism
+    (FND-018, DB-S13) — never a table or column. Canonical here so this
+    surface's deep-link fallback and the UI panel (``ui.grid_panel``
+    re-exports it) can never format the key differently.
+    """
+    return f"grid.{grid_id}.lastView"
 
 
 def remember_search(previous: Sequence[str], search_text: str) -> list[str]:
@@ -301,12 +323,32 @@ def group_row_aggregates(
 SELECTION_EXPLICIT: Final = "explicit"
 SELECTION_FILTERED_SET: Final = "filteredSet"
 
+# Record identifiers are opaque data-source values end-to-end (FND-020): grid
+# data sources expose CRM records whose IDs are not UUIDs, and a future source
+# may expose any stable token. This surface never parses one for meaning — it
+# only bounds the value, exactly matching storage's soft-reference rationale
+# (``gridSessionState`` stores them as text, like ``appUser.crmUserID``).
+RECORD_ID_MAX_LENGTH: Final = 200
+
+
+def _record_id_is_valid(value: object) -> bool:
+    """The FND-020 bound: non-empty text, ≤200 chars, no control characters."""
+    if not isinstance(value, str) or not value or len(value) > RECORD_ID_MAX_LENGTH:
+        return False
+    # Cc covers ASCII AND C1 control characters — a record ID is a token, and
+    # a control character only ever arrives via injection or corruption.
+    return not any(unicodedata.category(ch) == "Cc" for ch in value)
+
 
 @dataclass(frozen=True)
 class ExplicitSelection:
-    """Rows the user picked one by one (click / ctrl / shift)."""
+    """Rows the user picked one by one (click / ctrl / shift).
 
-    record_ids: tuple[uuid.UUID, ...]
+    ``record_ids`` are opaque data-source identifiers (FND-020) — bounded
+    strings, never parsed.
+    """
+
+    record_ids: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -318,7 +360,7 @@ class FilteredSetSelection:
     every ID, and a row inserted after select-all is legitimately IN.
     """
 
-    excluded_record_ids: tuple[uuid.UUID, ...] = ()
+    excluded_record_ids: tuple[str, ...] = ()
 
 
 Selection = ExplicitSelection | FilteredSetSelection
@@ -329,7 +371,10 @@ def parse_selection(payload: dict[str, Any]) -> Selection:
 
     ``{"selectionKind": "explicit", "recordIds": [...]}`` or
     ``{"selectionKind": "filteredSet", "excludedRecordIds": [...]}``.
-    Anything else — unknown kind, non-UUID entries — fails per-field so the
+    Every entry is an opaque data-source identifier (FND-020): validated
+    only for bounds (non-empty, at most :data:`RECORD_ID_MAX_LENGTH`
+    characters, no control characters), never parsed for meaning. Anything
+    else — unknown kind, out-of-bounds entries — fails per-field so the
     client learns exactly which member was malformed.
     """
     kind = payload.get("selectionKind")
@@ -349,19 +394,19 @@ def parse_selection(payload: dict[str, Any]) -> Selection:
             ]
         )
     raw = payload.get(ids_field) or []
-    try:
-        ids = tuple(uuid.UUID(str(value)) for value in raw)
-    except ValueError as exc:
+    if not all(_record_id_is_valid(value) for value in raw):
         raise ApiValidationError(
             [
                 field_error(
                     ids_field,
                     CODE_INVALID_SELECTION,
-                    f"every entry in {ids_field} must be a record ID.",
+                    f"every entry in {ids_field} must be a record identifier: "
+                    f"non-empty text, at most {RECORD_ID_MAX_LENGTH} characters, "
+                    "no control characters.",
                 )
             ]
-        ) from exc
-    return cls(ids)
+        )
+    return cls(tuple(raw))
 
 
 def selection_record_filter(
@@ -385,15 +430,16 @@ def selection_record_filter(
 def hidden_selection_count(
     session: Session,
     entity_cls: type[Any],
-    record_ids: Sequence[uuid.UUID],
+    record_ids: Sequence[str],
     *,
     filters: Sequence[ColumnElement[bool]] = (),
 ) -> int:
     """How many explicitly selected rows the CURRENT filter no longer shows.
 
     REQ-023: changing search/filter keeps the selection; the status bar cites
-    this number and action confirmations spell it out. Counts live rows only
-    (DB-S3) — a row soft-deleted since selection is gone, not hidden.
+    this number and action confirmations spell it out. ``record_ids`` are the
+    selection's opaque data-source identifiers (FND-020). Counts live rows
+    only (DB-S3) — a row soft-deleted since selection is gone, not hidden.
     """
     if not record_ids:
         return 0
@@ -434,19 +480,23 @@ SCOPE_FILTERED_SET: Final = "filteredSet"
 
 @dataclass(frozen=True)
 class ExportScope:
-    """The resolved record scope riding in an export/print job payload."""
+    """The resolved record scope riding in an export/print job payload.
+
+    IDs are the selection's opaque data-source identifiers (FND-020),
+    carried verbatim.
+    """
 
     scope_kind: Literal["selection", "filteredSet"]
-    record_ids: tuple[uuid.UUID, ...] = ()
-    excluded_record_ids: tuple[uuid.UUID, ...] = ()
+    record_ids: tuple[str, ...] = ()
+    excluded_record_ids: tuple[str, ...] = ()
 
     def as_payload(self) -> dict[str, Any]:
-        """Wire fragment: IDs as strings, absent members omitted (JSONB-clean)."""
+        """Wire fragment: IDs verbatim, absent members omitted (JSONB-clean)."""
         payload: dict[str, Any] = {"scopeKind": self.scope_kind}
         if self.record_ids:
-            payload["recordIds"] = [str(value) for value in self.record_ids]
+            payload["recordIds"] = list(self.record_ids)
         if self.excluded_record_ids:
-            payload["excludedRecordIds"] = [str(value) for value in self.excluded_record_ids]
+            payload["excludedRecordIds"] = list(self.excluded_record_ids)
         return payload
 
 
@@ -466,20 +516,79 @@ def resolve_export_scope(selection: Selection | None) -> ExportScope:
     return ExportScope(SCOPE_FILTERED_SET)
 
 
+# The wire vocabulary for a sort key's direction, and the sort-depth cap. The
+# grid never offers a fourth key (REQ-025: primary + two shift-click
+# secondaries), so a deeper request is malformed, not ambitious.
+SORT_KEY_DIRECTIONS: Final = ("asc", "desc")
+MAX_SORT_KEYS: Final = 3
+
+
+@dataclass(frozen=True)
+class SortKey:
+    """One directional key of a document request's sort order (FND-021).
+
+    The wire form of the one sort shape the layers share: ``field`` is
+    storage's ``sortSpec.sortFieldName``, ``direction`` (``asc``/``desc``,
+    the UI badge vocabulary) its ``sortDirection``, and a key's 1-based
+    tuple position IS its ``sortPosition`` — priority is order. Defined
+    here rather than imported because the API layer cannot reach into
+    ``ui.grid_panel`` and the storage row carries persistence columns the
+    wire never ships; the three shapes are ONE contract, and this is its
+    wire equivalent.
+    """
+
+    field: str
+    direction: str
+
+
+def _validated_sort_keys(sort_keys: Sequence[SortKey]) -> list[dict[str, str]]:
+    """The payload fragment for a request's full directional sort (FND-021).
+
+    Rejects more than :data:`MAX_SORT_KEYS` keys and unknown directions,
+    per-field like every other gate on this surface, reporting every bad
+    key in one round trip.
+    """
+    errors = []
+    if len(sort_keys) > MAX_SORT_KEYS:
+        errors.append(
+            field_error(
+                "sortKeys",
+                CODE_INVALID_SORT,
+                f"a grid sort carries at most {MAX_SORT_KEYS} keys (REQ-025).",
+            )
+        )
+    errors.extend(
+        field_error(
+            "sortKeys",
+            CODE_INVALID_SORT,
+            f"'{key.direction}' is not a sort direction ({' or '.join(SORT_KEY_DIRECTIONS)}).",
+        )
+        for key in sort_keys
+        if key.direction not in SORT_KEY_DIRECTIONS
+    )
+    if errors:
+        raise ApiValidationError(errors)
+    return [{"field": key.field, "direction": key.direction} for key in sort_keys]
+
+
 @dataclass(frozen=True)
 class GridDocumentRequest:
     """What an export/print POST resolves to before it becomes a job payload.
 
-    ``columns`` is the view's displayed fields IN DISPLAY ORDER, ``sort_field``
-    the active sort, ``filter_state`` the view's serialized filters + active
-    search — the whole "as the current view shows it" contract travels in the
-    payload, so the artifact can never disagree with the grid the user saw.
+    ``columns`` is the view's displayed fields IN DISPLAY ORDER; ``sort_keys``
+    the active sort — EVERY key, in priority order, direction included
+    (FND-021: a grid sorted three columns descending exports in exactly that
+    order, so the REQ-027 guarantee — the artifact matches what the grid
+    showed — holds for the full directional sort, not just the primary
+    field); ``filter_state`` the view's serialized filters + active search.
+    The whole "as the current view shows it" contract travels in the payload,
+    so the artifact can never disagree with the grid the user saw.
     ``raw_values`` False renders formatted values (the REQ-027 default).
     """
 
     entity_type: str
     columns: tuple[str, ...]
-    sort_field: str
+    sort_keys: tuple[SortKey, ...]
     filter_state: dict[str, Any]
     scope: ExportScope
     export_format: str = "csv"
@@ -490,7 +599,7 @@ def _document_payload(request: GridDocumentRequest) -> dict[str, Any]:
     return {
         "entityType": request.entity_type,
         "columns": list(request.columns),
-        "sortField": request.sort_field,
+        "sortKeys": _validated_sort_keys(request.sort_keys),
         "filterState": request.filter_state,
         "scope": request.scope.as_payload(),
         "rawValues": request.raw_values,
@@ -555,8 +664,9 @@ class OpenLinkedView:
 class FallbackToLastUsed:
     """The grid opens, the named view does not: last-used view + why.
 
-    ``view_id`` ``None`` means the recipient has no last-used view either —
-    the grid opens on its default and the notice still explains.
+    ``view_id`` ``None`` means the recipient's last-view preference is unset
+    — or stale, naming a view that no longer exists — so the grid opens on
+    its default view, and the notice still explains.
     """
 
     view_id: uuid.UUID | None
@@ -575,7 +685,7 @@ def resolve_grid_link(
     *,
     requester_id: uuid.UUID,
     has_data_source_access: bool,
-    last_used_view_id: uuid.UUID | None,
+    last_view_preference: uuid.UUID | None,
 ) -> OpenLinkedView | FallbackToLastUsed | LinkAccessDenied:
     """Decide what a deep link opens for THIS requester (REQ-028).
 
@@ -584,6 +694,14 @@ def resolve_grid_link(
     opens as named. Another user's private view is invisible by design, so
     the recipient lands on their last-used view with an explanation — never
     a blank grid, never someone else's private state.
+
+    ``last_view_preference`` is the read path's preference value: the
+    last-used view persists as the requester's ``userPreference`` row under
+    :func:`last_view_preference_key` (FND-018, DB-S13 — preference state,
+    not a table). The endpoint reads that key and passes ``None`` when it is
+    unset OR when it names a view that no longer exists, so the fallback
+    lands on the grid's default view — WTK-042's original fallback
+    semantics, now consuming the one preference mechanism.
     """
     if not has_data_source_access:
         return LinkAccessDenied(
@@ -604,7 +722,7 @@ def resolve_grid_link(
         },
     )
     return FallbackToLastUsed(
-        last_used_view_id,
+        last_view_preference,
         "This link points at another person's private view, so it opened "
         "your own last-used view instead. Ask them to share the view if you "
         "need their exact setup.",
