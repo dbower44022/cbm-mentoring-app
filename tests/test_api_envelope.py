@@ -5,6 +5,7 @@ in one round trip, recovery bodies on 409, opaque logged 500s.
 from __future__ import annotations
 
 import re
+import uuid
 
 import pytest
 from fastapi import FastAPI
@@ -38,8 +39,10 @@ from mentorapp.api.routers.auth import (
     get_session_management,
     get_token_actions,
 )
+from mentorapp.api.routers.home import get_home_catalog, get_message_center
 from mentorapp.crm.auth import CredentialsRejectedError
 from mentorapp.main import create_app
+from mentorapp.ui.home_panel import MessageCenter
 
 
 def test_ok_envelope_shape() -> None:
@@ -188,6 +191,16 @@ class _SweepForgotFlow:
         return None
 
 
+class _SweepCatalog:
+    """An empty permissioned world — the sweep only needs a wired backend."""
+
+    def accessible_panel_keys(self, user_id: uuid.UUID) -> tuple[str, ...]:
+        return ()
+
+    def available_view_keys(self, user_id: uuid.UUID) -> frozenset[str]:
+        return frozenset()
+
+
 @pytest.fixture()
 def mounted_client(session: Session) -> TestClient:
     app = create_app()
@@ -203,6 +216,10 @@ def mounted_client(session: Session) -> TestClient:
     )
     app.dependency_overrides[get_credential_verifier] = _SweepVerifier
     app.dependency_overrides[get_forgot_password_flow] = _SweepForgotFlow
+    # The home providers are fail-loud until their wiring lands (WTK-027);
+    # same treatment as the auth seams above.
+    app.dependency_overrides[get_home_catalog] = _SweepCatalog
+    app.dependency_overrides[get_message_center] = MessageCenter
     return TestClient(app, raise_server_exceptions=False)
 
 
