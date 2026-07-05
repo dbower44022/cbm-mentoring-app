@@ -33,6 +33,13 @@ feature:
   silent overwrite), the same-user cross-window freshness fan-out (save
   notices ARE change-feed tuples), the dirty-window guard, and the
   edit-collision switch.
+- ``grid_surface`` — the grid server API surface design (WTK-042,
+  REQ-020/023/026/027/028): the five endpoint contracts with their DB-S11
+  over-ten-seconds declarations, whole-filtered-set footer/group aggregates,
+  the selection wire shape (explicit vs filteredSet select-all), the
+  selection-else-filtered export/print scope rule and job payload contract,
+  displayed-column live search, and deep-link resolution (links are
+  references, never grants).
 """
 
 from mentorapp.api.edit_safety import (
@@ -55,6 +62,32 @@ from mentorapp.api.errors import (
     StaleRowVersionError,
     register_error_handlers,
 )
+from mentorapp.api.grid_surface import (
+    GRID_SURFACE,
+    AggregateSpec,
+    ExplicitSelection,
+    ExportScope,
+    FallbackToLastUsed,
+    FilteredSetSelection,
+    GridDocumentRequest,
+    GridLink,
+    LinkAccessDenied,
+    OpenLinkedView,
+    Selection,
+    aggregate_expressions,
+    export_job_payload,
+    grid_search_filter,
+    group_row_aggregates,
+    hidden_rows_confirmation,
+    hidden_selection_count,
+    parse_selection,
+    print_job_payload,
+    recent_searches_key,
+    remember_search,
+    resolve_export_scope,
+    resolve_grid_link,
+    selection_record_filter,
+)
 from mentorapp.api.list_engine import (
     count_and_aggregates,
     decode_cursor,
@@ -66,6 +99,8 @@ from mentorapp.api.records import registry_for, serialize_record
 from mentorapp.api.write_engine import create_record, normalize_for_match, partial_update
 
 __all__ = [
+    "GRID_SURFACE",
+    "AggregateSpec",
     "AlreadyCurrent",
     "ApiError",
     "ApiValidationError",
@@ -74,25 +109,47 @@ __all__ = [
     "EditCollisionSwitch",
     "EditorWindows",
     "Envelope",
+    "ExplicitSelection",
+    "ExportScope",
+    "FallbackToLastUsed",
     "FieldConflict",
+    "FilteredSetSelection",
+    "GridDocumentRequest",
+    "GridLink",
+    "LinkAccessDenied",
     "ManualMerge",
+    "OpenLinkedView",
     "RecordNotFoundError",
     "RetrySave",
     "SaveNotice",
+    "Selection",
     "StaleRowVersionError",
+    "aggregate_expressions",
     "count_and_aggregates",
     "create_record",
     "decode_cursor",
     "encode_cursor",
+    "export_job_payload",
     "field_error",
+    "grid_search_filter",
+    "group_row_aggregates",
+    "hidden_rows_confirmation",
+    "hidden_selection_count",
     "keyset_page",
     "normalize_for_match",
     "ok",
+    "parse_selection",
     "partial_update",
+    "print_job_payload",
+    "recent_searches_key",
     "register_error_handlers",
     "registry_for",
+    "remember_search",
     "request_error",
     "resolve_concurrent_save_conflict",
+    "resolve_export_scope",
+    "resolve_grid_link",
+    "selection_record_filter",
     "serialize_record",
     "surface_needs_refresh",
     "trigram_search_filter",
