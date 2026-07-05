@@ -9,8 +9,9 @@ rendering, API validation, duplicate detection, history flags, exports, and
 view columns (DB-S6). ``optionSet``/``optionValue`` (REQ-055) hold
 choice-field options as data, never as database enums or CHECK constraints
 (DB-S7). ``backgroundJob`` (REQ-058, REQ-014) is the one queue behind all
-background work (DB-S11). ``changeFeedEntry`` (REQ-057) is the append-only
-ledger behind ``GET /changes?since=<watermark>`` (DB-S10).
+background work (DB-S11). ``notification`` (REQ-014) is the per-user bell
+entry a job's terminal transition produces. ``changeFeedEntry`` (REQ-057) is
+the append-only ledger behind ``GET /changes?since=<watermark>`` (DB-S10).
 
 Supporting entities (WTK-128): ``fieldChange`` (REQ-054) is the one
 system-wide history table for history-tracked fields; ``duplicateOverride``
@@ -25,7 +26,10 @@ columns — nothing is duplicated here.
 
 Associations: ``optionValue.optionSetID`` → each value belongs to one set;
 ``schemaRegistry.optionSetID`` → a choice field's registry row points at the
-set it draws from (sets are shareable across fields).
+set it draws from (sets are shareable across fields);
+``notification.jobID`` → a bell entry points at the job whose terminal
+transition produced it (the notification ↔ backgroundJob association), and
+``notification.userID`` → the ``appUser`` it addresses.
 """
 
 from __future__ import annotations
@@ -264,6 +268,102 @@ class BackgroundJob(StructuralColumnsMixin, Base):
     # Download link written on completion of export/print job types (DB-S11):
     # big result sets travel as artifacts, never in API responses.
     artifact_url: Mapped[str | None] = mapped_column("artifactUrl", String(2000), default=None)
+    # Handler-written progress document behind GET /jobs/{jobID} and the status
+    # bar (REQ-014); shape is per job type (e.g. {"current": 3, "total": 10}).
+    # Progress is polled, never a feed event — only terminal transitions reach
+    # the change feed (DB-S10 keeps sync traffic proportional to what changed).
+    job_progress: Mapped[dict[str, Any] | None] = mapped_column(
+        "jobProgress", JsonValue, default=None
+    )
+
+
+# REQ-014's bell vocabulary — app-validated, never a database enum (DB-S7).
+# Both terminal failure statuses (failed, needsAttention) surface to the user
+# as jobFailed: needsAttention is an operator distinction, not a mentor-facing
+# one, and failure entries speak the educate voice either way.
+NOTIFICATION_TYPES: Final[tuple[str, ...]] = ("jobCompleted", "jobFailed")
+
+# The badge count scans only unread live rows; the trim scan only expiring ones.
+_LIVE_UNREAD = text('"deletedAt" IS NULL AND "readAt" IS NULL')
+_LIVE_JOB_LINKED = text('"deletedAt" IS NULL AND "jobID" IS NOT NULL')
+
+
+class Notification(StructuralColumnsMixin, Base):
+    """One per-user bell entry — a background task's completion or failure (REQ-014).
+
+    Written in the same transaction as the job's terminal transition and
+    addressed to the job's requesting user (``createdBy`` on the job row), so
+    the bell and the job row can never disagree. ``readAt`` null = unread (the
+    badge count); viewing the bell stamps it. Entries expire over time
+    (``notificationExpiresAt``) and are trimmed by a retention job type,
+    exactly like job rows. ``jobID`` is nullable so a future non-job bell
+    entry needs no schema change.
+    """
+
+    __tablename__ = "notification"
+    __table_args__ = (
+        # The bell list read: one user's live entries, newest first.
+        Index(
+            "ix_notification_bell_live",
+            "userID",
+            "createdAt",
+            sqlite_where=_LIVE,
+            postgresql_where=_LIVE,
+        ),
+        # The unread badge count — an index-only scan over the unread minority.
+        Index(
+            "ix_notification_unread",
+            "userID",
+            sqlite_where=_LIVE_UNREAD,
+            postgresql_where=_LIVE_UNREAD,
+        ),
+        # At most one live entry per (job, user): a crash-reclaimed worker
+        # re-running a terminal transition can never double-notify (the same
+        # at-least-once absorption the change feed relies on).
+        Index(
+            "uq_notification_job_user_live",
+            "jobID",
+            "userID",
+            unique=True,
+            sqlite_where=_LIVE_JOB_LINKED,
+            postgresql_where=_LIVE_JOB_LINKED,
+        ),
+        # The retention-trim scan; same shape as ix_backgroundJob_expiry.
+        Index(
+            "ix_notification_expiry",
+            "notificationExpiresAt",
+            sqlite_where=text('"notificationExpiresAt" IS NOT NULL'),
+            postgresql_where=text('"notificationExpiresAt" IS NOT NULL'),
+        ),
+    )
+
+    notification_id: Mapped[uuid.UUID] = mapped_column(
+        "notificationID", primary_key=True, default=uuid7
+    )
+    # A real FK (unlike userPreference.userID): the bell only ever addresses
+    # authenticated app users, so an orphan notification is a defect.
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        "userID", ForeignKey("appUser.userID"), nullable=False
+    )
+    notification_type: Mapped[str] = mapped_column(
+        "notificationType", String(50), nullable=False
+    )
+    # The rendered bell text, composed at write time in the educate voice —
+    # the bell never re-derives wording from job state.
+    notification_message: Mapped[str] = mapped_column(
+        "notificationMessage", String(2000), nullable=False
+    )
+    job_id: Mapped[uuid.UUID | None] = mapped_column(
+        "jobID", ForeignKey("backgroundJob.jobID"), default=None
+    )
+    # Null = unread. Stamped when the user views the bell, per REQ-014.
+    read_at: Mapped[datetime | None] = mapped_column(
+        "readAt", DateTime(timezone=True), default=None
+    )
+    # When the retention job may trim this row. Null = keep.
+    notification_expires_at: Mapped[datetime | None] = mapped_column(
+        "notificationExpiresAt", DateTime(timezone=True), default=None
+    )
 
 
 class ChangeFeedEntry(StructuralColumnsMixin, Base):
