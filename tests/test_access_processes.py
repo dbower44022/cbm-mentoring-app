@@ -386,3 +386,36 @@ def test_tampered_or_forged_token_is_refused(
         forged.validate(token, expected_action="acceptAssignment")
     with pytest.raises(TokenInvalidError):
         tokens.validate("junk", expected_action="acceptAssignment")
+
+
+def test_validate_checks_without_spending_a_use(
+    tokens: TokenActionService, token_store: InMemoryTokenActionStore, clock: FakeClock
+) -> None:
+    # A pre-flight check (e.g. rendering the landing page before the user
+    # confirms) must not consume the single-use budget or fake a redemption
+    # in the audit trail.
+    token = _mint(tokens, clock)
+    record = tokens.validate(token, expected_action="acceptAssignment")
+    assert record.use_count == 0
+    assert [e.event_name for e in token_store.audit] == ["minted"]
+    assert tokens.redeem(token, expected_action="acceptAssignment").use_count == 1
+
+
+def test_revoke_is_idempotent_and_every_call_is_audited(
+    tokens: TokenActionService, token_store: InMemoryTokenActionStore, clock: FakeClock
+) -> None:
+    token = _mint(tokens, clock)
+    token_action_id = uuid.UUID(hex=token.partition(".")[0])
+    tokens.revoke(token_action_id)
+    first_revoked_at = token_store.records[token_action_id].revoked_at
+    clock.advance(timedelta(hours=1))
+    tokens.revoke(token_action_id)
+    # The kill timestamp is the FIRST revocation's; the repeat still lands in
+    # the audit trail because every accountable attempt does.
+    assert token_store.records[token_action_id].revoked_at == first_revoked_at
+    assert [e.event_name for e in token_store.audit] == ["minted", "revoked", "revoked"]
+
+
+def test_revoking_an_unknown_token_is_refused(tokens: TokenActionService) -> None:
+    with pytest.raises(TokenInvalidError):
+        tokens.revoke(uuid.uuid4())
