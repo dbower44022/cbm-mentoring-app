@@ -303,6 +303,33 @@ class MessageCenter:
             self._states[message.key].read_by.add(user_id)
         return messages
 
+    def view_message(self, user_id: str, message_key: str, now: datetime) -> AdminMessage:
+        """Render ONE message — the urgent banner's open-the-message act.
+
+        Reading follows rendering exactly as in :meth:`view_home`, scoped to
+        the one message actually shown: opening a banner from another panel
+        must not read the Home messages the user never saw. An expired
+        message refuses like an unknown one — it has left every surface, and
+        the caller's next step is the same either way.
+        """
+        state = self._states.get(message_key)
+        if state is None or not state.message.visible_at(now):
+            raise UnknownMessageError(message_key)
+        state.read_by.add(user_id)
+        return state.message
+
+    def has_acknowledged(self, user_id: str, message_key: str) -> bool:
+        """Quiet per-user acknowledgment state, for rendering the message.
+
+        ``False`` for a message that never asked for acknowledgment — the
+        render simply shows no acknowledgment affordance; only
+        :meth:`acknowledge` treats that as a caller bug.
+        """
+        state = self._states.get(message_key)
+        if state is None:
+            raise UnknownMessageError(message_key)
+        return user_id in state.acknowledged_by
+
     def urgent_banner(self, user_id: str, now: datetime) -> tuple[AdminMessage, ...]:
         """Unexpired urgent messages this user has NOT read: every panel banners
         these until a view reads them (:meth:`view_home`, or the banner's own
