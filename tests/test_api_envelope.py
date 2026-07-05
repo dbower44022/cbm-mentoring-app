@@ -12,6 +12,13 @@ from fastapi.testclient import TestClient
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from mentorapp.access import (
+    InMemorySessionStore,
+    InMemoryTokenActionStore,
+    SessionManagement,
+    TokenActionService,
+    VerifiedIdentity,
+)
 from mentorapp.api.deps import get_session
 from mentorapp.api.envelope import Envelope, field_error, ok, request_error
 from mentorapp.api.errors import (
@@ -24,6 +31,12 @@ from mentorapp.api.errors import (
     RecordNotFoundError,
     StaleRowVersionError,
     register_error_handlers,
+)
+from mentorapp.api.routers.auth import (
+    get_credential_verifier,
+    get_forgot_password_flow,
+    get_session_management,
+    get_token_actions,
 )
 from mentorapp.main import create_app
 
@@ -160,10 +173,35 @@ def _probe_targets() -> list[tuple[str, str]]:
     ]
 
 
+class _SweepVerifier:
+    """Refuse every credential pair — the sweep only needs a wired backend."""
+
+    def verify(self, login_name: str, password: str) -> VerifiedIdentity | None:
+        return None
+
+
+class _SweepForgotFlow:
+    """Accept and drop every initiation — the sweep only needs a wired backend."""
+
+    def initiate(self, login_name: str) -> None:
+        return None
+
+
 @pytest.fixture()
 def mounted_client(session: Session) -> TestClient:
     app = create_app()
     app.dependency_overrides[get_session] = lambda: session
+    # The auth backends are fail-loud until the PI-001 wiring lands (WTK-004);
+    # like get_session above, the sweep binds test backends so a bare probe
+    # exercises the mounted contract (a 4xx envelope), not the unwired 500.
+    app.dependency_overrides[get_session_management] = lambda: SessionManagement(
+        InMemorySessionStore()
+    )
+    app.dependency_overrides[get_token_actions] = lambda: TokenActionService(
+        InMemoryTokenActionStore(), signing_key=b"sweep-probe"
+    )
+    app.dependency_overrides[get_credential_verifier] = _SweepVerifier
+    app.dependency_overrides[get_forgot_password_flow] = _SweepForgotFlow
     return TestClient(app, raise_server_exceptions=False)
 
 

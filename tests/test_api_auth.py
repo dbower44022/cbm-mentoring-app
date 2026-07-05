@@ -16,6 +16,8 @@ from fastapi.testclient import TestClient
 from mentorapp.access import (
     InMemorySessionStore,
     InMemoryTokenActionStore,
+    ReauthRequiredError,
+    SessionEndedError,
     SessionManagement,
     SessionNotFoundError,
     TokenActionService,
@@ -156,9 +158,8 @@ def test_logout_ends_the_session_and_is_generic_for_unknown_references(
     reference = _login(client).json()["data"]["sessionReference"]
     real = client.post("/auth/logout", json={"sessionReference": reference})
     assert real.status_code == 200
-    with pytest.raises(SessionNotFoundError):
-        # The shared record is ended and the reference resolves nowhere: every
-        # window's next request fails closed.
+    with pytest.raises(SessionEndedError):
+        # The shared record is ended: every window's next request fails closed.
         sessions.resolve(reference)
     fake = client.post("/auth/logout", json={"sessionReference": "not-a-reference"})
     assert fake.status_code == 200
@@ -206,7 +207,7 @@ def test_reauth_after_the_grace_window_requires_a_fresh_login(
 ) -> None:
     reference = _login(client).json()["data"]["sessionReference"]
     clock.advance(timedelta(hours=13))  # past the 12-hour absolute lifetime
-    with pytest.raises(Exception, match="re-authentication required"):
+    with pytest.raises(ReauthRequiredError):
         sessions.resolve(reference)  # a window's request moves it to reauth-pending
     clock.advance(timedelta(hours=13))  # ...and the 12-hour grace lapses unanswered
     response = _reauth(client, reference, MENTOR_LOGIN, MENTOR_PASSWORD)
