@@ -18,7 +18,7 @@ from mentorapp.api.routers.preferences import router as preferences_router
 from mentorapp.api.routers.records import router as records_router
 from mentorapp.api.routers.schema import router as schema_router
 from mentorapp.api.routers.shell import router as shell_router
-from mentorapp.api.wiring import install_auth_wiring
+from mentorapp.api.wiring import install_auth_wiring, install_home_wiring
 from mentorapp.observability import get_logger
 
 log = get_logger(__name__)
@@ -32,6 +32,9 @@ def create_app() -> FastAPI:
     # binding here keeps app creation environment-free; tests re-override the
     # same provider keys.
     install_auth_wiring(app)
+    # Stored admin-message persistence (WTK-192) behind the home router's
+    # message seams; the catalog seam stays unwired until WTK-025 lands.
+    install_home_wiring(app)
     app.include_router(auth_router)
     app.include_router(schema_router)
     app.include_router(preferences_router)

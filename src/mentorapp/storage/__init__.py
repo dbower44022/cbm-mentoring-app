@@ -39,6 +39,7 @@ from mentorapp.storage.entity import (
     live_unique,
 )
 from mentorapp.storage.ids import uuid7, uuid7_created_at
+from mentorapp.storage.messages import AdminMessage, AdminMessageReceipt
 from mentorapp.storage.models import (
     CHANGE_KINDS,
     JOB_STATUSES,
@@ -87,6 +88,8 @@ __all__ = [
     "STRUCTURAL_COLUMN_NAMES",
     "AccessGrant",
     "ActionToken",
+    "AdminMessage",
+    "AdminMessageReceipt",
     "AdminSqlError",
     "AdminSqlSource",
     "AppUser",
