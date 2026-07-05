@@ -15,6 +15,7 @@ from mentorapp.api.errors import register_error_handlers
 from mentorapp.api.routers.auth import router as auth_router
 from mentorapp.api.routers.preferences import router as preferences_router
 from mentorapp.api.routers.schema import router as schema_router
+from mentorapp.api.wiring import install_auth_wiring
 from mentorapp.observability import get_logger
 
 log = get_logger(__name__)
@@ -23,6 +24,11 @@ log = get_logger(__name__)
 def create_app() -> FastAPI:
     app = FastAPI(title="CBM Mentoring Application", version=__version__)
     register_error_handlers(app)
+    # Production auth backends (WTK-191): DB-backed stores + the Espo
+    # verifier. Config is read per request and fails loudly when absent, so
+    # binding here keeps app creation environment-free; tests re-override the
+    # same provider keys.
+    install_auth_wiring(app)
     app.include_router(auth_router)
     app.include_router(schema_router)
     app.include_router(preferences_router)

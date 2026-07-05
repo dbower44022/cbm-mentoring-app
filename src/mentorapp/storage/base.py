@@ -26,12 +26,22 @@ from mentorapp.storage.ids import uuid7
 # JSONB on Postgres (GIN-indexable per DB-R3); plain JSON on SQLite for tests.
 JsonValue = JSON().with_variant(JSONB(), "postgresql")
 
-__all__ = ["Base", "JsonValue", "StructuralColumnsMixin", "utcnow", "uuid7"]
+__all__ = ["Base", "JsonValue", "StructuralColumnsMixin", "as_utc", "utcnow", "uuid7"]
 
 
 def utcnow() -> datetime:
     """Timezone-aware UTC now — the single timestamp source for audit columns."""
     return datetime.now(UTC)
+
+
+def as_utc(value: datetime) -> datetime:
+    """Re-attach UTC to a timestamp read back from the database.
+
+    Every timestamp column is ``DateTime(timezone=True)`` written from
+    :func:`utcnow`, but SQLite's round-trip strips the tzinfo; naive reads are
+    UTC by that contract. No-op on Postgres, which returns aware values.
+    """
+    return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
 
 
 class StructuralColumnsMixin:

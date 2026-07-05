@@ -14,6 +14,11 @@ dependencies = [
     # the base-entity tables; Alembic is SQLAlchemy's own migration tool — the
     # boring incumbent for the job.
     "alembic>=1.18",
+    # Adopted for WTK-191 (Governed-By: PI-001): the FND-006 custody decision
+    # requires the session-held CRM credential AEAD-encrypted at rest; AES-GCM
+    # from `cryptography` is the boring incumbent — crypto is the one category
+    # the under-200-lines write-it-yourself rule never applies to.
+    "cryptography>=43",
 ]
 
 [dependency-groups]

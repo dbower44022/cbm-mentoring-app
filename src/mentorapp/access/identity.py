@@ -17,8 +17,14 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Protocol
 
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
 from mentorapp.crm.auth import CrmUserCredential, CrmVerifiedIdentity
-from mentorapp.storage import uuid7
+from mentorapp.observability import get_logger
+from mentorapp.storage import AppUser, uuid7
+
+log = get_logger(__name__)
 
 
 @dataclass(frozen=True)
@@ -72,5 +78,41 @@ class InMemoryIdentityBridge:
         return VerifiedIdentity(
             user_id=user_id,
             role_names=role_names,
+            crm_credential=identity.credential,
+        )
+
+
+class StoredIdentityBridge:
+    """:class:`IdentityBridge` over ``appUser``: find-or-provision by ``crmUserID``.
+
+    Role mapping is deliberately pass-through: the grant vocabulary IS the
+    CRM's staff-role/team names (``dataSourceRoleGrant.roleName`` is matched
+    against the session's CRM-captured roles), so there is no translation
+    table to consult and the CRM stays the one role source. Provisioning
+    flushes but does not commit — the new row lands with the session save
+    that establishes the login, never as an orphan of a failed one.
+    """
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def resolve(self, identity: CrmVerifiedIdentity) -> VerifiedIdentity:
+        row = self._session.scalars(
+            select(AppUser).where(
+                AppUser.crm_user_id == identity.crm_user_id,
+                AppUser.deleted_at.is_(None),
+            )
+        ).one_or_none()
+        if row is None:
+            row = AppUser(crm_user_id=identity.crm_user_id, username=identity.username)
+            self._session.add(row)
+            self._session.flush()
+            log.info(
+                "app user provisioned from CRM identity",
+                extra={"context": {"userID": str(row.user_id)}},
+            )
+        return VerifiedIdentity(
+            user_id=row.user_id,
+            role_names=identity.role_names,
             crm_credential=identity.credential,
         )
