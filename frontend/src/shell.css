@@ -1,0 +1,203 @@
+/* Shell chrome (WTK-197). One thin header, data density starts below it;
+   data-dense never crowded — chrome takes minimum room (layout standard). */
+
+:root {
+  font-family: system-ui, sans-serif;
+  font-size: 14px;
+  color: #1a1a1a;
+}
+
+body {
+  margin: 0;
+}
+
+.shell-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0 0.5rem;
+  min-height: 2.25rem;
+  border-bottom: 1px solid #c8c8c8;
+  background: #f4f4f4;
+}
+
+.header-left,
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.header-identity {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.shell-header button,
+.nav-item {
+  background: none;
+  border: none;
+  padding: 0.25rem 0.5rem;
+  font: inherit;
+  cursor: pointer;
+}
+
+.shell-header button:hover,
+.nav-item:hover {
+  background: #e2e2e2;
+}
+
+.nav-tabs {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  overflow-x: auto;
+}
+
+.nav-tab-group {
+  display: flex;
+  align-items: center;
+}
+
+.nav-tab-group + .nav-tab-group {
+  border-left: 1px solid #c8c8c8;
+  margin-left: 0.25rem;
+  padding-left: 0.25rem;
+}
+
+.nav-side-menu,
+.nav-group-tree {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.nav-group-label {
+  font-size: 0.85em;
+  color: #555;
+  text-transform: uppercase;
+  padding: 0.25rem 0.5rem 0;
+}
+
+/* Broken pins stay visible and clickable — subtle marking, never hidden. */
+.nav-item-broken {
+  color: #8a6d00;
+}
+
+.account-menu {
+  position: relative;
+}
+
+.account-menu-items {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  margin: 0;
+  padding: 0.25rem 0;
+  list-style: none;
+  background: #fff;
+  border: 1px solid #c8c8c8;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  min-width: 12rem;
+  z-index: 20;
+}
+
+.account-menu-items button {
+  display: block;
+  width: 100%;
+  text-align: left;
+}
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 10vh;
+  z-index: 30;
+}
+
+.dialog,
+.quick-open {
+  background: #fff;
+  border: 1px solid #c8c8c8;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  padding: 0.75rem;
+  width: min(34rem, 90vw);
+}
+
+.quick-open input {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  padding: 0.35rem;
+}
+
+.quick-open-entries {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.quick-open-entry {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  font: inherit;
+  padding: 0.25rem 0.35rem;
+  cursor: pointer;
+}
+
+.quick-open-entry:hover,
+.quick-open-entry.focused {
+  background: #e8f0fe;
+}
+
+.quick-open-kind {
+  font-size: 0.85em;
+  color: #555;
+  text-transform: uppercase;
+  margin-right: 0.35rem;
+}
+
+.quick-open-count {
+  margin: 0.5rem 0 0;
+  font-size: 0.85em;
+  color: #555;
+}
+
+.educate-what {
+  font-weight: 600;
+  margin: 0 0 0.25rem;
+}
+
+.educate-why,
+.educate-next {
+  margin: 0 0 0.25rem;
+}
+
+.dialog-choices {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.notice {
+  background: #fff8e1;
+  border: 1px solid #e0c96a;
+  padding: 0.35rem 0.5rem;
+  margin: 0.25rem 0.5rem;
+}
+
+.shell-boot,
+.panel-placeholder {
+  padding: 0.75rem;
+}
