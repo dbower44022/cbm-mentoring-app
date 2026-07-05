@@ -9,7 +9,11 @@
 
 import { type ReactElement, useEffect, useState } from "react";
 
-import { type AdminMessagePayload, type DashletPayload, type HomePayload } from "../api/payloads";
+import {
+  type AdminMessagePayload,
+  type DashletPayload,
+  type HomePayload,
+} from "../api/payloads";
 import { useEnvelope } from "../api/useEnvelope";
 import { DeclinedNotice, EducateNotice, UnreachableNotice } from "../shell/educate";
 import { AdminMessageView } from "../shell/messages";
@@ -17,7 +21,11 @@ import { AdminMessageView } from "../shell/messages";
 /** The provided, always-first dashlet's viewKey (home_panel.MESSAGES_DASHLET). */
 export const MESSAGES_DASHLET_VIEW_KEY = "home.messages";
 
-function MessagesDashlet({ messages }: { messages: AdminMessagePayload[] }): ReactElement {
+function MessagesDashlet({
+  messages,
+}: {
+  messages: AdminMessagePayload[];
+}): ReactElement {
   // Local copy so an acknowledgment click updates in place without
   // re-fetching /home (a re-fetch would be a fresh read of everything).
   const [items, setItems] = useState(messages);
@@ -27,7 +35,9 @@ function MessagesDashlet({ messages }: { messages: AdminMessagePayload[] }): Rea
 
   const markAcknowledged = (messageKey: string): void => {
     setItems((current) =>
-      current.map((m) => (m.messageKey === messageKey ? { ...m, acknowledged: true } : m)),
+      current.map((m) =>
+        m.messageKey === messageKey ? { ...m, acknowledged: true } : m,
+      ),
     );
   };
 
@@ -71,7 +81,11 @@ function Dashlet({
   );
 }
 
-export function HomePanel({ onMessagesViewed }: { onMessagesViewed: () => void }): ReactElement {
+export function HomePanel({
+  onMessagesViewed,
+}: {
+  onMessagesViewed: () => void;
+}): ReactElement {
   const { state } = useEnvelope<HomePayload>("/home");
 
   const loaded = state.phase === "loaded";
@@ -92,7 +106,11 @@ export function HomePanel({ onMessagesViewed }: { onMessagesViewed: () => void }
       return (
         <main aria-label="Home">
           {state.data.dashlets.map((dashlet) => (
-            <Dashlet key={dashlet.viewKey} dashlet={dashlet} messages={state.data.messages} />
+            <Dashlet
+              key={dashlet.viewKey}
+              dashlet={dashlet}
+              messages={state.data.messages}
+            />
           ))}
         </main>
       );

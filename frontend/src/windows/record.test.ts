@@ -33,6 +33,8 @@ describe("popOutWindowName", () => {
   it("is the record identity, so one record maps to one window", () => {
     expect(popOutWindowName("mentor", "abc")).toBe("record:mentor:abc");
     expect(popOutWindowName("mentor", "abc")).toBe(popOutWindowName("mentor", "abc"));
-    expect(popOutWindowName("mentor", "abc")).not.toBe(popOutWindowName("mentee", "abc"));
+    expect(popOutWindowName("mentor", "abc")).not.toBe(
+      popOutWindowName("mentee", "abc"),
+    );
   });
 });

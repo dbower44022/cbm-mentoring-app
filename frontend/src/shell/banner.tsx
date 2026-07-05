@@ -16,7 +16,11 @@ import { useEnvelope } from "../api/useEnvelope";
 import { DeclinedNotice } from "./educate";
 import { AdminMessageView } from "./messages";
 
-export function UrgentBanner({ refreshToken }: { refreshToken?: unknown }): ReactElement | null {
+export function UrgentBanner({
+  refreshToken,
+}: {
+  refreshToken?: unknown;
+}): ReactElement | null {
   const { state } = useEnvelope<BannerPayload>("/home/banner", refreshToken);
   // Messages the user opened from this banner: read server-side, kept
   // rendered here until dismissed so reading never makes content vanish.
@@ -38,7 +42,9 @@ export function UrgentBanner({ refreshToken }: { refreshToken?: unknown }): Reac
 
   const markAcknowledged = (messageKey: string): void => {
     setOpened((current) =>
-      current.map((m) => (m.messageKey === messageKey ? { ...m, acknowledged: true } : m)),
+      current.map((m) =>
+        m.messageKey === messageKey ? { ...m, acknowledged: true } : m,
+      ),
     );
   };
 
@@ -63,7 +69,12 @@ export function UrgentBanner({ refreshToken }: { refreshToken?: unknown }): Reac
       {unopened.map((message) => (
         <p key={message.messageKey}>
           Urgent message from your administrator: {message.title}{" "}
-          <button type="button" onClick={() => open(message)}>
+          <button
+            type="button"
+            onClick={() => {
+              open(message);
+            }}
+          >
             Read message
           </button>
         </p>
@@ -71,7 +82,12 @@ export function UrgentBanner({ refreshToken }: { refreshToken?: unknown }): Reac
       {opened.map((message) => (
         <div key={message.messageKey}>
           <AdminMessageView message={message} onAcknowledged={markAcknowledged} />
-          <button type="button" onClick={() => dismiss(message.messageKey)}>
+          <button
+            type="button"
+            onClick={() => {
+              dismiss(message.messageKey);
+            }}
+          >
             Dismiss
           </button>
         </div>

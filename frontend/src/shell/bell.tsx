@@ -16,7 +16,9 @@ import { DeclinedNotice } from "./educate";
 
 export function NotificationBell(): ReactElement {
   const { state, reload } = useEnvelope<BellPayload>("/shell/bell");
-  const [dropdown, setDropdown] = useState<{ entries: BellEntryPayload[] } | null>(null);
+  const [dropdown, setDropdown] = useState<{ entries: BellEntryPayload[] } | null>(
+    null,
+  );
   const [errors, setErrors] = useState<ApiError[] | null>(null);
 
   const unreadCount =
