@@ -146,7 +146,9 @@ def sessions(store: InMemorySessionStore, clock: FakeClock) -> SessionManagement
     )
 
 
-def test_establish_and_resolve(sessions: SessionManagement, store: InMemorySessionStore) -> None:
+def test_establish_and_resolve(
+    sessions: SessionManagement, store: InMemorySessionStore
+) -> None:
     identity = _identity()
     reference, record = sessions.establish(identity)
     resolved = sessions.resolve(reference)
