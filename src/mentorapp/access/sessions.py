@@ -34,10 +34,13 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Protocol
 
+from sqlalchemy.orm import Session
+
+from mentorapp.access.credentials import CredentialCipher
 from mentorapp.access.identity import VerifiedIdentity
 from mentorapp.crm.auth import CrmUserCredential
 from mentorapp.observability import get_logger
-from mentorapp.storage import uuid7
+from mentorapp.storage import AuthSession, as_utc, uuid7
 
 log = get_logger(__name__)
 
@@ -299,3 +302,73 @@ class SessionManagement:
             record.reauth_deadline = None
             self._store.save(record)
             raise SessionEndedError("re-authentication window lapsed")
+
+
+class StoredSessionStore:
+    """:class:`SessionStore` over the persisted ``authSession`` rows (WTK-191).
+
+    The CRM credential is sealed/opened through :class:`CredentialCipher`
+    (FND-006): plaintext never reaches the column, and an ENDED session's
+    credential is dropped rather than stored — custody ends with the session.
+    Each ``save`` commits, because the process layer treats a save as durable
+    even when it raises immediately afterwards (a dirty-window transition or a
+    grace-lapse ending must persist behind the very 401 it causes), and no
+    endpoint above this seam ever sees the DB session to commit it.
+    """
+
+    def __init__(self, session: Session, *, cipher: CredentialCipher) -> None:
+        self._session = session
+        self._cipher = cipher
+
+    def load(self, session_id: uuid.UUID) -> SessionRecord | None:
+        row = self._session.get(AuthSession, session_id)
+        if row is None:
+            return None
+        credential = (
+            self._cipher.open(row.crm_credential_encrypted, session_id=row.auth_session_id)
+            if row.crm_credential_encrypted is not None
+            else None
+        )
+        return SessionRecord(
+            session_id=row.auth_session_id,
+            user_id=row.user_id,
+            role_names=frozenset(row.session_role_names or ()),
+            secret_hash=bytes.fromhex(row.session_secret_hash),
+            state=SessionState(row.session_state),
+            created_at=as_utc(row.created_at),
+            last_seen_at=as_utc(row.session_last_seen_at),
+            expires_at=as_utc(row.session_expires_at),
+            reauth_deadline=(
+                as_utc(row.session_reauth_deadline)
+                if row.session_reauth_deadline is not None
+                else None
+            ),
+            crm_credential=credential,
+        )
+
+    def save(self, record: SessionRecord) -> None:
+        row = self._session.get(AuthSession, record.session_id)
+        if row is None:
+            # The session's own user is the acting identity for its audit
+            # columns; createdAt is the process clock's establishment time,
+            # not the insert time.
+            row = AuthSession(
+                auth_session_id=record.session_id,
+                user_id=record.user_id,
+                created_at=record.created_at,
+                created_by=record.user_id,
+            )
+            self._session.add(row)
+        row.session_secret_hash = record.secret_hash.hex()
+        row.session_state = record.state.value
+        row.session_expires_at = record.expires_at
+        row.session_reauth_deadline = record.reauth_deadline
+        row.session_last_seen_at = record.last_seen_at
+        row.session_role_names = sorted(record.role_names)
+        row.crm_credential_encrypted = (
+            self._cipher.seal(record.crm_credential, session_id=record.session_id)
+            if record.crm_credential is not None and record.state is not SessionState.ENDED
+            else None
+        )
+        row.modified_by = record.user_id
+        self._session.commit()

@@ -29,7 +29,7 @@ from mentorapp.storage.auth import (
     TokenAuditEvent,
     UserCrmAccount,
 )
-from mentorapp.storage.base import StructuralColumnsMixin, utcnow
+from mentorapp.storage.base import StructuralColumnsMixin, as_utc, utcnow
 from mentorapp.storage.entity import (
     Base,
     BaseEntity,
@@ -111,6 +111,7 @@ __all__ = [
     "UserPreference",
     "WorkprocessRegistration",
     "admin_sql_role_ddl",
+    "as_utc",
     "built_in_field_from_column",
     "built_in_fields",
     "entity_key",

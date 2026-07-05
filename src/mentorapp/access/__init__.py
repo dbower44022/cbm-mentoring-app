@@ -24,6 +24,7 @@ here too (WTK-007): :class:`StoredGrantRegistry` over the WTK-001 rows,
 with :func:`run_stored_data_source` as the API-facing entry point.
 """
 
+from mentorapp.access.credentials import CredentialCipher, CredentialSealError
 from mentorapp.access.grants import (
     DataSourceAccessError,
     DataSourceNotFoundError,
@@ -37,7 +38,7 @@ from mentorapp.access.grants import (
     run_data_source,
     run_stored_data_source,
 )
-from mentorapp.access.identity import IdentityBridge, VerifiedIdentity
+from mentorapp.access.identity import IdentityBridge, StoredIdentityBridge, VerifiedIdentity
 from mentorapp.access.sessions import (
     IdentityMismatchError,
     InMemorySessionStore,
@@ -47,9 +48,12 @@ from mentorapp.access.sessions import (
     SessionNotFoundError,
     SessionRecord,
     SessionState,
+    SessionStore,
+    StoredSessionStore,
 )
 from mentorapp.access.tokens import (
     InMemoryTokenActionStore,
+    StoredTokenActionStore,
     TokenActionError,
     TokenActionRecord,
     TokenActionService,
@@ -61,6 +65,8 @@ from mentorapp.access.tokens import (
 )
 
 __all__ = [
+    "CredentialCipher",
+    "CredentialSealError",
     "DataSourceAccessError",
     "DataSourceNotFoundError",
     "IdentityBridge",
@@ -74,8 +80,12 @@ __all__ = [
     "SessionNotFoundError",
     "SessionRecord",
     "SessionState",
+    "SessionStore",
     "SourceGrant",
     "StoredGrantRegistry",
+    "StoredIdentityBridge",
+    "StoredSessionStore",
+    "StoredTokenActionStore",
     "TokenActionError",
     "TokenActionRecord",
     "TokenActionService",

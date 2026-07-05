@@ -25,8 +25,11 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Protocol
 
+from sqlalchemy.orm import Session
+
 from mentorapp.observability import get_logger
-from mentorapp.storage import uuid7
+from mentorapp.storage import ActionToken, as_utc, uuid7
+from mentorapp.storage import TokenAuditEvent as TokenAuditEventRow
 
 log = get_logger(__name__)
 
@@ -228,3 +231,58 @@ class TokenActionService:
                 }
             },
         )
+
+
+class StoredTokenActionStore:
+    """:class:`TokenActionStore` over ``actionToken`` + ``tokenAuditEvent`` (WTK-191).
+
+    Audit rows are append-only by construction — ``append_audit`` only ever
+    inserts; the token's current state lives on ``actionToken``, its history
+    here. Saves commit for the same reason :class:`StoredSessionStore` gives:
+    the process treats a save as durable the moment it returns, and no caller
+    above this seam holds the DB session.
+    """
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def load(self, token_action_id: uuid.UUID) -> TokenActionRecord | None:
+        row = self._session.get(ActionToken, token_action_id)
+        if row is None:
+            return None
+        return TokenActionRecord(
+            token_action_id=row.action_token_id,
+            token_identity=row.token_identity,
+            action_name=row.token_action,
+            expires_at=as_utc(row.token_expires_at),
+            max_uses=row.token_max_uses,
+            user_id=row.user_id,
+            use_count=row.token_use_count,
+            revoked_at=(
+                as_utc(row.token_revoked_at) if row.token_revoked_at is not None else None
+            ),
+        )
+
+    def save(self, record: TokenActionRecord) -> None:
+        row = self._session.get(ActionToken, record.token_action_id)
+        if row is None:
+            row = ActionToken(action_token_id=record.token_action_id)
+            self._session.add(row)
+        row.token_action = record.action_name
+        row.token_identity = record.token_identity
+        row.user_id = record.user_id
+        row.token_expires_at = record.expires_at
+        row.token_max_uses = record.max_uses
+        row.token_use_count = record.use_count
+        row.token_revoked_at = record.revoked_at
+        self._session.commit()
+
+    def append_audit(self, event: TokenAuditEvent) -> None:
+        self._session.add(
+            TokenAuditEventRow(
+                action_token_id=event.token_action_id,
+                token_event_name=event.event_name,
+                token_event_occurred_at=event.occurred_at,
+            )
+        )
+        self._session.commit()
