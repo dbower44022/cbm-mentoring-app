@@ -9,6 +9,11 @@
   with the broken-pin fallback, the Home dashlet composition, and the
   per-user message center (auto-read on view, explicit acknowledgment,
   urgent banner until read).
+- :mod:`~mentorapp.ui.record_preview` — record preview & pop-outs (WTK-021):
+  the REQ-012 docked read-only preview that follows the focused grid row,
+  real-browser-window pop-outs pinned to their records, the two declared
+  actions with never-hide explainers, and the same-user cross-window
+  save fan-out.
 """
 
 from mentorapp.ui.auth_flows import (
@@ -57,6 +62,26 @@ from mentorapp.ui.home_panel import (
     resolve_home_dashlets,
     resolve_startup_panel,
 )
+from mentorapp.ui.record_preview import (
+    NO_ROW_FOCUSED,
+    OPEN_RECORD_PREVIEW,
+    POP_OUT_HAS_NAVIGATION,
+    POP_OUT_HEADER_RIGHT,
+    POP_OUT_RECORD,
+    PREVIEW_DOCK_POSITION,
+    RECORD_PREVIEW,
+    PanelAction,
+    PopOutResult,
+    PopOutWindow,
+    PreviewContent,
+    PreviewPane,
+    RecordRef,
+    RecordWindows,
+    SyncFanout,
+    UnknownWindowError,
+    already_open_message,
+    single_row_required_message,
+)
 
 __all__ = [
     "ACCOUNT_MENU",
@@ -67,9 +92,16 @@ __all__ = [
     "HOME_PANEL_KEY",
     "LOGIN_SCREEN",
     "MESSAGES_DASHLET",
+    "NO_ROW_FOCUSED",
+    "OPEN_RECORD_PREVIEW",
+    "POP_OUT_HAS_NAVIGATION",
+    "POP_OUT_HEADER_RIGHT",
+    "POP_OUT_RECORD",
+    "PREVIEW_DOCK_POSITION",
     "REAUTH_PROMPT",
     "REAUTH_SCREEN",
     "REAUTH_WRONG_USER",
+    "RECORD_PREVIEW",
     "RESET_REQUESTED",
     "SESSION_ENDED",
     "SIGN_IN_CRM_UNAVAILABLE",
@@ -87,18 +119,29 @@ __all__ = [
     "MenuItem",
     "MessageCenter",
     "MessagePriority",
+    "PanelAction",
+    "PopOutResult",
+    "PopOutWindow",
+    "PreviewContent",
+    "PreviewPane",
+    "RecordRef",
+    "RecordWindows",
     "ResolvedDashlet",
     "ScreenField",
     "SessionLoggedOut",
     "SessionRevived",
     "StartupChoice",
     "StartupTarget",
+    "SyncFanout",
     "UnknownMessageError",
+    "UnknownWindowError",
     "UnsavedWorkGuardError",
     "WindowPhase",
     "WindowSessionController",
+    "already_open_message",
     "dashlet_unavailable_message",
     "login_failure_message",
     "resolve_home_dashlets",
     "resolve_startup_panel",
+    "single_row_required_message",
 ]
