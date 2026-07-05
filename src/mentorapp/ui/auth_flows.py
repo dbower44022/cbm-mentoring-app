@@ -56,6 +56,14 @@ class EducateMessage:
     why: str
     what_next: str
 
+    def as_payload(self) -> dict[str, str]:
+        """The one wire shape every endpoint serves an educate message in."""
+        return {
+            "whatHappened": self.what_happened,
+            "why": self.why,
+            "whatNext": self.what_next,
+        }
+
 
 # The rejection message deliberately names neither the failing field nor
 # account existence — the login endpoint must not enumerate CRM accounts,
