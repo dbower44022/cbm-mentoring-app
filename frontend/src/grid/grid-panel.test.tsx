@@ -113,7 +113,9 @@ const DEFAULT_AGGREGATES = { totalCount: 200, unnarrowedCount: 200, footer: {} }
 /** Serve the three grid endpoints; every request is logged for assertions. */
 function renderGrid(config: ServerConfig = {}): { calls: URL[] } {
   const calls: URL[] = [];
-  vi.stubGlobal("fetch", (input: RequestInfo | URL): Promise<Response> => {
+  // The component always calls fetch with a path string; typing the stub
+  // that way keeps String(input) well-defined.
+  vi.stubGlobal("fetch", (input: string | URL): Promise<Response> => {
     const url = new URL(String(input), "http://grid.test");
     calls.push(url);
     let body: unknown;
@@ -221,7 +223,15 @@ describe("search (REQ-020)", () => {
     await screen.findByText("Engagement 1");
     const search = screen.getByLabelText("Search displayed columns");
 
-    for (const text of ["alpha", "beta", "gamma", "delta", "echo", "foxtrot", "delta"]) {
+    for (const text of [
+      "alpha",
+      "beta",
+      "gamma",
+      "delta",
+      "echo",
+      "foxtrot",
+      "delta",
+    ]) {
       fireEvent.change(search, { target: { value: text } });
     }
     const options = [...document.querySelectorAll("datalist option")].map((option) =>
@@ -354,7 +364,9 @@ describe("actions (REQ-021, REQ-022)", () => {
     expect(dialog.textContent).toContain(
       "'Open' works on exactly one record, and no row is selected.",
     );
-    expect(dialog.textContent).toContain("Select a single row and run the action again.");
+    expect(dialog.textContent).toContain(
+      "Select a single row and run the action again.",
+    );
     fireEvent.click(screen.getByRole("button", { name: "OK" }));
     expect(screen.queryByRole("dialog", { name: "Why this didn't run" })).toBeNull();
   });
@@ -579,7 +591,9 @@ describe("the four grid states (REQ-030)", () => {
       ),
     ).toBeTruthy();
     expect(
-      screen.getByText("Ask a system administrator to grant it — access is per data source."),
+      screen.getByText(
+        "Ask a system administrator to grant it — access is per data source.",
+      ),
     ).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
   });
