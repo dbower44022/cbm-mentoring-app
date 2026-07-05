@@ -24,17 +24,26 @@ from sqlalchemy.orm import Session
 
 from mentorapp.api.deps import get_current_user_id, get_session
 from mentorapp.api.routers.grids import get_grid_entity_catalog
-from mentorapp.automation.artifact_jobs import EXPORT_JOB_TYPE, PRINT_JOB_TYPE
+from mentorapp.automation.artifact_jobs import (
+    EXPORT_JOB_TYPE,
+    PRINT_JOB_TYPE,
+    export_job_handler,
+)
+from mentorapp.automation.worker import process_next_job
 from mentorapp.main import create_app
 from mentorapp.storage import (
+    AppUser,
     BackgroundJob,
+    ChangeFeedEntry,
     DataSource,
     Grid,
     GridView,
+    Notification,
     PostalCode,
     SchemaRegistry,
     SortSpec,
     UserPreference,
+    regenerate_read_views,
     uuid7,
 )
 
@@ -289,3 +298,137 @@ def test_unknown_grid_and_mismatched_view_are_honest_404s(
         client.get(f"/grids/{GRID_KEY}/rows", params={"view_id": str(uuid7())}).status_code
         == 404
     )
+
+
+# --- WTK-051 verification: the REQ-020/023/026/027 guarantees end to end ----------
+
+
+def _aggregates(client: TestClient, view_id: uuid.UUID) -> dict[str, Any]:
+    response = client.get(f"/grids/{GRID_KEY}/aggregates", params={"view_id": str(view_id)})
+    assert response.status_code == 200, response.text
+    return response.json()["data"]
+
+
+def test_aggregates_hold_the_whole_set_at_any_scroll_position(
+    client: TestClient, view_id: uuid.UUID
+) -> None:
+    # REQ-026: scrolling pages the rows, never the totals. The aggregates
+    # endpoint takes no cursor at all, so mid-scroll and end-of-scroll answers
+    # must equal the pre-scroll answer over the entire filtered set.
+    before = _aggregates(client, view_id)
+    first = _rows(client, view_id, page_size=1)
+    assert first["meta"]["cursor"]
+    mid_scroll = _aggregates(client, view_id)
+    _rows(client, view_id, page_size=1, cursor=first["meta"]["cursor"])
+    after = _aggregates(client, view_id)
+    assert before == mid_scroll == after
+    assert before["totalCount"] == 3
+
+
+def test_search_ignores_unsearchable_displayed_columns(
+    client: TestClient, view_id: uuid.UUID
+) -> None:
+    # REQ-020: search runs over the displayed columns the registry marks
+    # searchable. "972" lives only in postalCodeValue — displayed but not
+    # searchable — so an armed search finds nothing rather than scanning it.
+    body = _rows(client, view_id, search="972")
+    assert body["meta"]["searchApplied"] is True
+    assert body["data"] == []
+
+
+def test_select_all_export_covers_the_filtered_set_minus_deselections(
+    client: TestClient, session: Session, view_id: uuid.UUID
+) -> None:
+    # REQ-023 + REQ-027: select-all is the ENTIRE filtered set carried as
+    # exclusions — the payload never enumerates every included ID.
+    data = client.post(
+        f"/grids/{GRID_KEY}/export",
+        json={
+            "viewId": str(view_id),
+            "selection": {"selectionKind": "filteredSet", "excludedRecordIds": ["97401"]},
+        },
+    ).json()["data"]
+    job = session.get(BackgroundJob, uuid.UUID(data["jobId"]))
+    assert job.job_payload["scope"] == {
+        "scopeKind": "filteredSet",
+        "excludedRecordIds": ["97401"],
+    }
+
+
+def test_empty_explicit_selection_exports_the_entire_filtered_set(
+    client: TestClient, session: Session, view_id: uuid.UUID
+) -> None:
+    # REQ-027's one scope rule: no effective selection → the filtered set.
+    data = client.post(
+        f"/grids/{GRID_KEY}/export",
+        json={
+            "viewId": str(view_id),
+            "selection": {"selectionKind": "explicit", "recordIds": []},
+        },
+    ).json()["data"]
+    job = session.get(BackgroundJob, uuid.UUID(data["jobId"]))
+    assert job.job_payload["scope"] == {"scopeKind": "filteredSet"}
+
+
+def test_malformed_selection_is_a_per_field_422_and_enqueues_nothing(
+    client: TestClient, session: Session, view_id: uuid.UUID
+) -> None:
+    response = client.post(
+        f"/grids/{GRID_KEY}/export",
+        json={"viewId": str(view_id), "selection": {"selectionKind": "rows"}},
+    )
+    assert response.status_code == 422
+    (error,) = response.json()["errors"]
+    assert error["fieldName"] == "selectionKind"
+    assert session.scalars(select(BackgroundJob)).first() is None
+
+
+class _MemoryStore:
+    """Artifact sink for the worker pass: bytes in a dict, memory:// URLs."""
+
+    def __init__(self) -> None:
+        self.artifacts: dict[str, tuple[bytes, str]] = {}
+
+    def put(self, name: str, content: bytes, content_type: str) -> str:
+        self.artifacts[name] = (content, content_type)
+        return f"memory://{name}"
+
+    def discard(self, url: str) -> None:
+        self.artifacts.pop(url.removeprefix("memory://"), None)
+
+
+def test_export_job_reports_progress_from_pending_to_downloadable(
+    client: TestClient, session: Session, view_id: uuid.UUID
+) -> None:
+    # REQ-027 + DB-S11 long-run reporting, end to end: the endpoint answers a
+    # followable jobID immediately; the worker pass then drives the SAME job to
+    # completed with a download artifact, and completion surfaces through the
+    # change feed and the requester's bell — no second notification path.
+    # The bell entry references a real user row, so the session user must exist.
+    session.add(AppUser(user_id=USER_ID, crm_user_id="crm-mentor", username="mentor"))
+    regenerate_read_views(session)
+    response = client.post(f"/grids/{GRID_KEY}/export", json={"viewId": str(view_id)})
+    data = response.json()["data"]
+    job_id = uuid.UUID(data["jobId"])
+    assert data["jobStatus"] == "pending"
+    assert data["statusPath"] == f"/jobs/{job_id}"
+
+    store = _MemoryStore()
+    assert process_next_job(session, {EXPORT_JOB_TYPE: export_job_handler(store)}) is True
+
+    job = session.get(BackgroundJob, job_id)
+    assert job.job_status == "completed"
+    assert job.artifact_url == f"memory://export-{job_id}.csv"
+    assert job.job_expires_at is not None
+    content, content_type = store.artifacts[f"export-{job_id}.csv"]
+    assert content_type == "text/csv"
+    # View rendering: the artifact leads with the view's columns in display order.
+    assert content.decode("utf-8").splitlines()[0] == "cityName,postalCodeValue"
+
+    feed = session.scalars(
+        select(ChangeFeedEntry).where(ChangeFeedEntry.record_id == job_id)
+    ).one()
+    assert (feed.entity_type, feed.change_kind) == ("backgroundJob", "updated")
+    bell = session.scalars(select(Notification).where(Notification.job_id == job_id)).one()
+    assert bell.user_id == USER_ID
+    assert bell.notification_type == "jobCompleted"
