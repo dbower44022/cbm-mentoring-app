@@ -156,21 +156,29 @@ def count_and_aggregates(
 
 
 def trigram_search_filter(
-    session: Session, entity_cls: type[Any], entity_type: str, search_text: str
+    session: Session,
+    entity_cls: type[Any],
+    entity_type: str,
+    search_text: str,
+    *,
+    within: Sequence[str] | None = None,
 ) -> ColumnElement[bool]:
     """A server-side contains-match over the entity's searchable columns.
 
     The searchable set is declared in the schema registry (``searchableFlag``),
-    never hardcoded per endpoint. ``%``/``_`` in the user's text are escaped —
-    search text is a needle, never a pattern. An entity with no searchable
-    columns rejects search explicitly rather than silently matching nothing.
+    never hardcoded per endpoint. ``within`` optionally narrows it to a field
+    subset — the grid surface passes the view's displayed columns (REQ-020) —
+    but can never widen it: a field outside the registry's searchable set has
+    no trigram index to serve it. ``%``/``_`` in the user's text are escaped —
+    search text is a needle, never a pattern. An empty effective set rejects
+    search explicitly rather than silently matching nothing.
     """
     registry = registry_for(session, entity_type)
     columns = columns_by_field_name(entity_cls)
     searchable = [
         columns[name]
         for name, row in registry.items()
-        if row.searchable_flag and name in columns
+        if row.searchable_flag and name in columns and (within is None or name in within)
     ]
     if not searchable:
         raise ApiValidationError(
@@ -178,7 +186,8 @@ def trigram_search_filter(
                 field_error(
                     "search",
                     CODE_SEARCH_NOT_SUPPORTED,
-                    f"{entity_type} has no searchable fields.",
+                    f"{entity_type} has no searchable fields"
+                    + (" among the displayed columns." if within is not None else "."),
                 )
             ]
         )
