@@ -1,4 +1,7 @@
-"""Every mentorapp table: registries, options, jobs, feed, and supporting entities.
+"""Platform tables: registries, options, jobs, feed, and supporting entities.
+
+Auth and access tables (users, sessions, tokens, grants, data sources) live
+in ``mentorapp.storage.auth`` (WTK-001).
 
 ``schemaRegistry`` (REQ-050, REQ-051) holds one row per field of every entity —
 built-in and user-defined — and is the single contract that drives UI
