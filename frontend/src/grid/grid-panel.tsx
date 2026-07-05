@@ -273,10 +273,13 @@ function LoadedGrid({
   };
 
   const gridKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
+    // Browsers report Ctrl-chorded letters lowercase ("a", never "A"); the
+    // keyboard model speaks "Ctrl+A", so chorded single letters normalize up.
+    const namedKey = event.key === " " ? "Space" : event.key;
     const key =
       (event.ctrlKey ? "Ctrl+" : "") +
       (event.shiftKey && event.key !== "Shift" ? "Shift+" : "") +
-      (event.key === " " ? "Space" : event.key);
+      (event.ctrlKey && namedKey.length === 1 ? namedKey.toUpperCase() : namedKey);
     const action = bindingFor(key, "rows");
     if (action === null) {
       return;
