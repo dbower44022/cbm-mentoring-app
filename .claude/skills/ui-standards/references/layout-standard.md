@@ -113,3 +113,13 @@ panel hosts).
 All panels and dialogs **scale to full screen** and show as much data as
 possible. **"White space is a waste"** — always data-dense, never
 junky/crowded. (The grid NO-WHITE-SPACE rule, applied app-wide.)
+
+## Panel resizing & per-panel zoom (REQ-087, ruled by Doug 2026-07-05 at the prototype gate)
+
+- **All panels are resizable.** Every boundary between panels is a very
+  clear, wider-than-normal border, easy to select and drag to resize.
+- **Panel dimensions persist:** the system remembers the user's last panel
+  dimensions and defaults to them when the app/page is next opened
+  (long-term per-user persistence, like view choice — not session-only).
+- **Per-panel zoom:** each panel supports a user-defined zoom level, set by
+  the user and remembered (same persistence class).

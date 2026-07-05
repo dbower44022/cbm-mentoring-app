@@ -199,9 +199,29 @@ td.check-col, th.check-col { width: 30px; text-align: center; padding: 0; }
 /* Docked right (implementer's choice), read-optimized, follows the
    selected row (REQ-012, REQ-073). */
 .preview-pane {
-  width: 420px; flex: none; border-left: 1px solid var(--slot-border);
+  width: 420px; flex: none;
   background: var(--slot-panel); overflow-y: auto; padding: 10px 12px;
 }
+
+/* ==================== Panel splitters & zoom (REQ-087) ============ */
+/* All panels resizable: a very clear, wider-than-normal border between
+   panels, easy to grab. Dimensions + per-panel zoom persist per user. */
+.splitter {
+  flex: none; width: 9px; cursor: col-resize;
+  background: repeating-linear-gradient(180deg, #c3ccd6 0 3px, #e4e9ef 3px 6px);
+  border-left: 1px solid var(--slot-border); border-right: 1px solid var(--slot-border);
+}
+.splitter:hover, .splitter.dragging { background: var(--slot-accent); }
+.panel-zoomable { position: relative; }
+.zoom-ctl {
+  position: absolute; top: 4px; right: 14px; z-index: 5;
+  display: flex; align-items: center; gap: 2px;
+  background: rgba(255,255,255,.9); border: 1px solid var(--slot-border);
+  border-radius: 3px; padding: 0 3px; font-size: var(--type-1); color: var(--slot-text-dim);
+}
+.zoom-ctl button { border: none; background: none; font-size: var(--type-2); padding: 0 4px; color: var(--slot-text-dim); }
+.zoom-ctl button:hover { color: var(--slot-brand); }
+.zoom-inner { zoom: 1; height: 100%; display: flex; flex-direction: column; min-width: 0; }
 .preview-pane h2 { font-size: var(--type-5); color: var(--slot-brand); }
 .preview-sub { font-size: var(--type-1); color: var(--slot-text-dim); margin: 2px 0 8px; }
 .preview-section { margin-bottom: 10px; }
