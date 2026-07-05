@@ -15,7 +15,9 @@ import {
   useParams,
 } from "react-router-dom";
 import { type ApiError, callApi, EnvelopeError } from "../api/envelope";
+import { HomePanel } from "../panels/home";
 import { type SessionState, userHeaders } from "../session";
+import { UrgentBanner } from "./banner";
 import { Header } from "./header";
 import { Navigation } from "./navigation";
 import type { PreferencePayload, ShellPayload } from "./payloads";
@@ -42,6 +44,12 @@ export function Shell({ session, onLoggedOut }: ShellProps): ReactElement {
   });
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  // Home's render reads its messages (REQ-011 auto-read on view); bumping
+  // this token re-fetches the banner so it never banners what was just read.
+  const [messagesViewedAt, setMessagesViewedAt] = useState(0);
+  const onMessagesViewed = useCallback(() => {
+    setMessagesViewedAt((current) => current + 1);
+  }, []);
   const navigate = useNavigate();
 
   const loadShell = useCallback((): void => {
@@ -212,6 +220,7 @@ export function Shell({ session, onLoggedOut }: ShellProps): ReactElement {
         path="*"
         element={
           <div className="main-window">
+            <UrgentBanner refreshToken={messagesViewedAt} />
             <Header
               header={shell.mainWindow}
               session={session}
@@ -236,7 +245,7 @@ export function Shell({ session, onLoggedOut }: ShellProps): ReactElement {
               <Routes>
                 <Route
                   path="/"
-                  element={<PanelPlaceholder panelKey={shell.homePanelKey} />}
+                  element={<HomePanel onMessagesViewed={onMessagesViewed} />}
                 />
                 <Route path="/panel/:panelKey" element={<RoutedPanel />} />
               </Routes>
@@ -263,8 +272,8 @@ function RoutedPanel(): ReactElement {
 }
 
 function PanelPlaceholder({ panelKey }: { panelKey: string }): ReactElement {
-  // Panel content is later work: Home/messaging renders with WTK-198, grids
-  // with PI-003. The shell routes here today so navigation is real end to end.
+  // Non-home panel content is later work: grids render with PI-003. The
+  // shell routes here today so navigation is real end to end.
   return (
     <p className="panel-placeholder">
       Panel “{panelKey}” is open. Its content rendering lands with its own work task.
