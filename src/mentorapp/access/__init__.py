@@ -18,6 +18,11 @@ identity bridge they all stand on:
   read-only, own-view management, admin promotion), the persona →
   capability map over the ``accessGrant`` rows, and the standard
   ``permission_refusal`` state a denied deep link renders.
+- :mod:`~mentorapp.access.view_enforcement` — StoredViewEnforcement
+  (WTK-050): the WTK-044 rules bound to the persisted ``gridView`` rows —
+  load-and-authorize entry points for view management and promotion, the
+  stored REQ-019 authoring gate, and the ``gridDeepLink`` fact assembly the
+  API's pure resolver consumes (REQ-028).
 - :mod:`~mentorapp.access.sessions` — SessionManagement (REQ-005):
   server-side sessions behind an opaque browser reference, with in-place
   re-authentication, the dirty-window guard, and cross-window logout.
@@ -83,6 +88,20 @@ from mentorapp.access.tokens import (
     TokenRevokedError,
 )
 from mentorapp.access.verification import CrmCredentialVerifier, CrmForgotPasswordFlow
+from mentorapp.access.view_enforcement import (
+    DeepLinkNotFoundError,
+    GridOnlyLinkFacts,
+    NamedViewLinkFacts,
+    ViewNotFoundError,
+    authorize_stored_data_source_authoring,
+    authorize_stored_view_management,
+    authorize_stored_view_promotion,
+    load_deep_link_facts,
+    load_live_view,
+    stored_save_disposition,
+    stored_view_visible_to,
+    view_facts,
+)
 from mentorapp.access.views import (
     ADMIN_CAPABILITIES,
     CAP_DATA_SOURCE_AUTHOR,
@@ -141,12 +160,15 @@ __all__ = [
     "CrmForgotPasswordFlow",
     "DataSourceAccessError",
     "DataSourceNotFoundError",
+    "DeepLinkNotFoundError",
+    "GridOnlyLinkFacts",
     "IdentityBridge",
     "IdentityMismatchError",
     "InMemoryCapabilityRegistry",
     "InMemoryGrantRegistry",
     "InMemorySessionStore",
     "InMemoryTokenActionStore",
+    "NamedViewLinkFacts",
     "ReauthRequiredError",
     "SessionEndedError",
     "SessionManagement",
@@ -170,12 +192,16 @@ __all__ = [
     "TokenRevokedError",
     "VerifiedIdentity",
     "ViewFacts",
+    "ViewNotFoundError",
     "ViewPermissionError",
     "accessible_area_keys",
     "authorize_area",
     "authorize_capability",
     "authorize_data_source",
     "authorize_data_source_authoring",
+    "authorize_stored_data_source_authoring",
+    "authorize_stored_view_management",
+    "authorize_stored_view_promotion",
     "authorize_view_management",
     "authorize_view_promotion",
     "can_apply_temporarily",
@@ -184,6 +210,8 @@ __all__ = [
     "grant_data_source_role",
     "holds_capability",
     "is_area_accessible",
+    "load_deep_link_facts",
+    "load_live_view",
     "load_stored_source",
     "persona_for",
     "revoke_data_source_role",
@@ -191,5 +219,8 @@ __all__ = [
     "run_data_source",
     "run_stored_data_source",
     "save_disposition",
+    "stored_save_disposition",
+    "stored_view_visible_to",
+    "view_facts",
     "view_visible_to",
 ]
