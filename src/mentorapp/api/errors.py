@@ -15,6 +15,11 @@ The write-contract failure semantics (REQ-059, DB-S12, DB-S4):
   the recorded override flag.
 - Unknowns are logged with full context and returned as an opaque 500 —
   never swallowed, never leaked.
+- Auth refusals (WTK-004): every message is generic by design — unknown
+  login vs wrong password, unknown vs ended session, and every token
+  refusal each share one wording, so a response can never be used to
+  enumerate accounts, references, or tokens. Codes stay precise where that
+  is safe (see the token handler) so the client can still pick a next step.
 """
 
 from __future__ import annotations
@@ -26,6 +31,16 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from mentorapp.access import (
+    IdentityMismatchError,
+    ReauthRequiredError,
+    SessionEndedError,
+    SessionNotFoundError,
+    TokenActionError,
+    TokenExhaustedError,
+    TokenExpiredError,
+    TokenRevokedError,
+)
 from mentorapp.api.envelope import ApiError, fail, field_error, request_error
 from mentorapp.observability import get_logger
 
@@ -38,6 +53,20 @@ CODE_STALE_ROW_VERSION: Final = "staleRowVersion"
 CODE_DUPLICATE_CANDIDATES: Final = "duplicateCandidates"
 CODE_NOT_FOUND: Final = "notFound"
 CODE_INTERNAL: Final = "internalError"
+CODE_INVALID_CREDENTIALS: Final = "invalidCredentials"
+CODE_UNAUTHENTICATED: Final = "unauthenticated"
+CODE_REAUTH_REQUIRED: Final = "reauthRequired"
+CODE_TOKEN_INVALID: Final = "tokenInvalid"
+CODE_TOKEN_EXPIRED: Final = "tokenExpired"
+CODE_TOKEN_REVOKED: Final = "tokenRevoked"
+CODE_TOKEN_EXHAUSTED: Final = "tokenExhausted"
+
+# One wording per refusal family — tests pin these; a per-cause variation is
+# an enumeration channel, not a UX improvement.
+_MSG_INVALID_CREDENTIALS: Final = "The login name or password is incorrect."
+_MSG_UNAUTHENTICATED: Final = "A valid session is required; sign in again."
+_MSG_REAUTH_REQUIRED: Final = "The session expired; re-authenticate to continue."
+_MSG_TOKEN_REFUSED: Final = "This link cannot be used; request a new one if you still need it."
 
 
 class ApiValidationError(Exception):
@@ -70,6 +99,15 @@ class DuplicateCandidatesError(Exception):
     def __init__(self, candidates: list[dict[str, Any]]) -> None:
         super().__init__(f"{len(candidates)} duplicate candidate(s)")
         self.candidates = candidates
+
+
+class InvalidCredentialsError(Exception):
+    """Login or re-auth presented credentials that do not verify (REQ-008).
+
+    Deliberately detail-free: unknown login name, wrong password, and a
+    re-auth identity mismatch all surface as this one refusal, so the
+    response cannot be used to tell which accounts exist.
+    """
 
 
 class RecordNotFoundError(Exception):
@@ -136,6 +174,56 @@ def register_error_handlers(app: FastAPI) -> None:
             CODE_NOT_FOUND, f"{exc.entity_type} {exc.record_id} was not found."
         )
         return _respond(404, fail([error]))
+
+    @app.exception_handler(InvalidCredentialsError)
+    async def _invalid_credentials(
+        _request: Request, _exc: InvalidCredentialsError
+    ) -> JSONResponse:
+        error = request_error(CODE_INVALID_CREDENTIALS, _MSG_INVALID_CREDENTIALS)
+        return _respond(401, fail([error]))
+
+    @app.exception_handler(IdentityMismatchError)
+    async def _identity_mismatch(
+        _request: Request, _exc: IdentityMismatchError
+    ) -> JSONResponse:
+        # Valid credentials for the WRONG user must read exactly like a bad
+        # password — anything more specific confirms who owns the session.
+        error = request_error(CODE_INVALID_CREDENTIALS, _MSG_INVALID_CREDENTIALS)
+        return _respond(401, fail([error]))
+
+    @app.exception_handler(SessionNotFoundError)
+    async def _session_not_found(_request: Request, _exc: SessionNotFoundError) -> JSONResponse:
+        error = request_error(CODE_UNAUTHENTICATED, _MSG_UNAUTHENTICATED)
+        return _respond(401, fail([error]))
+
+    @app.exception_handler(SessionEndedError)
+    async def _session_ended(_request: Request, _exc: SessionEndedError) -> JSONResponse:
+        # Same refusal as an unknown reference: distinguishing "never existed"
+        # from "ended" would let references be probed for their history.
+        error = request_error(CODE_UNAUTHENTICATED, _MSG_UNAUTHENTICATED)
+        return _respond(401, fail([error]))
+
+    @app.exception_handler(ReauthRequiredError)
+    async def _reauth_required(_request: Request, _exc: ReauthRequiredError) -> JSONResponse:
+        # The dirty-window challenge (REQ-005): re-authenticate in place, keep
+        # unsaved work. No sessionID in the body — the caller already holds
+        # the reference; the challenge must add nothing to what it knows.
+        error = request_error(CODE_REAUTH_REQUIRED, _MSG_REAUTH_REQUIRED)
+        return _respond(401, fail([error]))
+
+    @app.exception_handler(TokenActionError)
+    async def _token_refused(_request: Request, exc: TokenActionError) -> JSONResponse:
+        # One generic message for every refusal; the CODE stays precise so the
+        # client can offer "request a new link" on expiry. Distinct codes are
+        # safe here: the HMAC signature gates the record lookup, so only the
+        # legitimate link holder ever sees anything but tokenInvalid.
+        refusal_codes: dict[type[TokenActionError], str] = {
+            TokenExpiredError: CODE_TOKEN_EXPIRED,
+            TokenRevokedError: CODE_TOKEN_REVOKED,
+            TokenExhaustedError: CODE_TOKEN_EXHAUSTED,
+        }
+        code = refusal_codes.get(type(exc), CODE_TOKEN_INVALID)
+        return _respond(403, fail([request_error(code, _MSG_TOKEN_REFUSED)]))
 
     @app.exception_handler(Exception)
     async def _unhandled(request: Request, exc: Exception) -> JSONResponse:
