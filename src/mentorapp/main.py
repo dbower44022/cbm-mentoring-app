@@ -17,6 +17,7 @@ from mentorapp.api.routers.home import router as home_router
 from mentorapp.api.routers.preferences import router as preferences_router
 from mentorapp.api.routers.records import router as records_router
 from mentorapp.api.routers.schema import router as schema_router
+from mentorapp.api.routers.shell import router as shell_router
 from mentorapp.api.wiring import install_auth_wiring
 from mentorapp.observability import get_logger
 
@@ -36,6 +37,7 @@ def create_app() -> FastAPI:
     app.include_router(preferences_router)
     app.include_router(home_router)
     app.include_router(records_router)
+    app.include_router(shell_router)
 
     @app.get("/healthz")
     def healthz() -> Envelope:
