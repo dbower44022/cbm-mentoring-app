@@ -282,12 +282,12 @@ def _bell_user(session: Session, username: str = "bell-mentor") -> uuid.UUID:
 def _bell_entry(
     session: Session, user_id: uuid.UUID, message: str, **overrides: object
 ) -> Notification:
-    entry = Notification(
-        user_id=user_id,
-        notification_type="jobCompleted",
-        notification_message=message,
+    values: dict[str, object] = {
+        "notification_type": "jobCompleted",
+        "notification_message": message,
         **overrides,
-    )
+    }
+    entry = Notification(user_id=user_id, **values)
     session.add(entry)
     return entry
 

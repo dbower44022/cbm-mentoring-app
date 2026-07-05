@@ -5,7 +5,7 @@ WTK-141)."""
 from __future__ import annotations
 
 import uuid
-from datetime import timedelta
+from datetime import UTC, timedelta
 
 import pytest
 from sqlalchemy import select
@@ -213,7 +213,6 @@ def test_completion_rings_the_requesting_users_bell(session: Session) -> None:
         )
 
     assert process_next_job(session, {"gridExport": export_handler}, now=now) is True
-    session.commit()
 
     entry = session.scalars(select(Notification)).one()
     assert entry.user_id == user.user_id
@@ -224,7 +223,10 @@ def test_completion_rings_the_requesting_users_bell(session: Session) -> None:
     assert "ready to download" in entry.notification_message
     assert "grid export" in entry.notification_message
     assert entry.read_at is None
-    assert entry.notification_expires_at == now + NOTIFICATION_RETENTION
+    expires = entry.notification_expires_at
+    assert expires is not None
+    # The SQLite test dialect drops tzinfo on load; normalize before comparing.
+    assert expires.replace(tzinfo=UTC) == now + NOTIFICATION_RETENTION
 
 
 def test_parked_failure_rings_job_failed(session: Session) -> None:
