@@ -7,24 +7,31 @@ Implements the storage surface behind the canonical list-view grid
 scrolling, automatic column expansion, the one keyboard model (REQ-016,
 REQ-024). ``gridView`` is one view a grid can show (REQ-017, REQ-018):
 its data source, displayed fields with order/width/format, grouping, row
-theme, filters, and the system/user split with read-only system views and
-temporary-modified copies. ``sortSpec`` is one column of a view's sort order
-(REQ-025). ``gridState`` carries the durable per-user-per-grid extras
-(the remembered searches, REQ-020); ``gridSessionState`` the session-only
-return-to-grid restore state (REQ-031); ``gridDeepLink`` a shareable link
-naming a grid and view — a reference, never a grant (REQ-028).
+theme, filters, its own aggregate declaration (FND-019), and the system/user
+split with read-only system views and temporary-modified copies. ``sortSpec``
+is one column of a view's sort order (REQ-025). ``gridSessionState`` is the
+session-only return-to-grid restore state (REQ-031); ``gridDeepLink`` a
+shareable link naming a grid and view — a reference, never a grant (REQ-028).
 
-Associations: ``gridLastUsedView`` is the (user, grid) → view record each
-grid opens on (REQ-017); ``sortSpec.gridViewID`` orders a view's sorts (the
-grid ↔ view ↔ sortSpec association); ``gridView.userID`` is the view-owner
-association — null marks a system view, a live user row its owner.
+Durable per-user grid state does NOT live here. Per DB-S13 — per-user state
+goes through the ONE preference mechanism, never a new table or column — the
+remembered searches (REQ-020) persist as the ``userPreference`` key
+``grid.{gridId}.recentSearches`` (FND-017) and the last-displayed view
+(REQ-017/REQ-031) as ``grid.{gridId}.lastView`` (FND-018). This module once
+tabled both (``gridState``, ``gridLastUsedView``); the design reconciliation
+moved them out because the standard already had a home for exactly this
+shape of state. ``api.grid_surface.recent_searches_key`` and
+``last_view_preference_key`` are the canonical key builders.
+
+Associations: ``sortSpec.gridViewID`` orders a view's sorts (the grid ↔ view
+↔ sortSpec association); ``gridView.userID`` is the view-owner association —
+null marks a system view, a live user row its owner.
 
 These are platform tables (``StructuralColumnsMixin`` + ``Base``, not
 ``BaseEntity``): like ``dataSource`` and ``userPreference`` they are app
 configuration, get no schema-registry rows and no generated read views, and
 never surface through the admin read surface. Every foreign-key column
-carries the exact name of the primary key it references (DB-R2b) — which is
-why the last-used view is an association table, not a role-named column.
+carries the exact name of the primary key it references (DB-R2b).
 """
 
 from __future__ import annotations
@@ -85,8 +92,11 @@ class Grid(StructuralColumnsMixin, Base):
     action_bar_config: Mapped[dict[str, Any]] = mapped_column(
         "actionBarConfig", JsonValue, nullable=False, default=dict
     )
-    # Status-bar content (REQ-026): which aggregates the footer row shows;
-    # counts/progress placement is standard-fixed.
+    # Status-bar content (REQ-026): presentation only — whether and how the
+    # footer aggregate row shows; counts/progress placement is standard-fixed.
+    # Never WHICH aggregates: those are the view's own declaration
+    # (``gridView.viewAggregates``, FND-019), because an aggregate is only
+    # meaningful against the view's data source.
     status_bar_config: Mapped[dict[str, Any]] = mapped_column(
         "statusBarConfig", JsonValue, nullable=False, default=dict
     )
@@ -118,8 +128,10 @@ class GridView(StructuralColumnsMixin, Base):
     order is list order (REQ-018). ``viewFilters`` are the view's own filters
     that search and ad-hoc filters stack onto, never replace (REQ-020,
     REQ-029). ``adHocFilterFlag`` is REQ-029's per-view switch for column-
-    header filters. Every displayed or filtered field must be one the view's
-    data source exposes (REQ-019) — validated by the API, not the database.
+    header filters. ``viewAggregates`` is the view's own footer-aggregate
+    declaration (FND-019). Every displayed, filtered, or aggregated field
+    must be one the view's data source exposes (REQ-019) — validated by the
+    API, not the database.
     """
 
     __tablename__ = "gridView"
@@ -189,6 +201,16 @@ class GridView(StructuralColumnsMixin, Base):
     ad_hoc_filter_flag: Mapped[bool] = mapped_column(
         "adHocFilterFlag", nullable=False, default=True
     )
+    # The per-column aggregates THIS view declares (FND-019): an ordered list
+    # of {"function", "fieldName"} specs speaking exactly the
+    # ``api.grid_surface`` AggregateSpec vocabulary (sum/avg/min/max/count) —
+    # the API's ``aggregate_expressions`` is the one gate between these specs
+    # and SQL. The view owns the declaration because it depends on the view's
+    # data source; the grid's ``statusBarConfig`` styles the footer row but
+    # never chooses the aggregates. Null = the view declares none.
+    view_aggregates: Mapped[list[dict[str, Any]] | None] = mapped_column(
+        "viewAggregates", JsonValue, default=None
+    )
 
     grid: Mapped[Grid] = relationship(back_populates="views")
     sort_specs: Mapped[list[SortSpec]] = relationship(
@@ -238,77 +260,6 @@ class SortSpec(StructuralColumnsMixin, Base):
     sort_position: Mapped[int] = mapped_column("sortPosition", nullable=False)
 
     grid_view: Mapped[GridView] = relationship(back_populates="sort_specs")
-
-
-class GridLastUsedView(StructuralColumnsMixin, Base):
-    """The (user, grid) → view association each grid opens on (REQ-017).
-
-    Long-term persistence per REQ-031 ("view choice persists long-term") and
-    the fallback target when a deep link names a view the recipient cannot
-    read (REQ-028). An association table rather than a column so the foreign
-    key keeps the referenced key's exact name (DB-R2b).
-    """
-
-    __tablename__ = "gridLastUsedView"
-    __table_args__ = (
-        Index(
-            "uq_gridLastUsedView_user_grid_live",
-            "userID",
-            "gridID",
-            unique=True,
-            sqlite_where=_LIVE,
-            postgresql_where=_LIVE,
-        ),
-    )
-
-    grid_last_used_view_id: Mapped[uuid.UUID] = mapped_column(
-        "gridLastUsedViewID", primary_key=True, default=uuid7
-    )
-    user_id: Mapped[uuid.UUID] = mapped_column(
-        "userID", ForeignKey("appUser.userID"), nullable=False
-    )
-    grid_id: Mapped[uuid.UUID] = mapped_column(
-        "gridID", ForeignKey("grid.gridID"), nullable=False
-    )
-    grid_view_id: Mapped[uuid.UUID] = mapped_column(
-        "gridViewID", ForeignKey("gridView.gridViewID"), nullable=False
-    )
-
-
-class GridState(StructuralColumnsMixin, Base):
-    """Durable per-user-per-grid state beyond the view choice (REQ-020).
-
-    Today that is the remembered searches — the last five per grid, newest
-    first, trimmed by the API on write. Kept apart from ``gridSessionState``
-    because this survives the session and apart from ``gridLastUsedView``
-    because that association is read on every grid open (REQ-017) and this
-    is not.
-    """
-
-    __tablename__ = "gridState"
-    __table_args__ = (
-        Index(
-            "uq_gridState_user_grid_live",
-            "userID",
-            "gridID",
-            unique=True,
-            sqlite_where=_LIVE,
-            postgresql_where=_LIVE,
-        ),
-    )
-
-    grid_state_id: Mapped[uuid.UUID] = mapped_column(
-        "gridStateID", primary_key=True, default=uuid7
-    )
-    user_id: Mapped[uuid.UUID] = mapped_column(
-        "userID", ForeignKey("appUser.userID"), nullable=False
-    )
-    grid_id: Mapped[uuid.UUID] = mapped_column(
-        "gridID", ForeignKey("grid.gridID"), nullable=False
-    )
-    recent_searches: Mapped[list[str]] = mapped_column(
-        "recentSearches", JsonValue, nullable=False, default=list
-    )
 
 
 class GridSessionState(StructuralColumnsMixin, Base):
