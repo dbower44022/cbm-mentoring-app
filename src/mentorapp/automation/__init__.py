@@ -21,6 +21,9 @@ concept, layered storage → automation → api:
   validation and the duplicate match columns.
 - ``postal_refresh`` — the postal-reference refresh job type composing all
   of the above.
+- ``workprocess_engine`` — the REQ-042 execution frame (WTK-092): walk a
+  registration's step graph, hold answers pending, and commit or discard
+  atomically through the per-workprocess handler seam.
 """
 
 from mentorapp.automation.artifact_jobs import (
@@ -94,15 +97,34 @@ from mentorapp.automation.worker import (
     retry_backoff,
     run_worker_pass,
 )
+from mentorapp.automation.workprocess_engine import (
+    LONG_RUN_NOTIFICATION_AFTER,
+    CommitHandlerRegistry,
+    InMemoryCommitHandlers,
+    NotCurrentStepError,
+    RunNotCompletableError,
+    RunNotInFlightError,
+    UnknownBranchError,
+    WorkprocessCommitHandler,
+    WorkprocessCommitPayload,
+    WorkprocessRunError,
+    answer_step,
+    cancel_run,
+    commit_run,
+    launch_run,
+    step_graph_problems,
+)
 
 __all__ = [
     "EXPORT_JOB_TYPE",
     "EXPORT_RETENTION",
+    "LONG_RUN_NOTIFICATION_AFTER",
     "POSTAL_REFRESH_JOB_TYPE",
     "PRINT_JOB_TYPE",
     "PRINT_RETENTION",
     "RETENTION_TRIM_JOB_TYPE",
     "ArtifactStore",
+    "CommitHandlerRegistry",
     "CrmAvailability",
     "CrmHealthMonitor",
     "CrmReadResult",
@@ -114,27 +136,39 @@ __all__ = [
     "FeedSyncError",
     "FeedWatermark",
     "FreshRead",
+    "InMemoryCommitHandlers",
     "InMemoryDraftStore",
     "JobHandler",
     "JobOutcome",
+    "NotCurrentStepError",
     "ParsedAddress",
     "ParsedName",
     "PermanentJobError",
     "PostalReferenceRow",
     "PostalRefreshResult",
     "PreservedDraft",
+    "RunNotCompletableError",
+    "RunNotInFlightError",
     "StaleRead",
     "SubmitAccepted",
     "SubmitOutcome",
     "UnavailableRead",
+    "UnknownBranchError",
+    "WorkprocessCommitHandler",
+    "WorkprocessCommitPayload",
+    "WorkprocessRunError",
+    "answer_step",
     "artifact_retention_trim_job",
+    "cancel_run",
     "claim_next_job",
+    "commit_run",
     "complete_job",
     "degraded_crm_read",
     "discard_draft",
     "enqueue_job",
     "export_job_handler",
     "fail_job",
+    "launch_run",
     "normalize_for_match",
     "normalize_phone",
     "normalize_postal_code",
@@ -151,6 +185,7 @@ __all__ = [
     "refresh_postal_reference",
     "retry_backoff",
     "run_worker_pass",
+    "step_graph_problems",
     "submit_or_preserve",
     "sync_change_feed",
     "trim_expired_artifacts",

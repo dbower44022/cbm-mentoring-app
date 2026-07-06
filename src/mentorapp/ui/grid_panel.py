@@ -336,9 +336,10 @@ def ad_hoc_filters_off_message(view_key: str) -> EducateMessage:
 
 # --- Actions: two buttons, one full menu, never hide (REQ-021/022) -----------------
 
-# The per-action classification vocabulary the grid standard declares.
-# Canonical home: workprocess registrations and panel actions both speak it.
-ACTION_CLASSIFICATIONS: Final[tuple[str, ...]] = ("safe", "modifying", "destructive")
+# The per-action classification vocabulary lives in
+# ``storage.workprocess.ACTION_CLASSIFICATIONS`` (one canonical home —
+# workprocess registrations and panel actions both speak it, and the vocab-
+# sharing direction is ui → storage); ``PanelAction`` validates against it.
 
 HELP_ACTION = PanelAction(
     key="Help", label="Help", selection_contract="none", classification="safe"

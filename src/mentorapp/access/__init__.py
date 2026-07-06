@@ -28,6 +28,11 @@ identity bridge they all stand on:
   load-and-authorize entry points for view management and promotion, the
   stored REQ-019 authoring gate, and the ``gridDeepLink`` fact assembly the
   API's pure resolver consumes (REQ-028).
+- :mod:`~mentorapp.access.workprocess` — WorkprocessAccess (WTK-091,
+  REQ-041): a workprocess is visible/launchable exactly for users with
+  access to its target data sources — derived from the REQ-006 grant
+  boundary like Areas, never a second permission table; REGISTERING one is
+  the admin ``workprocess.register`` capability.
 - :mod:`~mentorapp.access.sessions` — SessionManagement (REQ-005):
   server-side sessions behind an opaque browser reference, with in-place
   re-authentication, the dirty-window guard, and cross-window logout.
@@ -125,6 +130,7 @@ from mentorapp.access.views import (
     CAP_VIEW_MANAGE_OWN,
     CAP_VIEW_PROMOTE,
     CAP_VIEW_SAVE_AS_USER,
+    CAP_WORKPROCESS_REGISTER,
     PERMISSION_REFUSAL,
     PERSONA_ADMIN,
     PERSONA_CAPABILITIES,
@@ -150,6 +156,13 @@ from mentorapp.access.views import (
     save_disposition,
     view_visible_to,
 )
+from mentorapp.access.workprocess import (
+    WorkprocessNotTargetedError,
+    authorize_stored_workprocess_registration,
+    authorize_workprocess_launch,
+    authorize_workprocess_registration,
+    visible_workprocesses,
+)
 
 __all__ = [
     "ADMIN_CAPABILITIES",
@@ -159,6 +172,7 @@ __all__ = [
     "CAP_VIEW_MANAGE_OWN",
     "CAP_VIEW_PROMOTE",
     "CAP_VIEW_SAVE_AS_USER",
+    "CAP_WORKPROCESS_REGISTER",
     "PERMISSION_REFUSAL",
     "PERSONA_ADMIN",
     "PERSONA_CAPABILITIES",
@@ -214,6 +228,7 @@ __all__ = [
     "ViewFacts",
     "ViewNotFoundError",
     "ViewPermissionError",
+    "WorkprocessNotTargetedError",
     "accessible_area_keys",
     "authorize_area",
     "authorize_capability",
@@ -223,8 +238,11 @@ __all__ = [
     "authorize_stored_data_source_authoring",
     "authorize_stored_view_management",
     "authorize_stored_view_promotion",
+    "authorize_stored_workprocess_registration",
     "authorize_view_management",
     "authorize_view_promotion",
+    "authorize_workprocess_launch",
+    "authorize_workprocess_registration",
     "can_apply_temporarily",
     "can_manage_view",
     "effective_capabilities",
@@ -246,4 +264,5 @@ __all__ = [
     "stored_view_visible_to",
     "view_facts",
     "view_visible_to",
+    "visible_workprocesses",
 ]

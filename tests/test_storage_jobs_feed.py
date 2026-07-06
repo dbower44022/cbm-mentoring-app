@@ -25,7 +25,9 @@ from mentorapp.storage import (
 def test_status_and_change_kind_vocabularies_match_the_standard() -> None:
     assert JOB_STATUSES == ("pending", "processing", "completed", "failed", "needsAttention")
     assert CHANGE_KINDS == ("created", "updated", "deleted", "restored")
-    assert NOTIFICATION_TYPES == ("jobCompleted", "jobFailed")
+    # workprocessCompleted: REQ-042's ran-long bell entry (WTK-092) — a
+    # non-job entry riding the nullable jobID the model reserved for it.
+    assert NOTIFICATION_TYPES == ("jobCompleted", "jobFailed", "workprocessCompleted")
 
 
 def test_background_job_defaults_to_immediately_due_pending(session: Session) -> None:

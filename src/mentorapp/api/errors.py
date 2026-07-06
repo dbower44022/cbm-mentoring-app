@@ -34,6 +34,8 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from mentorapp.access import (
+    CapabilityError,
+    DataSourceAccessError,
     ReauthRequiredError,
     SessionEndedError,
     SessionNotFoundError,
@@ -63,6 +65,8 @@ CODE_TOKEN_INVALID: Final = "tokenInvalid"
 CODE_TOKEN_EXPIRED: Final = "tokenExpired"
 CODE_TOKEN_REVOKED: Final = "tokenRevoked"
 CODE_TOKEN_EXHAUSTED: Final = "tokenExhausted"
+CODE_DATA_SOURCE_ACCESS_DENIED: Final = "dataSourceAccessDenied"
+CODE_CAPABILITY_REQUIRED: Final = "capabilityRequired"
 
 # One wording per refusal family — tests pin these; a per-cause variation is
 # an enumeration channel, not a UX improvement.
@@ -248,6 +252,35 @@ def register_error_handlers(app: FastAPI) -> None:
         # the reference; the challenge must add nothing to what it knows.
         error = request_error(CODE_REAUTH_REQUIRED, _MSG_REAUTH_REQUIRED)
         return _respond(401, fail([error]))
+
+    @app.exception_handler(DataSourceAccessError)
+    async def _data_source_denied(
+        _request: Request, exc: DataSourceAccessError
+    ) -> JSONResponse:
+        # The REQ-006 boundary's wire form (403). Educate voice, and honest
+        # about the model: data access is granted by staff role on the data
+        # source itself — there is no per-feature permission to request.
+        error = request_error(
+            CODE_DATA_SOURCE_ACCESS_DENIED,
+            "You don't have access to the data this works over. Access is "
+            "granted by staff role on the data source — ask an administrator "
+            "if your role should include it.",
+        )
+        return _respond(403, fail([error]))
+
+    @app.exception_handler(CapabilityError)
+    async def _capability_refused(_request: Request, exc: CapabilityError) -> JSONResponse:
+        # Admin-capability refusals (403): naming the missing capability is
+        # safe — capabilities are the app's own vocabulary, not enumerable
+        # user data — and it tells the admin exactly what to grant.
+        error = request_error(
+            CODE_CAPABILITY_REQUIRED,
+            f"This is an administrator action; it needs the "
+            f"'{exc.capability}' capability, which your account doesn't "
+            f"hold. Ask an administrator to grant it if this is part of "
+            f"your role.",
+        )
+        return _respond(403, fail([error]))
 
     @app.exception_handler(TokenActionError)
     async def _token_refused(_request: Request, exc: TokenActionError) -> JSONResponse:

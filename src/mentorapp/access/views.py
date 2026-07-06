@@ -53,9 +53,14 @@ log = get_logger(__name__)
 # Persisted admin capabilities: ``accessGrant.accessGrantKey`` values.
 CAP_DATA_SOURCE_AUTHOR: Final = "adminSql.author"
 CAP_VIEW_PROMOTE: Final = "gridView.promote"
+# REQ-041: REGISTERING a workprocess is the Administrator persona's act —
+# registration only; who SEES and LAUNCHES one stays the REQ-006 data-source
+# boundary, deliberately not a capability (permission is inherited, never
+# per-app).
+CAP_WORKPROCESS_REGISTER: Final = "workprocess.register"
 
 ADMIN_CAPABILITIES: Final[frozenset[str]] = frozenset(
-    {CAP_DATA_SOURCE_AUTHOR, CAP_VIEW_PROMOTE}
+    {CAP_DATA_SOURCE_AUTHOR, CAP_VIEW_PROMOTE, CAP_WORKPROCESS_REGISTER}
 )
 
 # Intrinsic baseline: what being a signed-in user MEANS (REQ-017/REQ-028).

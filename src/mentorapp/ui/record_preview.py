@@ -38,7 +38,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from mentorapp.observability import get_logger
-from mentorapp.storage import SELECTION_CONTRACTS
+from mentorapp.storage import ACTION_CLASSIFICATIONS, SELECTION_CONTRACTS
 from mentorapp.ui.auth_flows import EducateMessage
 from mentorapp.ui.home_panel import HOME_FRAME
 
@@ -118,8 +118,9 @@ class PanelAction:
     """A grid action declaration (grid standard vocabulary, storage-validated).
 
     ``selection_contract`` must be one of :data:`~mentorapp.storage.SELECTION_CONTRACTS`
-    — the same vocabulary workprocess registrations use, so the one
-    invalid-invocation explainer serves both.
+    and ``classification`` one of :data:`~mentorapp.storage.ACTION_CLASSIFICATIONS`
+    — the same vocabularies workprocess registrations use, so the one
+    invalid-invocation explainer and one action-list grouping serve both.
     """
 
     key: str
@@ -130,6 +131,8 @@ class PanelAction:
     def __post_init__(self) -> None:
         if self.selection_contract not in SELECTION_CONTRACTS:
             raise ValueError(f"unknown selection contract: {self.selection_contract!r}")
+        if self.classification not in ACTION_CLASSIFICATIONS:
+            raise ValueError(f"unknown action classification: {self.classification!r}")
 
 
 # Both are safe (read-only) and act on exactly one row: a preview or pop-out
