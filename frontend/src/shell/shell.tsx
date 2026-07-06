@@ -22,6 +22,7 @@ import { type SessionState, userHeaders } from "../session";
 import { UrgentBanner } from "./banner";
 import { Header } from "./header";
 import { Navigation } from "./navigation";
+import { PanelSplitter, ResizablePanel, usePanelChrome } from "./panel-chrome";
 import type { PreferencePayload, ShellPayload } from "./payloads";
 import { QuickOpen } from "./quick-open";
 
@@ -49,6 +50,8 @@ export function Shell({ session, onLoggedOut }: ShellProps): ReactElement {
   // Home's render reads its messages (REQ-011 auto-read on view); bumping
   // this token re-fetches the banner so it never banners what was just read.
   const [messagesViewedAt, setMessagesViewedAt] = useState(0);
+  // Panel sizes + per-panel zoom persist per user (REQ-087, WTK-225).
+  const panelChrome = usePanelChrome(session);
   const onMessagesViewed = useCallback(() => {
     setMessagesViewedAt((current) => current + 1);
   }, []);
@@ -181,6 +184,8 @@ export function Shell({ session, onLoggedOut }: ShellProps): ReactElement {
     );
   };
 
+  const sideNavigation = shell.navigation.presentation !== "tabs";
+
   const navigation = (
     <Navigation
       navigation={shell.navigation}
@@ -203,7 +208,11 @@ export function Shell({ session, onLoggedOut }: ShellProps): ReactElement {
             <Header
               header={shell.mainWindow}
               session={session}
-              navigation={shell.mainWindow.hasNavigation ? navigation : undefined}
+              navigation={
+                shell.mainWindow.hasNavigation && !sideNavigation
+                  ? navigation
+                  : undefined
+              }
               onLoggedOut={onLoggedOut}
               onMenuAction={onMenuAction}
             />
@@ -220,15 +229,43 @@ export function Shell({ session, onLoggedOut }: ShellProps): ReactElement {
                 </button>
               </p>
             )}
-            <main className="panel-host">
-              <Routes>
-                <Route
-                  path="/"
-                  element={<HomePanel onMessagesViewed={onMessagesViewed} />}
-                />
-                <Route path="/panel/:panelKey" element={<RoutedPanel />} />
-              </Routes>
-            </main>
+            {/* Side-presentation navigation is a real left PANEL (SKL-113),
+                resizable through the wide splitter and zoomable like every
+                panel (REQ-087) — only the tabs presentation lives in the
+                header bar. */}
+            <div className="main-body">
+              {sideNavigation && (
+                <ResizablePanel
+                  panelKey="navigation"
+                  savedWidth={panelChrome.document.widths.navigation}
+                  zoom={panelChrome.document.zooms.navigation ?? 100}
+                  onZoom={panelChrome.saveZoom}
+                  className="nav-panel"
+                >
+                  {navigation}
+                </ResizablePanel>
+              )}
+              {sideNavigation && (
+                <PanelSplitter panelKey="navigation" onResize={panelChrome.saveWidth} />
+              )}
+              <ResizablePanel
+                panelKey="mainPanel"
+                savedWidth={undefined}
+                zoom={panelChrome.document.zooms.mainPanel ?? 100}
+                onZoom={panelChrome.saveZoom}
+                className="main-panel"
+              >
+                <main className="panel-host">
+                  <Routes>
+                    <Route
+                      path="/"
+                      element={<HomePanel onMessagesViewed={onMessagesViewed} />}
+                    />
+                    <Route path="/panel/:panelKey" element={<RoutedPanel />} />
+                  </Routes>
+                </main>
+              </ResizablePanel>
+            </div>
             {paletteOpen && (
               <QuickOpen
                 session={session}
