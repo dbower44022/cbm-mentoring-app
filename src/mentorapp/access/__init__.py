@@ -13,6 +13,11 @@ identity bridge they all stand on:
   which Areas a user may enter, derived from the same grant boundary — the
   ``accessible_panel_keys`` input the Home rail and the startup/deep-link
   fallbacks consume; never a second per-user assignment table.
+- :mod:`~mentorapp.access.lookup_grants` — LookupDataAccess (WTK-061,
+  REQ-036): the grant model for relationship type-ahead search — a lookup
+  over a related entity is governed by that entity's bound data source at
+  the same REQ-006 boundary, with :func:`stored_lookup_scope` returning
+  authorization and the user-row scope in one call.
 - :mod:`~mentorapp.access.views` — ViewAndSourcePermissions (WTK-044,
   REQ-017/REQ-019/REQ-028): the view lifecycle rules (system views
   read-only, own-view management, admin promotion), the persona →
@@ -63,6 +68,16 @@ from mentorapp.access.grants import (
     run_stored_data_source,
 )
 from mentorapp.access.identity import IdentityBridge, StoredIdentityBridge, VerifiedIdentity
+from mentorapp.access.lookup_grants import (
+    InMemoryLookupSources,
+    LookupBinding,
+    LookupScope,
+    LookupSourceResolver,
+    LookupUnboundError,
+    authorize_lookup_search,
+    is_lookup_searchable,
+    stored_lookup_scope,
+)
 from mentorapp.access.sessions import (
     IdentityMismatchError,
     InMemorySessionStore,
@@ -166,8 +181,13 @@ __all__ = [
     "IdentityMismatchError",
     "InMemoryCapabilityRegistry",
     "InMemoryGrantRegistry",
+    "InMemoryLookupSources",
     "InMemorySessionStore",
     "InMemoryTokenActionStore",
+    "LookupBinding",
+    "LookupScope",
+    "LookupSourceResolver",
+    "LookupUnboundError",
     "NamedViewLinkFacts",
     "ReauthRequiredError",
     "SessionEndedError",
@@ -199,6 +219,7 @@ __all__ = [
     "authorize_capability",
     "authorize_data_source",
     "authorize_data_source_authoring",
+    "authorize_lookup_search",
     "authorize_stored_data_source_authoring",
     "authorize_stored_view_management",
     "authorize_stored_view_promotion",
@@ -210,6 +231,7 @@ __all__ = [
     "grant_data_source_role",
     "holds_capability",
     "is_area_accessible",
+    "is_lookup_searchable",
     "load_deep_link_facts",
     "load_live_view",
     "load_stored_source",
@@ -219,6 +241,7 @@ __all__ = [
     "run_data_source",
     "run_stored_data_source",
     "save_disposition",
+    "stored_lookup_scope",
     "stored_save_disposition",
     "stored_view_visible_to",
     "view_facts",
