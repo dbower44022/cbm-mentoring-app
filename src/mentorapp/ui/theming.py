@@ -341,7 +341,9 @@ class ContrastWarning:
     message: EducateMessage
 
 
-def _warning(colors: Mapping[str, str], text_slot: str, background_slot: str) -> ContrastWarning:
+def _warning(
+    colors: Mapping[str, str], text_slot: str, background_slot: str
+) -> ContrastWarning:
     ratio = contrast_ratio(colors[text_slot], colors[background_slot])
     return ContrastWarning(
         text_slot=text_slot,
