@@ -8,7 +8,8 @@ grants, and data sources (WTK-001); ``registry_seed`` seeds built-in registry
 rows from the column-site definitions the drift check verifies (WTK-134);
 ``crm_refs`` carries the CRM reference anchors — the REQ-062 ownership
 boundary (WTK-150); ``mentoring`` carries the application-owned
-mentoring-process entities (REQ-063, WTK-156). One declarative ``Base``
+mentoring-process entities (REQ-063, WTK-156); ``theming`` carries the
+look-and-feel platform entities (PI-007, WTK-111). One declarative ``Base``
 spans them all.
 """
 
@@ -91,18 +92,40 @@ from mentorapp.storage.registry_seed import (
     built_in_fields,
     seed_built_in_registry,
 )
+from mentorapp.storage.theming import (
+    COLOR_SLOTS,
+    CONDITION_OPERATORS,
+    CONTRAST_GUARDRAIL_BEHAVIORS,
+    FONT_SLOTS,
+    FORMATTING_EFFECTS,
+    LAUNCH_SETS,
+    TEMPLATE_TYPES,
+    TYPE_SCALE_STEPS,
+    ColorTemplate,
+    ConditionalFormattingRule,
+    RowThemeOverride,
+    TypeScale,
+)
 
 __all__ = [
     "ADMIN_SQL_ROLE",
     "ADMIN_SQL_STATEMENT_TIMEOUT_MS",
     "CHANGE_KINDS",
+    "COLOR_SLOTS",
+    "CONDITION_OPERATORS",
+    "CONTRAST_GUARDRAIL_BEHAVIORS",
     "CURRENT_USER_PARAM",
+    "FONT_SLOTS",
+    "FORMATTING_EFFECTS",
     "JOB_STATUSES",
+    "LAUNCH_SETS",
     "NOTIFICATION_TYPES",
     "OWNERSHIP_SIDES",
     "SELECTION_CONTRACTS",
     "SORT_DIRECTIONS",
     "STRUCTURAL_COLUMN_NAMES",
+    "TEMPLATE_TYPES",
+    "TYPE_SCALE_STEPS",
     "VIEW_TYPES",
     "AccessGrant",
     "ActionToken",
@@ -117,6 +140,8 @@ __all__ = [
     "BaseEntity",
     "BuiltInField",
     "ChangeFeedEntry",
+    "ColorTemplate",
+    "ConditionalFormattingRule",
     "CrmClientRef",
     "CrmEngagementRef",
     "CrmMentorRef",
@@ -138,12 +163,14 @@ __all__ = [
     "ProgressGoal",
     "RegistrySeedError",
     "RegistrySeedResult",
+    "RowThemeOverride",
     "SchemaDriftError",
     "SchemaRegistry",
     "SessionLog",
     "SortSpec",
     "StructuralColumnsMixin",
     "TokenAuditEvent",
+    "TypeScale",
     "UserCrmAccount",
     "UserPreference",
     "WorkprocessRegistration",
