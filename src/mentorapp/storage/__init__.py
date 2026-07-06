@@ -7,7 +7,9 @@ carries the schema registry, option sets, background jobs, and change feed
 grants, and data sources (WTK-001); ``registry_seed`` seeds built-in registry
 rows from the column-site definitions the drift check verifies (WTK-134);
 ``crm_refs`` carries the CRM reference anchors — the REQ-062 ownership
-boundary (WTK-150). One declarative ``Base`` spans them all.
+boundary (WTK-150); ``mentoring`` carries the application-owned
+mentoring-process entities (REQ-063, WTK-156). One declarative ``Base``
+spans them all.
 """
 
 from mentorapp.storage.adminsql import (
@@ -33,6 +35,7 @@ from mentorapp.storage.auth import (
 from mentorapp.storage.base import StructuralColumnsMixin, as_utc, utcnow
 from mentorapp.storage.crm_refs import CrmClientRef, CrmEngagementRef, CrmMentorRef
 from mentorapp.storage.entity import (
+    OWNERSHIP_SIDES,
     Base,
     BaseEntity,
     entity_key,
@@ -50,6 +53,7 @@ from mentorapp.storage.grids import (
     SortSpec,
 )
 from mentorapp.storage.ids import uuid7, uuid7_created_at
+from mentorapp.storage.mentoring import MeetingNote, NextStep, ProgressGoal, SessionLog
 from mentorapp.storage.messages import AdminMessage, AdminMessageReceipt
 from mentorapp.storage.models import (
     CHANGE_KINDS,
@@ -95,6 +99,7 @@ __all__ = [
     "CURRENT_USER_PARAM",
     "JOB_STATUSES",
     "NOTIFICATION_TYPES",
+    "OWNERSHIP_SIDES",
     "SELECTION_CONTRACTS",
     "SORT_DIRECTIONS",
     "STRUCTURAL_COLUMN_NAMES",
@@ -124,14 +129,18 @@ __all__ = [
     "GridDeepLink",
     "GridSessionState",
     "GridView",
+    "MeetingNote",
+    "NextStep",
     "Notification",
     "OptionSet",
     "OptionValue",
     "PostalCode",
+    "ProgressGoal",
     "RegistrySeedError",
     "RegistrySeedResult",
     "SchemaDriftError",
     "SchemaRegistry",
+    "SessionLog",
     "SortSpec",
     "StructuralColumnsMixin",
     "TokenAuditEvent",

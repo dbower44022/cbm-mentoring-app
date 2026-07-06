@@ -107,9 +107,11 @@ def test_field_name_unique_across_live_rows_only(session: Session) -> None:
     session.add(make_row("Mentor"))
     session.commit()
 
-    # A second live row with the same fieldName — even on another entity — collides:
-    # fieldName uniqueness is system-wide (DB-R2).
-    session.add(make_row("Engagement"))
+    # A second live row for the same (entityType, fieldName) collides. The
+    # index is per-entity because DB-R2b lets a foreign key re-appear on other
+    # entities under its referenced PK's name; system-wide uniqueness for
+    # every non-R2b name is enforced where rows are created (registry_seed).
+    session.add(make_row("Mentor"))
     with pytest.raises(IntegrityError):
         session.commit()
     session.rollback()
@@ -118,7 +120,7 @@ def test_field_name_unique_across_live_rows_only(session: Session) -> None:
     live = session.scalars(select(SchemaRegistry)).one()
     live.deleted_at = utcnow()
     session.commit()
-    session.add(make_row("Engagement"))
+    session.add(make_row("Mentor"))
     session.commit()
     assert len(session.scalars(select(SchemaRegistry)).all()) == 2
 

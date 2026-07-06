@@ -119,25 +119,27 @@ class OptionValue(StructuralColumnsMixin, Base):
 class SchemaRegistry(StructuralColumnsMixin, Base):
     """Per-field metadata row — the schema-of-record for every entity field (DB-S6).
 
-    The partial unique index on ``fieldName`` alone is the mechanical enforcement
-    of DB-R2's system-wide field-name uniqueness: one registry table, one name.
-    ``fieldType`` and ``validationRules`` are typed/validated by the API layer
-    against this registry — the database holds no enum of types (DB-S7).
+    One row per (entity, field): DB-R2b lets a foreign key re-appear on other
+    entities under the identical name as the PK it references (sessionLog's
+    ``crmEngagementRefID``), and each appearance needs its own row so views,
+    ``GET /schema/{entity}``, and write validation see the field on every
+    entity that carries it. System-wide fieldName uniqueness for everything
+    *but* that R2b shape is enforced where rows are created — the registry
+    seed for built-ins (``registry_seed``) — since no index can express the
+    exception. ``fieldType`` and ``validationRules`` are typed/validated by
+    the API layer against this registry — the database holds no enum of
+    types (DB-S7).
     """
 
     __tablename__ = "schemaRegistry"
     __table_args__ = (
+        # Also serves the GET /schema/{entity} scan via its leading column —
+        # a separate entityType index would be dead weight.
         Index(
-            "uq_schemaRegistry_fieldName_live",
+            "uq_schemaRegistry_entity_fieldName_live",
+            "entityType",
             "fieldName",
             unique=True,
-            sqlite_where=_LIVE,
-            postgresql_where=_LIVE,
-        ),
-        # GET /schema/{entity} reads the whole registry for one entity.
-        Index(
-            "ix_schemaRegistry_entityType_live",
-            "entityType",
             sqlite_where=_LIVE,
             postgresql_where=_LIVE,
         ),
