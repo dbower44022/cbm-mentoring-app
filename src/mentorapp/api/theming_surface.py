@@ -77,6 +77,7 @@ from mentorapp.storage.theming import (
     CONDITION_OPERATORS,
     FONT_SLOTS,
     FORMATTING_EFFECTS,
+    PRESENCE_OPERATORS,
     STATUS_COLOR_SLOTS,
     TYPE_SCALE_STEPS,
 )
@@ -210,10 +211,6 @@ THEMING_SURFACE: Final = (
 # --- Fixed-slot validation (REQ-044 over the persisted structure) ------------------
 
 _HEX_COLOR = re.compile(r"^#[0-9a-fA-F]{6}$")
-
-# The operators whose condition is the field's presence itself — the only
-# ones where a comparison value is meaningless and therefore forbidden.
-PRESENCE_OPERATORS: Final[tuple[str, ...]] = ("isEmpty", "isNotEmpty")
 
 # CSS-weight bounds: the wire carries a numeric weight, and anything outside
 # the standard 100-900 range is a typo, not a styling choice.
