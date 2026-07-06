@@ -64,6 +64,9 @@ from mentorapp.storage.theming import (
 from mentorapp.storage.theming import (
     STATUS_COLOR_SLOTS as STATUS_COLOR_SLOTS,
 )
+from mentorapp.storage.theming import (
+    TYPE_SCALE_DEFAULT_SIZES as TYPE_SCALE_DEFAULT_SIZES,
+)
 from mentorapp.ui.auth_flows import EducateMessage
 
 log = get_logger(__name__)
@@ -74,8 +77,9 @@ class ThemingError(ValueError):
 
 
 # The ONE shared app-wide type scale (REQ-046): every size anywhere names a
-# step; WTK-116 persists the step values, this mapping is the design default.
-TYPE_SCALE_STEPS: Final[dict[str, int]] = {"xs": 11, "sm": 12, "md": 14, "lg": 16, "xl": 20}
+# step; WTK-116 persists the step values (the seeded typeScale row) and owns
+# the design-default mapping — re-exported here like the slot tuples above.
+TYPE_SCALE_STEPS: Final[dict[str, int]] = TYPE_SCALE_DEFAULT_SIZES
 
 ROW_HEIGHT_STEPS: Final[tuple[str, ...]] = ("compact", "standard", "large")
 
