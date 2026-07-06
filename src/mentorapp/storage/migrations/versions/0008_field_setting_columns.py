@@ -5,9 +5,12 @@ single authority every form applies — so it gains ``defaultValue`` (what
 pre-populates a new record's field; JSON so every fieldType's default is
 representable) and ``helpText`` (admin-maintained field-level help, rendered
 on hover/focus, never hardcoded in a form). Both apply to built-in and
-user-defined fields alike. No reseed here: no current entity column declares
-a default or help text, so existing rows correctly carry NULL; a definition
-that does declare one seeds in its own change-set (REQ-050).
+user-defined fields alike.
+
+The 0006/0007 seeds ran while the registry table lacked these columns (the
+seed defers ORM attributes the mid-chain table does not have), so this
+migration reseeds every previously seeded entity to reconcile the new
+metadata in the same change-set that adds it (REQ-050).
 
 Revision ID: 0008
 Revises: 0007
@@ -18,6 +21,11 @@ from __future__ import annotations
 import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
+from sqlalchemy.orm import Session
+
+from mentorapp.storage.crm_refs import CrmClientRef, CrmEngagementRef, CrmMentorRef
+from mentorapp.storage.mentoring import MeetingNote, NextStep, ProgressGoal, SessionLog
+from mentorapp.storage.registry_seed import seed_built_in_registry
 
 revision = "0008"
 down_revision = "0007"
@@ -27,11 +35,24 @@ depends_on = None
 # Mirrors storage.base.JsonValue: JSONB on Postgres, plain JSON on SQLite.
 _JSON_OBJECT = sa.JSON().with_variant(postgresql.JSONB(), "postgresql")
 
+# Explicit list, never a Base.registry sweep: under pytest the shared Base
+# also carries throwaway test entities that must not be seeded here.
+_SEEDED_ENTITIES = (
+    CrmClientRef,
+    CrmEngagementRef,
+    CrmMentorRef,
+    MeetingNote,
+    NextStep,
+    ProgressGoal,
+    SessionLog,
+)
+
 
 def upgrade() -> None:
     with op.batch_alter_table("schemaRegistry", schema=None) as batch_op:
         batch_op.add_column(sa.Column("defaultValue", _JSON_OBJECT, nullable=True))
         batch_op.add_column(sa.Column("helpText", sa.String(length=2000), nullable=True))
+    seed_built_in_registry(Session(bind=op.get_bind()), list(_SEEDED_ENTITIES))
 
 
 def downgrade() -> None:

@@ -116,7 +116,10 @@ def test_explicit_default_value_overrides_the_column_default() -> None:
     assert spec.help_text == "Shown in greetings."
     # Explicit None is a deliberate "no default", not an omission.
     cleared = Column(
-        "menteeNickname", String(50), default="friend", info={"registry": {"defaultValue": None}}
+        "menteeNickname",
+        String(50),
+        default="friend",
+        info={"registry": {"defaultValue": None}},
     )
     assert built_in_field_from_column("Mentee", cleared).default_value is None
 
