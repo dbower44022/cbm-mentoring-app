@@ -200,7 +200,8 @@ def test_system_fields_take_no_tab_stop_either() -> None:
 def test_shift_tab_walks_backwards_mid_cycle() -> None:
     dispositions = _dispositions()
     # Backwards past Rate's dead stop: Notes -> Phone, skipping both read-onlys.
-    assert next_tab_stop(dispositions, "mentorNotes", backwards=True).field_name == "mentorPhone"
+    back_from_notes = next_tab_stop(dispositions, "mentorNotes", backwards=True)
+    assert back_from_notes.field_name == "mentorPhone"
     assert next_tab_stop(dispositions, "mentorPhone", backwards=True).field_name == "mentorName"
 
 
@@ -232,7 +233,8 @@ def test_single_stop_cycle_wraps_to_itself() -> None:
     # escapes to Save, a label, or the read-only field, in either direction.
     assert initial_focus(dispositions).field_name == "mentorNotes"
     assert next_tab_stop(dispositions, "mentorNotes").field_name == "mentorNotes"
-    assert next_tab_stop(dispositions, "mentorNotes", backwards=True).field_name == "mentorNotes"
+    back_from_only_stop = next_tab_stop(dispositions, "mentorNotes", backwards=True)
+    assert back_from_only_stop.field_name == "mentorNotes"
 
 
 def test_tab_keys_are_not_the_dispatchers() -> None:
