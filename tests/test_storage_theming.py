@@ -1,28 +1,33 @@
-"""Tests for the look-and-feel data model (WTK-111, PI-007)."""
+"""Tests for the look-and-feel data model (WTK-111, PI-007), reconciled to the
+UI design (WSK-019, FND-905/906/907): the persisted vocabulary IS the UI's
+fixed 15-slot + 2-font structure, formatting effects name status slots, and
+the three-layer model has no override table and no numeric precedence."""
 
 from __future__ import annotations
 
 import uuid
 
 import pytest
-from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+import mentorapp.storage as storage
 from mentorapp.storage import (
+    CHROME_COLOR_SLOTS,
     COLOR_SLOTS,
     CONDITION_OPERATORS,
     CONTRAST_GUARDRAIL_BEHAVIORS,
     FONT_SLOTS,
     FORMATTING_EFFECTS,
     LAUNCH_SETS,
+    ROW_THEME_COLOR_SLOTS,
+    STATUS_COLOR_SLOTS,
     TEMPLATE_TYPES,
     TYPE_SCALE_STEPS,
     AppUser,
     ColorTemplate,
     ConditionalFormattingRule,
-    Grid,
-    RowThemeOverride,
+    GridView,
     TypeScale,
     utcnow,
 )
@@ -33,13 +38,6 @@ def _user(session: Session, username: str = "mentor.one") -> AppUser:
     session.add(user)
     session.flush()
     return user
-
-
-def _grid(session: Session, key: str = "mentorRoster") -> Grid:
-    grid = Grid(grid_key=key, grid_name="Mentor roster")
-    session.add(grid)
-    session.flush()
-    return grid
 
 
 def _scale(session: Session, name: str = "App scale") -> TypeScale:
@@ -88,7 +86,8 @@ def _rule(
         condition_operator="equals",
         condition_value={"value": "overdue"},
         effect=effect,
-        effect_color="#cc0000",
+        # REQ-045: the applied color is a status slot, never a literal (FND-906).
+        effect_slot="statusNegative",
         evaluation_order=order,
     )
     session.add(rule)
@@ -99,15 +98,28 @@ def _rule(
 def test_vocabularies_match_the_standard() -> None:
     assert TEMPLATE_TYPES == ("system", "user")
     assert LAUNCH_SETS == ("standard", "compact", "largePrint", "dark")
-    assert COLOR_SLOTS == (
+    # FND-905/REQ-044: the persisted vocabulary is the UI design's fixed
+    # 15-slot structure — chrome + row-scoped + status, the UI's exact names.
+    assert CHROME_COLOR_SLOTS == (
+        "appBackground",
+        "panelBackground",
+        "headerBackground",
+        "headerText",
+        "accent",
+    )
+    assert ROW_THEME_COLOR_SLOTS == (
         "rowBackground",
-        "alternateRowBackground",
+        "rowAlternateBackground",
         "rowText",
         "selectedRowBackground",
         "selectedRowText",
-        "accent",
+        "groupHeaderBackground",
+        "groupHeaderText",
     )
-    assert FONT_SLOTS == ("rowFont", "headerFont")
+    assert STATUS_COLOR_SLOTS == ("statusPositive", "statusWarning", "statusNegative")
+    assert COLOR_SLOTS == CHROME_COLOR_SLOTS + ROW_THEME_COLOR_SLOTS + STATUS_COLOR_SLOTS
+    assert len(COLOR_SLOTS) == 15
+    assert FONT_SLOTS == ("uiFont", "dataFont")
     assert TYPE_SCALE_STEPS == ("xs", "sm", "md", "lg", "xl")
     # PI-007: the guardrail educates — warns, never blocks.
     assert CONTRAST_GUARDRAIL_BEHAVIORS == ("warn",)
@@ -116,12 +128,23 @@ def test_vocabularies_match_the_standard() -> None:
     assert "equals" in CONDITION_OPERATORS
 
 
+def test_ui_and_storage_share_one_canonical_vocabulary() -> None:
+    # FND-905: one canonical home — ui.theming re-exports THESE objects, so
+    # the resolver's vocabulary can never drift from the persisted one.
+    from mentorapp.ui import theming as ui_theming
+
+    assert ui_theming.COLOR_SLOTS is COLOR_SLOTS
+    assert ui_theming.FONT_SLOTS is FONT_SLOTS
+    assert ui_theming.CHROME_COLOR_SLOTS is CHROME_COLOR_SLOTS
+    assert ui_theming.ROW_THEME_COLOR_SLOTS is ROW_THEME_COLOR_SLOTS
+    assert ui_theming.STATUS_COLOR_SLOTS is STATUS_COLOR_SLOTS
+
+
 def test_template_defaults_speak_the_ruled_contract(session: Session) -> None:
     template = _template(session, _scale(session))
 
     assert template.type_step_choice == "md"
     assert template.contrast_guardrail_behavior == "warn"
-    assert template.layer_precedence == 0
     assert template.launch_set_key is None
     assert template.row_version == 1
 
@@ -211,7 +234,7 @@ def test_rule_requires_a_live_template_row(session: Session) -> None:
         condition_field="status",
         condition_operator="isEmpty",
         effect="accent",
-        effect_color="#cc0000",
+        effect_slot="statusWarning",
         evaluation_order=1,
     )
     session.add(rule)
@@ -219,42 +242,22 @@ def test_rule_requires_a_live_template_row(session: Session) -> None:
         session.flush()
 
 
-def test_row_theme_override_is_at_most_one_per_grid(session: Session) -> None:
-    scale = _scale(session)
-    template = _template(session, scale)
-    grid = _grid(session)
-    override = RowThemeOverride(
-        grid_id=grid.grid_id, color_template_id=template.color_template_id
-    )
-    session.add(override)
-    session.flush()
+def test_rule_persists_a_status_slot_never_a_literal_color(session: Session) -> None:
+    # FND-906/REQ-045: the rule's applied color is the effectSlot NAME — the
+    # effectColor hex column is gone, so a literal color has nowhere to live.
+    rule = _rule(session, _template(session, _scale(session)), 1)
 
-    duplicate = RowThemeOverride(
-        grid_id=grid.grid_id, color_template_id=template.color_template_id
-    )
-    session.add(duplicate)
-    with pytest.raises(IntegrityError):
-        session.flush()
-    session.rollback()
+    assert rule.effect_slot == "statusNegative"
+    assert "effectSlot" in ConditionalFormattingRule.__table__.columns
+    assert "effectColor" not in ConditionalFormattingRule.__table__.columns
 
-    # Soft-deleting the live override frees the grid for a new one (DB-S3).
-    scale = _scale(session)
-    template = _template(session, scale)
-    grid = _grid(session)
-    corpse = RowThemeOverride(
-        grid_id=grid.grid_id, color_template_id=template.color_template_id
-    )
-    session.add(corpse)
-    session.flush()
-    corpse.deleted_at = utcnow()
-    session.flush()
-    replacement = RowThemeOverride(
-        grid_id=grid.grid_id, color_template_id=template.color_template_id
-    )
-    session.add(replacement)
-    session.flush()
 
-    live = session.scalars(
-        select(RowThemeOverride).where(RowThemeOverride.deleted_at.is_(None))
-    ).all()
-    assert live == [replacement]
+def test_layering_is_three_fixed_layers_with_the_row_theme_on_the_view() -> None:
+    # FND-907/REQ-044/REQ-018: no per-grid override entity and no numeric
+    # precedence — the third layer is the ACTIVE VIEW's own rowTheme document,
+    # which already lives on gridView (WTK-041); the storage design carries
+    # nothing else that could reorder or shadow the fixed positional stack.
+    assert not hasattr(storage, "RowThemeOverride")
+    assert "rowThemeOverride" not in storage.Base.metadata.tables
+    assert "layerPrecedence" not in ColorTemplate.__table__.columns
+    assert "rowTheme" in GridView.__table__.columns

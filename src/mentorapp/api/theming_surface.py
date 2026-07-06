@@ -34,9 +34,19 @@ handful of rows):
   body carries no ``evaluationOrder``; reordering is its own verb
   (:data:`RULE_REORDER`), a full permutation of the template's live rule
   IDs, because first-match-wins order is a property of the LIST, not of one
-  row. Operators come from :data:`CONDITION_OPERATORS` and effects repaint
-  only :data:`FORMATTING_EFFECTS` slots (REQ-045: rules name slots, never
-  invent visuals).
+  row. Operators come from :data:`CONDITION_OPERATORS`, effects repaint
+  only :data:`FORMATTING_EFFECTS` slots, and the applied color is an
+  ``effectSlot`` naming a :data:`STATUS_COLOR_SLOTS` slot of the owning
+  template — REQ-045: effects name status slots, never literal colors
+  (FND-906), so there is no hex validation anywhere on the rule surface.
+
+Effective-theme resolution is NOT an endpoint concern and carries no numeric
+precedence (FND-907, REQ-044/REQ-018): the one resolver is
+``ui.theming.resolve_effective_grid_theme`` over exactly three fixed
+positional layers — the org-default template, the user's app-wide template
+choice, and the ACTIVE VIEW's ``gridView.rowTheme``. Nothing here reads or
+writes a per-grid override row or a precedence number; templates are picked,
+and the view's row theme overlays row scope only.
 
 The contrast guardrail (REQ-046) rides create/update of USER templates:
 :func:`template_contrast_warnings` reuses the WTK-112 WCAG math over the
@@ -66,9 +76,10 @@ from mentorapp.storage.theming import (
     CONDITION_OPERATORS,
     FONT_SLOTS,
     FORMATTING_EFFECTS,
+    STATUS_COLOR_SLOTS,
     TYPE_SCALE_STEPS,
 )
-from mentorapp.ui.theming import CONTRAST_MINIMUM, contrast_ratio
+from mentorapp.ui.theming import CONTRAST_CHECKED_PAIRS, CONTRAST_MINIMUM, contrast_ratio
 
 log = get_logger(__name__)
 
@@ -456,7 +467,7 @@ def rule_errors(rule: Mapping[str, Any]) -> list[ApiError]:
     """Every failure in one rule's condition + effect, accumulated (DB-S12).
 
     Wire keys: ``conditionField``, ``conditionOperator``, ``conditionValue``,
-    ``effect``, ``effectColor``. Whether ``conditionField`` actually exists on
+    ``effect``, ``effectSlot``. Whether ``conditionField`` actually exists on
     the consuming view's data source is the REQ-019 check the WTK-120 build
     wires through the grid entity catalog — here it must only be a non-empty
     field name.
@@ -493,13 +504,17 @@ def rule_errors(rule: Mapping[str, Any]) -> list[ApiError]:
                 f"got {effect!r}.",
             )
         )
-    effect_color = rule.get("effectColor")
-    if not isinstance(effect_color, str) or _HEX_COLOR.match(effect_color) is None:
+    # REQ-045: effects name status slots, never literal colors (FND-906) —
+    # an unknown name AND a #rrggbb literal refuse under the same code.
+    effect_slot = rule.get("effectSlot")
+    if effect_slot not in STATUS_COLOR_SLOTS:
         errors.append(
             field_error(
-                "effectColor",
-                CODE_INVALID_COLOR,
-                f"effectColor must be a #rrggbb color, got {effect_color!r}.",
+                "effectSlot",
+                CODE_UNKNOWN_SLOT,
+                f"effectSlot must name a status color slot "
+                f"{sorted(STATUS_COLOR_SLOTS)}, never a literal color; "
+                f"got {effect_slot!r}.",
             )
         )
     return errors
@@ -585,14 +600,10 @@ def validate_rule_order(
 
 # --- The contrast guardrail on the management surface (REQ-046) --------------------
 
-# The WTK-112 checked pairs, restricted to the slots the PERSISTED structure
-# carries (storage.theming.COLOR_SLOTS) — the math and the minimum are the
-# ui.theming originals, never re-derived.
-TEMPLATE_CONTRAST_PAIRS: Final[tuple[tuple[str, str], ...]] = (
-    ("rowText", "rowBackground"),
-    ("rowText", "alternateRowBackground"),
-    ("selectedRowText", "selectedRowBackground"),
-)
+# The persisted structure now carries the full UI slot vocabulary (FND-905),
+# so the checked pairs ARE the WTK-112 originals — one canonical home, and
+# the math and the minimum are the ui.theming originals, never re-derived.
+TEMPLATE_CONTRAST_PAIRS: Final[tuple[tuple[str, str], ...]] = CONTRAST_CHECKED_PAIRS
 
 
 def template_contrast_warnings(color_slots: Mapping[str, str]) -> list[dict[str, Any]]:

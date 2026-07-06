@@ -1,18 +1,22 @@
-"""The theming management API surface design (WTK-114): REQ-044/045/046.
+"""The theming management API surface design (WTK-114): REQ-044/045/046,
+reconciled to the UI design (WSK-019, FND-905/906).
 
 What the WTK-120 build relies on, proven here at design level:
 
 - The twelve endpoint contracts live under ``/theming``, none crosses the
   DB-S11 ten-second line, and reordering is its own whole-list verb.
 - Fixed-slot enforcement: a template document carries exactly the persisted
-  ``COLOR_SLOTS``/``FONT_SLOTS`` structure, font steps and the base step
-  name steps of the LINKED scale, and every failure of a write reports in
-  ONE round trip (DB-S12).
+  ``COLOR_SLOTS``/``FONT_SLOTS`` structure — the UI design's 15-slot +
+  uiFont/dataFont vocabulary (FND-905, REQ-044) — font steps and the base
+  step name steps of the LINKED scale, and every failure of a write reports
+  in ONE round trip (DB-S12).
 - The type-scale write carries exactly the fixed step set — the off-scale
   prohibition (REQ-046) means step sizes retune but steps are never minted.
 - Standard-operator enforcement: rule conditions come from
   ``CONDITION_OPERATORS`` with per-operator value shapes, effects repaint
-  only ``FORMATTING_EFFECTS`` slots (REQ-045).
+  only ``FORMATTING_EFFECTS`` slots, and the applied color is an
+  ``effectSlot`` naming a status slot — never a literal color, so hex
+  values on the rule surface refuse (REQ-045, FND-906).
 - The contrast guardrail WARNS with wire-shaped entries and never raises —
   readability is the user's call (REQ-046).
 """
@@ -24,6 +28,7 @@ import uuid
 import pytest
 
 from mentorapp.api import (
+    TEMPLATE_CONTRAST_PAIRS,
     THEMING_SURFACE,
     ApiValidationError,
     color_slot_errors,
@@ -64,29 +69,40 @@ from mentorapp.api.theming_surface import (
 from mentorapp.storage.theming import (
     COLOR_SLOTS,
     CONDITION_OPERATORS,
+    STATUS_COLOR_SLOTS,
     TYPE_SCALE_STEPS,
 )
-from mentorapp.ui.theming import CONTRAST_MINIMUM
+from mentorapp.ui.theming import CONTRAST_CHECKED_PAIRS, CONTRAST_MINIMUM
 
 STEPS = list(TYPE_SCALE_STEPS)
 
 
 def readable_colors() -> dict[str, str]:
-    """A complete colorSlots document with comfortably readable pairs."""
+    """A complete colorSlots document — the UI design's 15 slots (FND-905) —
+    with comfortably readable pairs."""
     return {
+        "appBackground": "#f4f6f8",
+        "panelBackground": "#ffffff",
+        "headerBackground": "#1d3557",
+        "headerText": "#ffffff",
+        "accent": "#2a6f97",
         "rowBackground": "#ffffff",
-        "alternateRowBackground": "#f0f4f8",
+        "rowAlternateBackground": "#f0f4f8",
         "rowText": "#1a1a1a",
         "selectedRowBackground": "#d6e6f2",
         "selectedRowText": "#102a43",
-        "accent": "#2a6f97",
+        "groupHeaderBackground": "#e3e9ef",
+        "groupHeaderText": "#243b53",
+        "statusPositive": "#2d6a4f",
+        "statusWarning": "#b45309",
+        "statusNegative": "#b02a37",
     }
 
 
 def fonts() -> dict[str, dict[str, object]]:
     return {
-        "rowFont": {"stepKey": "md", "fontFamily": "Inter", "fontWeight": 400},
-        "headerFont": {"stepKey": "sm", "fontFamily": "Inter", "fontWeight": 600},
+        "uiFont": {"stepKey": "md", "fontFamily": "Inter", "fontWeight": 400},
+        "dataFont": {"stepKey": "sm", "fontFamily": "Inter", "fontWeight": 600},
     }
 
 
@@ -96,7 +112,8 @@ def rule() -> dict[str, object]:
         "conditionOperator": "equals",
         "conditionValue": "overdue",
         "effect": "rowBackground",
-        "effectColor": "#ffe0e0",
+        # REQ-045/FND-906: the applied color names a status slot, never a hex.
+        "effectSlot": "statusNegative",
     }
 
 
@@ -154,27 +171,29 @@ def test_complete_font_document_passes() -> None:
 
 def test_font_step_must_belong_to_the_linked_scale() -> None:
     document = fonts()
-    document["rowFont"]["stepKey"] = "huge"
+    document["uiFont"]["stepKey"] = "huge"
     found = codes(font_slot_errors(document, STEPS))
-    assert ("fontSlots.rowFont.stepKey", CODE_OFF_SCALE_STEP) in found
+    assert ("fontSlots.uiFont.stepKey", CODE_OFF_SCALE_STEP) in found
 
 
 def test_font_spec_shape_is_enforced_per_part() -> None:
     document = {
-        "rowFont": {"stepKey": "md", "fontFamily": "", "fontWeight": 950},
-        "headerFont": "Inter",  # not a spec at all
+        "uiFont": {"stepKey": "md", "fontFamily": "", "fontWeight": 950},
+        "dataFont": "Inter",  # not a spec at all
     }
     found = codes(font_slot_errors(document, STEPS))
-    assert ("fontSlots.rowFont.fontFamily", CODE_INVALID_FONT_SPEC) in found
-    assert ("fontSlots.rowFont.fontWeight", CODE_INVALID_FONT_SPEC) in found
-    assert ("fontSlots.headerFont", CODE_INVALID_FONT_SPEC) in found
+    assert ("fontSlots.uiFont.fontFamily", CODE_INVALID_FONT_SPEC) in found
+    assert ("fontSlots.uiFont.fontWeight", CODE_INVALID_FONT_SPEC) in found
+    assert ("fontSlots.dataFont", CODE_INVALID_FONT_SPEC) in found
 
 
 def test_missing_and_unknown_font_slots_reported() -> None:
-    found = codes(font_slot_errors({"bodyFont": fonts()["rowFont"]}, STEPS))
-    assert ("fontSlots.rowFont", CODE_MISSING_SLOT) in found
-    assert ("fontSlots.headerFont", CODE_MISSING_SLOT) in found
-    assert ("fontSlots.bodyFont", CODE_UNKNOWN_SLOT) in found
+    # FND-905: the persisted font slots are the UI's uiFont/dataFont — the
+    # dropped rowFont name now refuses like any other unknown slot.
+    found = codes(font_slot_errors({"rowFont": fonts()["uiFont"]}, STEPS))
+    assert ("fontSlots.uiFont", CODE_MISSING_SLOT) in found
+    assert ("fontSlots.dataFont", CODE_MISSING_SLOT) in found
+    assert ("fontSlots.rowFont", CODE_UNKNOWN_SLOT) in found
 
 
 def test_type_step_choice_is_scale_bound() -> None:
@@ -187,7 +206,7 @@ def test_template_write_gate_reports_everything_at_once() -> None:
     colors = readable_colors()
     del colors["accent"]
     document = fonts()
-    document["rowFont"]["stepKey"] = "huge"
+    document["uiFont"]["stepKey"] = "huge"
     with pytest.raises(ApiValidationError) as failure:
         validate_template_write(
             color_slots=colors,
@@ -197,7 +216,7 @@ def test_template_write_gate_reports_everything_at_once() -> None:
         )
     found = codes(failure.value.errors)
     assert ("colorSlots.accent", CODE_MISSING_SLOT) in found
-    assert ("fontSlots.rowFont.stepKey", CODE_OFF_SCALE_STEP) in found
+    assert ("fontSlots.uiFont.stepKey", CODE_OFF_SCALE_STEP) in found
     assert ("typeStepChoice", CODE_OFF_SCALE_STEP) in found
 
 
@@ -290,13 +309,28 @@ def test_comparison_operators_require_a_shaped_value() -> None:
         assert ("conditionValue", code) in codes(failure.value.errors)
 
 
+def test_effect_slot_refuses_literal_colors_and_non_status_slots() -> None:
+    # REQ-045/FND-906: the applied color is a status-slot NAME — a literal
+    # hex, a chrome/row slot, or nothing at all refuse identically.
+    for bad in ("#ffe0e0", "rowBackground", "accent", None):
+        document = rule() | {"effectSlot": bad}
+        with pytest.raises(ApiValidationError) as failure:
+            validate_rule_write(document)
+        assert ("effectSlot", CODE_UNKNOWN_SLOT) in codes(failure.value.errors)
+
+
+def test_every_status_slot_is_a_valid_effect_slot() -> None:
+    for slot in STATUS_COLOR_SLOTS:
+        validate_rule_write(rule() | {"effectSlot": slot})
+
+
 def test_rule_failures_report_in_one_round_trip() -> None:
     document = {
         "conditionField": "  ",
         "conditionOperator": "equals",
         "conditionValue": None,
         "effect": "sparkle",
-        "effectColor": "red",
+        "effectSlot": "red",
     }
     with pytest.raises(ApiValidationError) as failure:
         validate_rule_write(document)
@@ -304,7 +338,7 @@ def test_rule_failures_report_in_one_round_trip() -> None:
     assert ("conditionField", CODE_MISSING_CONDITION_FIELD) in found
     assert ("conditionValue", CODE_CONDITION_VALUE_REQUIRED) in found
     assert ("effect", CODE_UNKNOWN_EFFECT) in found
-    assert ("effectColor", CODE_INVALID_COLOR) in found
+    assert ("effectSlot", CODE_UNKNOWN_SLOT) in found
 
 
 # --- Reordering is a full permutation (REQ-045) --------------------------------------
@@ -335,6 +369,12 @@ def test_readable_template_gets_no_warnings() -> None:
     assert template_contrast_warnings(readable_colors()) == []
 
 
+def test_contrast_pairs_are_the_ui_originals() -> None:
+    # FND-905: the persisted structure carries the full UI vocabulary, so the
+    # surface checks the WTK-112 pairs themselves — one canonical home.
+    assert TEMPLATE_CONTRAST_PAIRS is CONTRAST_CHECKED_PAIRS
+
+
 def test_unreadable_pair_warns_with_the_wire_shape() -> None:
     colors = readable_colors() | {"rowText": "#c9ced4"}  # light grey on white
     warnings = template_contrast_warnings(colors)
@@ -350,4 +390,4 @@ def test_guardrail_never_raises_even_when_everything_is_unreadable() -> None:
     colors = {slot: "#808080" for slot in COLOR_SLOTS}
     warnings = template_contrast_warnings(colors)
     # Every checked pair is grey-on-grey (ratio 1.0) — still only warnings.
-    assert len(warnings) == 3
+    assert len(warnings) == len(TEMPLATE_CONTRAST_PAIRS) == 5
