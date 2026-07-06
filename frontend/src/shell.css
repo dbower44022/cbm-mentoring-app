@@ -1,9 +1,22 @@
 /* Shell chrome (WTK-197). One thin header, data density starts below it;
    data-dense never crowded — chrome takes minimum room (layout standard). */
 
+/* The shared app-wide type scale (REQ-046, WTK-231): one variable per
+   defined step, defaults matching the backend seed (storage/theming.py
+   TYPE_SCALE_DEFAULT_SIZES). Every font-size below picks a step through
+   var() — never an arbitrary size; shell/theming.ts re-fills these from
+   GET /theming/effective, so a retuned scale reaches the whole shell. */
+:root {
+  --type-step-xs: 11px;
+  --type-step-sm: 12px;
+  --type-step-md: 14px;
+  --type-step-lg: 16px;
+  --type-step-xl: 20px;
+}
+
 :root {
   font-family: system-ui, sans-serif;
-  font-size: 14px;
+  font-size: var(--type-step-md);
   color: #1a1a1a;
 }
 
@@ -75,7 +88,8 @@ body {
 }
 
 .nav-group-label {
-  font-size: 0.85em;
+  /* Secondary chrome text takes the sm step (was an ad-hoc 0.85em ≈ 12px). */
+  font-size: var(--type-step-sm);
   color: #555;
   text-transform: uppercase;
   padding: 0.25rem 0.5rem 0;
@@ -162,7 +176,7 @@ body {
 }
 
 .quick-open-kind {
-  font-size: 0.85em;
+  font-size: var(--type-step-sm);
   color: #555;
   text-transform: uppercase;
   margin-right: 0.35rem;
@@ -170,7 +184,7 @@ body {
 
 .quick-open-count {
   margin: 0.5rem 0 0;
-  font-size: 0.85em;
+  font-size: var(--type-step-sm);
   color: #555;
 }
 
@@ -268,18 +282,30 @@ body {
   padding: 0.5rem 0 0;
 }
 
-/* Row banding on ALL lists (REQ-092 / the WTK-207 delta design): every
-   row-oriented display alternates the banding pair from the fixed
-   color-template slot structure. These variables ARE the slots
-   (rowBackground / rowAlternateBackground / selectedRow*), filled with the
-   org-default Standard template's values (ui/theming.py STANDARD_TEMPLATE);
-   template delivery re-fills them from the user's app-wide choice — the
-   rules below never hardcode a color. */
+/* The fixed color-slot structure (REQ-044 / the WTK-207 delta design,
+   completed by WTK-231): one custom property per slot of the 15-slot
+   vocabulary (storage/theming.py COLOR_SLOTS), named by shell/theming.ts's
+   camelCase→kebab derivation (rowBackground → --slot-row-background).
+   Defaults are the org-default Standard template's values (ui/theming.py
+   STANDARD_TEMPLATE); shell/theming.ts re-fills them from the user's
+   resolved theme on boot — rules never hardcode a color, and an unthemed
+   boot still renders exactly layer one. */
 :root {
+  --slot-app-background: #f4f6f8;
+  --slot-panel-background: #ffffff;
+  --slot-header-background: #1d3557;
+  --slot-header-text: #ffffff;
+  --slot-accent: #2a6f97;
   --slot-row-background: #ffffff;
   --slot-row-alternate-background: #f0f4f8;
+  --slot-row-text: #1a1a1a;
   --slot-selected-row-background: #d6e6f2;
   --slot-selected-row-text: #102a43;
+  --slot-group-header-background: #e3e9ef;
+  --slot-group-header-text: #243b53;
+  --slot-status-positive: #2d6a4f;
+  --slot-status-warning: #b45309;
+  --slot-status-negative: #b02a37;
 }
 
 /* The grid (and a dashlet mini-list, which is this same table rendered
@@ -438,7 +464,8 @@ body,
   display: flex;
   align-items: center;
   gap: 0.15rem;
-  font-size: 0.75rem;
+  /* The smallest chrome text takes the xs step (was an ad-hoc 0.75rem). */
+  font-size: var(--type-step-xs);
   color: #52606d;
   background: rgba(255, 255, 255, 0.9);
   border: 1px solid #d4d9e0;

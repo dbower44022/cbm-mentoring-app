@@ -98,6 +98,13 @@ ORIGIN_USER: Final = "user"
 # is picked, everywhere at once — no apply button, no per-panel staging.
 SELECTION_APPLIES_INSTANTLY: Final = True
 
+# Where the layer-two choice lives: the ONE preference mechanism (REQ-060 —
+# a new feature needs a new preferenceKey, never a new table or endpoint).
+# :meth:`TemplateSelection.as_preference_value` is the document persisted
+# under this key; the constant lives HERE, beside that payload, so the writer
+# (the picker) and every reader (GET /theming/effective) name the same row.
+TEMPLATE_CHOICE_PREFERENCE_KEY: Final = "theming.templateChoice"
+
 
 @dataclass(frozen=True)
 class TemplateOption:

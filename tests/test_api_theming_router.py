@@ -42,7 +42,10 @@ from mentorapp.storage import (
     ColorTemplate,
     ConditionalFormattingRule,
     TypeScale,
+    UserPreference,
 )
+from mentorapp.ui.template_flow import TEMPLATE_CHOICE_PREFERENCE_KEY
+from mentorapp.ui.theming import STANDARD_TEMPLATE
 
 # The fields the stub grid-entity catalog "serves" (REQ-019).
 KNOWN_FIELDS = {"engagementStatus", "mentorName"}
@@ -117,6 +120,7 @@ def _template(
     name: str,
     *,
     owner: uuid.UUID | None = None,
+    launch_key: str = "standard",
 ) -> ColorTemplate:
     template = ColorTemplate(
         color_template_name=name,
@@ -125,7 +129,7 @@ def _template(
         type_scale_id=scale.type_scale_id,
         color_slots=_colors(),
         font_slots=_fonts(),
-        launch_set_key="standard" if owner is None else None,
+        launch_set_key=launch_key if owner is None else None,
     )
     session.add(template)
     session.flush()
@@ -528,3 +532,99 @@ def test_unwired_condition_field_catalog_fails_loudly(
     )
     assert response.status_code == 500
     assert response.json()["errors"][0]["code"] == "internalError"
+
+
+# --- The effective theme (WTK-230, REQ-044 layers one and two) ------------------------
+
+
+def _choose(session: Session, user_id: uuid.UUID, template_key: str) -> None:
+    # The WTK-113 flow's as_preference_value document under the canonical key.
+    session.add(
+        UserPreference(
+            user_id=user_id,
+            preference_key=TEMPLATE_CHOICE_PREFERENCE_KEY,
+            preference_value={"templateKey": template_key},
+        )
+    )
+    session.flush()
+
+
+def _effective(app_client: TestClient, user_id: uuid.UUID) -> dict[str, Any]:
+    response = app_client.get("/theming/effective", headers=_headers(user_id))
+    assert response.status_code == 200
+    data: dict[str, Any] = response.json()["data"]
+    return data
+
+
+def test_effective_serves_the_builtin_standard_when_nothing_is_seeded(
+    app_client: TestClient, user_id: uuid.UUID, scale: TypeScale
+) -> None:
+    # No system template rows exist: layer one is the shipped in-code
+    # Standard document, rendered in the persisted slot shapes.
+    data = _effective(app_client, user_id)
+    assert data["colorSlots"] == STANDARD_TEMPLATE["colors"]
+    assert data["fontSlots"] == {
+        "uiFont": {"stepKey": "md", "fontFamily": "Inter", "fontWeight": 400},
+        "dataFont": {"stepKey": "md", "fontFamily": "Inter", "fontWeight": 400},
+    }
+    # typeScale travels exactly as GET /theming/type-scale serves it.
+    scale_read = app_client.get("/theming/type-scale", headers=_headers(user_id))
+    assert data["typeScale"] == scale_read.json()["data"]
+
+
+def test_effective_serves_the_seeded_org_default_template(
+    app_client: TestClient, session: Session, user_id: uuid.UUID, scale: TypeScale
+) -> None:
+    org = _template(session, scale, "Org Standard")
+    org.color_slots = {**_colors(), "accent": "#0a3d62"}
+    session.flush()
+    data = _effective(app_client, user_id)
+    assert data["colorSlots"]["accent"] == "#0a3d62"
+    assert data["fontSlots"] == _fonts()
+
+
+def test_effective_replaces_the_default_wholesale_with_the_users_choice(
+    app_client: TestClient, session: Session, user_id: uuid.UUID, scale: TypeScale
+) -> None:
+    _template(session, scale, "Org Standard")
+    mine = _template(session, scale, "Mine", owner=user_id)
+    mine.color_slots = {**_colors(), "accent": "#7b2d8b"}
+    session.flush()
+    _choose(session, user_id, str(mine.color_template_id))
+    data = _effective(app_client, user_id)
+    assert data["colorSlots"]["accent"] == "#7b2d8b"
+
+
+def test_effective_resolves_a_launch_key_choice(
+    app_client: TestClient, session: Session, user_id: uuid.UUID, scale: TypeScale
+) -> None:
+    _template(session, scale, "Org Standard")
+    dark = _template(session, scale, "Dark", launch_key="dark")
+    dark.color_slots = {**_colors(), "appBackground": "#0d1117"}
+    session.flush()
+    _choose(session, user_id, "dark")
+    data = _effective(app_client, user_id)
+    assert data["colorSlots"]["appBackground"] == "#0d1117"
+
+
+def test_effective_never_serves_another_users_template(
+    app_client: TestClient, session: Session, user_id: uuid.UUID, scale: TypeScale
+) -> None:
+    org = _template(session, scale, "Org Standard")
+    theirs = _template(session, scale, "Theirs", owner=_user(session, "mentor.two"))
+    theirs.color_slots = {**_colors(), "accent": "#000000"}
+    session.flush()
+    # Even a choice row naming a foreign template resolves to the org
+    # default — the ownership boundary holds on the read path too.
+    _choose(session, user_id, str(theirs.color_template_id))
+    data = _effective(app_client, user_id)
+    assert data["colorSlots"] == org.color_slots
+
+
+def test_effective_ignores_a_stale_or_unknown_choice(
+    app_client: TestClient, session: Session, user_id: uuid.UUID, scale: TypeScale
+) -> None:
+    org = _template(session, scale, "Org Standard")
+    _choose(session, user_id, str(uuid.uuid4()))
+    data = _effective(app_client, user_id)
+    assert data["colorSlots"] == org.color_slots

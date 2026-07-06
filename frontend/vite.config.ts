@@ -14,6 +14,7 @@ const API_PREFIXES = [
   "/records",
   "/preferences",
   "/schema",
+  "/theming",
   "/openapi.json",
 ];
 
