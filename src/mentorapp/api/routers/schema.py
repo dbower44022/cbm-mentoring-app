@@ -54,6 +54,9 @@ def _field_payload(row: SchemaRegistry) -> dict[str, Any]:
         "fieldLabel": row.field_label,
         "requiredFlag": row.required_flag,
         "validationRules": row.validation_rules,
+        # The create form's prefill source (REQ-037): a default is a field
+        # setting, never a per-form constant.
+        "defaultValue": row.default_value,
         "historyTrackedFlag": row.history_tracked_flag,
         "searchableFlag": row.searchable_flag,
         "visibilityHints": row.visibility_hints,

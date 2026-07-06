@@ -206,20 +206,36 @@ def _match_rules(registry: dict[str, SchemaRegistry]) -> dict[str, list[SchemaRe
     return rules
 
 
-def _duplicate_candidates(
+def find_similar_records(
     session: Session,
     entity_cls: type[Any],
     registry: dict[str, SchemaRegistry],
     values: dict[str, Any],
+    *,
+    include_deleted: bool = False,
 ) -> tuple[list[Any], list[str]]:
+    """Evaluate the entity's duplicate-match rules — the ONE rule evaluation.
+
+    Serves both callers so they can never disagree on what "similar" means:
+    the blocking create-time check (live rows only — DB-S3 allows a live
+    duplicate of a soft-deleted row) and the REQ-037 advisory pre-save check
+    (``include_deleted=True``, so a match on a removed record can offer
+    restore instead of create). Returns ``(candidates, matched_rule_names)``;
+    a rule fires only when ``values`` supplies every one of its fields.
+    """
     columns = columns_by_field_name(entity_cls)
     candidates: dict[uuid.UUID, Any] = {}
     matched_rule_names: list[str] = []
     for rule_name, rows in sorted(_match_rules(registry).items()):
-        # A rule fires only when the create supplies every one of its fields.
         if any(values.get(row.field_name) is None for row in rows):
             continue
-        stmt = select(entity_cls).where(columns["deletedAt"].is_(None))
+        stmt = select(entity_cls)
+        if not include_deleted:
+            # The live-only scan rides the partial shadow indexes; the
+            # deleted-inclusive advisory scan may not, which is acceptable for
+            # a per-form advisory read and wrong to "fix" by weakening DB-S3's
+            # live-only index rule.
+            stmt = stmt.where(columns["deletedAt"].is_(None))
         for row in rows:
             needle = normalize_for_match(row.field_type, values[row.field_name])
             # Detection runs against indexed normalized shadow columns
@@ -284,9 +300,7 @@ def create_record(
     if errors:
         raise ApiValidationError(errors)
 
-    candidates, matched_rule_names = _duplicate_candidates(
-        session, entity_cls, registry, values
-    )
+    candidates, matched_rule_names = find_similar_records(session, entity_cls, registry, values)
     if candidates and not override_duplicates:
         raise DuplicateCandidatesError([serialize_record(record) for record in candidates])
 
@@ -313,6 +327,46 @@ def create_record(
     # Field history starts at the first CHANGE (DB-S5 tracks transitions); the
     # created feed entry + audit columns already record the birth.
     _append_feed_entry(session, entity_type, record, "created")
+    session.flush()
+    return record
+
+
+def restore_record(
+    session: Session,
+    record: Any,
+    entity_type: str,
+    *,
+    row_version: int,
+    acting_user_id: uuid.UUID | None = None,
+) -> Any:
+    """Bring a soft-deleted record back (DB-S3): the restore-instead-of-create write.
+
+    The write the REQ-037 restore offer (and any admin restore surface)
+    commits: clears ``deletedAt``/``deletedBy`` under the standard
+    ``rowVersion`` guard, stamps the audit columns, and feeds ``restored`` —
+    a first-class change kind, so grids and open windows learn the record is
+    back through the one sync path. Raises :class:`StaleRowVersionError`
+    with the current record; restoring a live record is a no-op returning it
+    unchanged (the offer raced a restore that already happened — not an
+    error).
+    """
+    if record.deleted_at is None:
+        return record
+    if row_version != record.row_version:
+        raise StaleRowVersionError(serialize_record(record))
+    record.deleted_at = None
+    record.deleted_by = None
+    record.modified_by = acting_user_id
+    record.modified_at = utcnow()
+    try:
+        session.flush()
+    except StaleDataError as exc:
+        session.rollback()
+        current = session.get(type(record), record_id_of(record))
+        if current is None:
+            raise RecordNotFoundError(entity_type, str(record_id_of(record))) from exc
+        raise StaleRowVersionError(serialize_record(current)) from exc
+    _append_feed_entry(session, entity_type, record, "restored")
     session.flush()
     return record
 

@@ -58,6 +58,15 @@ feature:
   shadow columns (confident components fill, the remainder stays visible,
   the paste is never blocked), and the postal → city/state auto-fill read
   that only ever fills empty controls.
+- ``record_create`` — the create-record flow design (WTK-062, REQ-037): the
+  SAME full-screen form as editing, opened empty and seeded from
+  ``defaultValue`` field settings; the non-blocking similar-records check
+  (the write engine's ``find_similar_records`` with deleted matches
+  included) surfacing the side-by-side offer with continue / switch /
+  restore choices — never a hard block; the server's live-only duplicate
+  rejection resubmitted as a recorded override on Continue; the first save
+  landing on the new record's read view with the standard ``created``
+  notice; Cancel creating nothing.
 - ``grid_surface`` — the grid server API surface design (WTK-042,
   REQ-020/023/026/027/028): the five endpoint contracts with their DB-S11
   over-ten-seconds declarations, whole-filtered-set footer/group aggregates,
@@ -167,15 +176,33 @@ from mentorapp.api.list_engine import (
     keyset_page,
     trigram_search_filter,
 )
+from mentorapp.api.record_create import (
+    CREATE_FORM,
+    CREATE_LANDING,
+    CommitCreate,
+    CreateFlow,
+    CreateSaved,
+    RestoreInsteadOfCreate,
+    SimilarCandidate,
+    SimilarRecordsOffer,
+    SwitchToExisting,
+    create_form_seed,
+    identity_field_names,
+    match_rule_fields,
+)
 from mentorapp.api.records import registry_for, serialize_record
 from mentorapp.api.write_engine import (
     create_record,
+    find_similar_records,
     normalize_for_match,
     partial_update,
+    restore_record,
     validate_value,
 )
 
 __all__ = [
+    "CREATE_FORM",
+    "CREATE_LANDING",
     "FIELD_EDIT_TRIGGER",
     "FIELD_EDIT_WINDOW",
     "GRID_SURFACE",
@@ -186,7 +213,10 @@ __all__ = [
     "AlreadyCurrent",
     "ApiError",
     "ApiValidationError",
+    "CommitCreate",
     "CommitSingleField",
+    "CreateFlow",
+    "CreateSaved",
     "CrmWriteOutcome",
     "DirtyWindowGuard",
     "DuplicateCandidatesError",
@@ -211,11 +241,15 @@ __all__ = [
     "OpenLinkedView",
     "PasteResolution",
     "RecordNotFoundError",
+    "RestoreInsteadOfCreate",
     "RetrySave",
     "SaveNotice",
     "Selection",
+    "SimilarCandidate",
+    "SimilarRecordsOffer",
     "SortKey",
     "StaleRowVersionError",
+    "SwitchToExisting",
     "ValidationSweep",
     "WriteApplied",
     "WriteDeferred",
@@ -223,6 +257,7 @@ __all__ = [
     "aggregate_expressions",
     "auto_format",
     "count_and_aggregates",
+    "create_form_seed",
     "create_record",
     "crm_fault_cause",
     "crm_write_retry_job",
@@ -231,6 +266,7 @@ __all__ = [
     "encode_cursor",
     "export_job_payload",
     "field_error",
+    "find_similar_records",
     "form_label",
     "format_email",
     "format_phone",
@@ -240,9 +276,11 @@ __all__ = [
     "group_row_aggregates",
     "hidden_rows_confirmation",
     "hidden_selection_count",
+    "identity_field_names",
     "integration_credential_from_env",
     "keyset_page",
     "last_view_preference_key",
+    "match_rule_fields",
     "normalize_for_match",
     "normalized_input",
     "ok",
@@ -260,6 +298,7 @@ __all__ = [
     "resolve_export_scope",
     "resolve_grid_link",
     "resolve_paste",
+    "restore_record",
     "selection_record_filter",
     "serialize_record",
     "single_field_patch",
