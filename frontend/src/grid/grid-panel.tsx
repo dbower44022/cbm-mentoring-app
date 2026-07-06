@@ -22,6 +22,9 @@ import {
 import { callApi, EnvelopeError } from "../api/envelope";
 import { useEnvelope } from "../api/useEnvelope";
 import { DeclinedNotice, EducateNotice, UnreachableNotice } from "../shell/educate";
+import { PanelSplitter, ResizablePanel, usePanelChrome } from "../shell/panel-chrome";
+import { readSession } from "../session";
+import { RecordPreview } from "../windows/record";
 import {
   actionMenus,
   bindingFor,
@@ -120,6 +123,8 @@ function LoadedGrid({
   const [view, setView] = useState<ViewSelectorState>(() =>
     selectView(panel.activeViewKey),
   );
+  // Preview-pane size + zoom persist per user (REQ-087 via panel chrome).
+  const panelChrome = usePanelChrome(readSession());
   const [searchText, setSearchText] = useState("");
   const [recentSearches, setRecentSearches] = useState(panel.recentSearches);
   const [sortKeys, setSortKeys] = useState<readonly SortKey[]>([]);
@@ -333,94 +338,80 @@ function LoadedGrid({
     permissionMissing: rowsState.permissionMissing,
   });
 
+  // The docked read-optimized preview follows the selection (REQ-012,
+  // WTK-229 rework): one selected row previews it; otherwise the focused
+  // row. Sizing/zoom persist through the shared panel chrome (REQ-087);
+  // fill-to-space content lands with the domain rollup (REQ-088, PI-010).
+  const previewRecordId =
+    selection.kind === "explicit" && selection.recordIds.length === 1
+      ? selection.recordIds[0]
+      : rowsState.rows[focusedRow]?.recordId;
+
   return (
-    <section
-      className="grid-panel"
-      aria-label={panel.title}
-      onContextMenu={(event) => {
-        event.preventDefault();
-        setMenuOpen("context");
-      }}
-    >
-      {/* Region 1: the action bar — view machinery / search / actions. */}
-      <div className="grid-action-bar" role="toolbar" aria-label="Grid actions">
-        <span>
-          <select
-            aria-label="View"
-            value={view.activeViewKey}
-            onChange={(event) => {
-              setView(selectView(event.target.value));
-              setSortKeys([]);
-            }}
-          >
-            {panel.views.map((v) => (
-              <option key={v.viewKey} value={v.viewKey}>
-                {v.label}
-                {v.viewKey === view.activeViewKey && isModified(view)
-                  ? " (modified)"
-                  : ""}
-              </option>
-            ))}
-          </select>
-          {isModified(view) ? (
-            <button type="button" title="Save these settings as your own view">
-              Save as my view
-            </button>
-          ) : null}
-          <button type="button" aria-label="Edit view settings">
-            ⚙
-          </button>
-        </span>
-        <span>
-          <input
-            ref={searchRef}
-            type="search"
-            autoFocus
-            aria-label="Search displayed columns"
-            placeholder={`Search (from ${String(MIN_SEARCH_LENGTH)} characters)`}
-            list={`recent-searches-${panel.gridId}`}
-            value={searchText}
-            onChange={(event) => {
-              setSearchText(event.target.value);
-              if (searchIsLive(event.target.value)) {
-                setRecentSearches((prev) => rememberSearch(prev, event.target.value));
-              }
-            }}
-          />
-          <datalist id={`recent-searches-${panel.gridId}`}>
-            {recentSearches.map((entry) => (
-              <option key={entry} value={entry} />
-            ))}
-          </datalist>
-        </span>
-        <span>
-          {menus.buttons.map((action) => (
-            <button
-              key={action.key}
-              type="button"
-              onClick={() => {
-                runAction(action);
+    <div className="grid-with-preview">
+      <section
+        className="grid-panel"
+        aria-label={panel.title}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          setMenuOpen("context");
+        }}
+      >
+        {/* Region 1: the action bar — view machinery / search / actions. */}
+        <div className="grid-action-bar" role="toolbar" aria-label="Grid actions">
+          <span>
+            <select
+              aria-label="View"
+              value={view.activeViewKey}
+              onChange={(event) => {
+                setView(selectView(event.target.value));
+                setSortKeys([]);
               }}
             >
-              {action.label}
+              {panel.views.map((v) => (
+                <option key={v.viewKey} value={v.viewKey}>
+                  {v.label}
+                  {v.viewKey === view.activeViewKey && isModified(view)
+                    ? " (modified)"
+                    : ""}
+                </option>
+              ))}
+            </select>
+            {isModified(view) ? (
+              <button type="button" title="Save these settings as your own view">
+                Save as my view
+              </button>
+            ) : null}
+            <button type="button" aria-label="Edit view settings">
+              ⚙
             </button>
-          ))}
-          <button
-            type="button"
-            onClick={() => {
-              setMenuOpen("dropdown");
-            }}
-          >
-            Other Actions
-          </button>
-        </span>
-      </div>
-
-      {menuOpen !== false ? (
-        <menu aria-label="All actions">
-          {menus.menu.map((action) => (
-            <li key={action.key}>
+          </span>
+          <span>
+            <input
+              ref={searchRef}
+              type="search"
+              autoFocus
+              aria-label="Search displayed columns"
+              placeholder={`Search (from ${String(MIN_SEARCH_LENGTH)} characters)`}
+              list={`recent-searches-${panel.gridId}`}
+              value={searchText}
+              onChange={(event) => {
+                setSearchText(event.target.value);
+                if (searchIsLive(event.target.value)) {
+                  setRecentSearches((prev) => rememberSearch(prev, event.target.value));
+                }
+              }}
+            />
+            <datalist id={`recent-searches-${panel.gridId}`}>
+              {recentSearches.map((entry) => (
+                <option key={entry} value={entry} />
+              ))}
+            </datalist>
+          </span>
+          <span>
+            {menus.buttons.map((action) => (
               <button
+                key={action.key}
                 type="button"
                 onClick={() => {
                   runAction(action);
@@ -428,211 +419,263 @@ function LoadedGrid({
               >
                 {action.label}
               </button>
-            </li>
-          ))}
-        </menu>
-      ) : null}
-
-      {explainer !== null ? (
-        <dialog open aria-label="Why this didn't run">
-          <EducateNotice notice={explainer} />
-          <button
-            type="button"
-            onClick={() => {
-              setExplainer(null);
-            }}
-          >
-            OK
-          </button>
-        </dialog>
-      ) : null}
-
-      {confirmation !== null ? (
-        <dialog open aria-label={confirmation.title}>
-          <p>{confirmation.title}</p>
-          <ul>
-            {confirmation.listedTitles.map((title) => (
-              <li key={title}>{title}</li>
             ))}
-          </ul>
-          {confirmation.moreCount > 0 ? (
-            <p>…and {confirmation.moreCount} more</p>
-          ) : null}
-          {confirmation.hiddenRowsNotice !== null ? (
-            <p>{confirmation.hiddenRowsNotice}</p>
-          ) : null}
-          {confirmation.honestyNote !== null ? <p>{confirmation.honestyNote}</p> : null}
-          <button
-            type="button"
-            onClick={() => {
-              setConfirmation(null);
-            }}
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setConfirmation(null);
-            }}
-          >
-            Continue
-          </button>
-        </dialog>
-      ) : null}
-
-      {/* Region 2: the data table, or the one distinguished state. */}
-      {gridState !== null ? (
-        <div className="grid-state" role="status">
-          <EducateNotice notice={gridState.message} />
-          {gridState.affordances.includes("retry") ? (
             <button
               type="button"
               onClick={() => {
-                setGeneration((g) => g + 1);
-                onReloadPanel();
+                setMenuOpen("dropdown");
               }}
             >
-              Retry
+              Other Actions
             </button>
-          ) : null}
-          {gridState.affordances.includes("clearSearch") && searchIsLive(searchText) ? (
-            <button
-              type="button"
-              onClick={() => {
-                setSearchText("");
-              }}
-            >
-              Clear search
-            </button>
-          ) : null}
-          {gridState.affordances.includes("showDetail") && gridState.detail !== null ? (
-            <details
-              onToggle={() => {
-                setShowErrorDetail(!showErrorDetail);
-              }}
-            >
-              <summary>Technical detail</summary>
-              <pre>{gridState.detail}</pre>
-            </details>
-          ) : null}
+          </span>
         </div>
-      ) : (
-        <div
-          className="grid-table-host"
-          tabIndex={0}
-          onKeyDown={gridKeyDown}
-          onScroll={(event: UIEvent<HTMLDivElement>) => {
-            const el = event.currentTarget;
-            if (el.scrollTop + el.clientHeight >= el.scrollHeight - el.clientHeight) {
-              loadNextPage();
-            }
-          }}
-        >
-          <table className="grid-table">
-            <thead>
-              <tr>
-                {multiSelectActive(selection) ? <th aria-label="Selected" /> : null}
-                {panel.columns.map((column) => {
-                  const badge = sortBadgeFor(sortKeys, column.fieldName);
-                  return (
-                    <th
-                      key={column.fieldName}
-                      tabIndex={0}
-                      aria-sort={
-                        badge === null
-                          ? undefined
-                          : badge.direction === "asc"
-                            ? "ascending"
-                            : "descending"
-                      }
-                      onClick={(event) => {
-                        sortHeader(column.fieldName, event.shiftKey);
-                      }}
-                      onKeyDown={(event) => {
-                        if (bindingFor(event.key, "columnHeader") === "sortColumn") {
-                          event.preventDefault();
+
+        {menuOpen !== false ? (
+          <menu aria-label="All actions">
+            {menus.menu.map((action) => (
+              <li key={action.key}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    runAction(action);
+                  }}
+                >
+                  {action.label}
+                </button>
+              </li>
+            ))}
+          </menu>
+        ) : null}
+
+        {explainer !== null ? (
+          <dialog open aria-label="Why this didn't run">
+            <EducateNotice notice={explainer} />
+            <button
+              type="button"
+              onClick={() => {
+                setExplainer(null);
+              }}
+            >
+              OK
+            </button>
+          </dialog>
+        ) : null}
+
+        {confirmation !== null ? (
+          <dialog open aria-label={confirmation.title}>
+            <p>{confirmation.title}</p>
+            <ul>
+              {confirmation.listedTitles.map((title) => (
+                <li key={title}>{title}</li>
+              ))}
+            </ul>
+            {confirmation.moreCount > 0 ? (
+              <p>…and {confirmation.moreCount} more</p>
+            ) : null}
+            {confirmation.hiddenRowsNotice !== null ? (
+              <p>{confirmation.hiddenRowsNotice}</p>
+            ) : null}
+            {confirmation.honestyNote !== null ? (
+              <p>{confirmation.honestyNote}</p>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => {
+                setConfirmation(null);
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setConfirmation(null);
+              }}
+            >
+              Continue
+            </button>
+          </dialog>
+        ) : null}
+
+        {/* Region 2: the data table, or the one distinguished state. */}
+        {gridState !== null ? (
+          <div className="grid-state" role="status">
+            <EducateNotice notice={gridState.message} />
+            {gridState.affordances.includes("retry") ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setGeneration((g) => g + 1);
+                  onReloadPanel();
+                }}
+              >
+                Retry
+              </button>
+            ) : null}
+            {gridState.affordances.includes("clearSearch") &&
+            searchIsLive(searchText) ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchText("");
+                }}
+              >
+                Clear search
+              </button>
+            ) : null}
+            {gridState.affordances.includes("showDetail") &&
+            gridState.detail !== null ? (
+              <details
+                onToggle={() => {
+                  setShowErrorDetail(!showErrorDetail);
+                }}
+              >
+                <summary>Technical detail</summary>
+                <pre>{gridState.detail}</pre>
+              </details>
+            ) : null}
+          </div>
+        ) : (
+          <div
+            className="grid-table-host"
+            tabIndex={0}
+            onKeyDown={gridKeyDown}
+            onScroll={(event: UIEvent<HTMLDivElement>) => {
+              const el = event.currentTarget;
+              if (el.scrollTop + el.clientHeight >= el.scrollHeight - el.clientHeight) {
+                loadNextPage();
+              }
+            }}
+          >
+            <table className="grid-table">
+              <thead>
+                <tr>
+                  {multiSelectActive(selection) ? <th aria-label="Selected" /> : null}
+                  {panel.columns.map((column) => {
+                    const badge = sortBadgeFor(sortKeys, column.fieldName);
+                    return (
+                      <th
+                        key={column.fieldName}
+                        tabIndex={0}
+                        aria-sort={
+                          badge === null
+                            ? undefined
+                            : badge.direction === "asc"
+                              ? "ascending"
+                              : "descending"
+                        }
+                        onClick={(event) => {
                           sortHeader(column.fieldName, event.shiftKey);
+                        }}
+                        onKeyDown={(event) => {
+                          if (bindingFor(event.key, "columnHeader") === "sortColumn") {
+                            event.preventDefault();
+                            sortHeader(column.fieldName, event.shiftKey);
+                          }
+                        }}
+                      >
+                        {column.label}
+                        {badge !== null ? (
+                          <span className="sort-badge">
+                            {badge.direction === "asc" ? "▲" : "▼"}
+                            {badge.position}
+                          </span>
+                        ) : null}
+                      </th>
+                    );
+                  })}
+                </tr>
+              </thead>
+              <tbody>
+                {rowsState.rows.map((row, index) => {
+                  const isSelected =
+                    selection.kind === "filteredSet" ||
+                    selection.recordIds.includes(row.recordId);
+                  return (
+                    <tr
+                      key={row.recordId}
+                      aria-selected={isSelected}
+                      className={index === focusedRow ? "grid-row-focused" : undefined}
+                      onClick={(event) => {
+                        setFocusedRow(index);
+                        if (event.shiftKey || event.ctrlKey) {
+                          setSelection((sel) => toggleSelected(sel, row.recordId));
+                        } else {
+                          setSelection({ kind: "explicit", recordIds: [row.recordId] });
                         }
                       }}
+                      onDoubleClick={() => {
+                        openRecord(row);
+                      }}
                     >
-                      {column.label}
-                      {badge !== null ? (
-                        <span className="sort-badge">
-                          {badge.direction === "asc" ? "▲" : "▼"}
-                          {badge.position}
-                        </span>
+                      {multiSelectActive(selection) ? (
+                        <td>
+                          <input
+                            type="checkbox"
+                            aria-label={`Select ${row.title}`}
+                            checked={isSelected}
+                            onChange={() => {
+                              setSelection((sel) => toggleSelected(sel, row.recordId));
+                            }}
+                          />
+                        </td>
                       ) : null}
-                    </th>
+                      {panel.columns.map((column) => (
+                        <td key={column.fieldName}>
+                          {row.values[column.fieldName] ?? ""}
+                        </td>
+                      ))}
+                    </tr>
                   );
                 })}
-              </tr>
-            </thead>
-            <tbody>
-              {rowsState.rows.map((row, index) => {
-                const isSelected =
-                  selection.kind === "filteredSet" ||
-                  selection.recordIds.includes(row.recordId);
-                return (
-                  <tr
-                    key={row.recordId}
-                    aria-selected={isSelected}
-                    className={index === focusedRow ? "grid-row-focused" : undefined}
-                    onClick={(event) => {
-                      setFocusedRow(index);
-                      if (event.shiftKey || event.ctrlKey) {
-                        setSelection((sel) => toggleSelected(sel, row.recordId));
-                      } else {
-                        setSelection({ kind: "explicit", recordIds: [row.recordId] });
-                      }
-                    }}
-                    onDoubleClick={() => {
-                      openRecord(row);
-                    }}
-                  >
-                    {multiSelectActive(selection) ? (
-                      <td>
-                        <input
-                          type="checkbox"
-                          aria-label={`Select ${row.title}`}
-                          checked={isSelected}
-                          onChange={() => {
-                            setSelection((sel) => toggleSelected(sel, row.recordId));
-                          }}
-                        />
-                      </td>
-                    ) : null}
+              </tbody>
+              {aggregates !== null && Object.keys(aggregates.footer).length > 0 ? (
+                <tfoot>
+                  <tr>
+                    {multiSelectActive(selection) ? <td /> : null}
                     {panel.columns.map((column) => (
                       <td key={column.fieldName}>
-                        {row.values[column.fieldName] ?? ""}
+                        {aggregates.footer[column.fieldName] ?? ""}
                       </td>
                     ))}
                   </tr>
-                );
-              })}
-            </tbody>
-            {aggregates !== null && Object.keys(aggregates.footer).length > 0 ? (
-              <tfoot>
-                <tr>
-                  {multiSelectActive(selection) ? <td /> : null}
-                  {panel.columns.map((column) => (
-                    <td key={column.fieldName}>
-                      {aggregates.footer[column.fieldName] ?? ""}
-                    </td>
-                  ))}
-                </tr>
-              </tfoot>
-            ) : null}
-          </table>
-        </div>
-      )}
+                </tfoot>
+              ) : null}
+            </table>
+          </div>
+        )}
 
-      {/* Region 3: the status bar — progress middle, whole-set count right. */}
-      <div className="grid-status-bar">
-        <span role="status">{rowsState.loading ? "Loading grid" : ""}</span>
-        <span>{rowCountLabel(totalCount, selCount, hiddenSelected)}</span>
-      </div>
-    </section>
+        {/* Region 3: the status bar — progress middle, whole-set count right. */}
+        <div className="grid-status-bar">
+          <span role="status">{rowsState.loading ? "Loading grid" : ""}</span>
+          <span>{rowCountLabel(totalCount, selCount, hiddenSelected)}</span>
+        </div>
+      </section>
+      <PanelSplitter
+        panelKey={`gridPreview:${panel.gridId}`}
+        onResize={panelChrome.saveWidth}
+        resizes="next"
+        maxWidth={720}
+      />
+      <ResizablePanel
+        panelKey={`gridPreview:${panel.gridId}`}
+        savedWidth={panelChrome.document.widths[`gridPreview:${panel.gridId}`] ?? 380}
+        zoom={panelChrome.document.zooms[`gridPreview:${panel.gridId}`] ?? 100}
+        onZoom={panelChrome.saveZoom}
+        className="grid-preview-panel"
+      >
+        {previewRecordId === undefined ? (
+          <p className="grid-preview-hint">
+            Select a row to preview it here — the preview always follows the selected
+            row. Read-optimized: editing is the Edit action or a field's double-click,
+            never this pane.
+          </p>
+        ) : (
+          <RecordPreview entityType="grid" recordId={previewRecordId} />
+        )}
+      </ResizablePanel>
+    </div>
   );
 }
 

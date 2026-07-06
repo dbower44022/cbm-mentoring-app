@@ -452,3 +452,26 @@ body,
   cursor: pointer;
   padding: 0 0.3rem;
 }
+
+/* Docked grid preview (REQ-012 / WTK-229 rework): the pane rides the grid's
+   right edge behind a wide splitter, read-optimized, following selection. */
+.grid-with-preview {
+  display: flex;
+  flex: 1 1 0;
+  min-height: 0;
+}
+
+.grid-with-preview > .grid-panel {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.grid-preview-panel {
+  overflow-y: auto;
+}
+
+.grid-preview-hint {
+  color: #52606d;
+  font-style: italic;
+  padding: 0.5rem;
+}

@@ -41,7 +41,7 @@ export function clampZoom(value: number): number {
  * The one loader/writer pair for the panelChrome preference document.
  * A missing document (404) is the built-in default: no saved sizes, 100%.
  */
-export function usePanelChrome(session: SessionState): {
+export function usePanelChrome(session: SessionState | null): {
   document: PanelChromeDocument;
   saveWidth: (panelKey: string, width: number) => void;
   saveZoom: (panelKey: string, zoom: number) => void;
@@ -52,6 +52,10 @@ export function usePanelChrome(session: SessionState): {
   const writeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
+    if (session === null) {
+      // No session, no persistence: defaults render; nothing to load.
+      return;
+    }
     void callApi<PreferencePayload>(`/preferences/${PANEL_CHROME_PREFERENCE_KEY}`, {
       headers: userHeaders(session),
     })
@@ -70,6 +74,9 @@ export function usePanelChrome(session: SessionState): {
   }, [session]);
 
   const scheduleWrite = useCallback((): void => {
+    if (session === null) {
+      return;
+    }
     if (writeTimer.current !== null) {
       clearTimeout(writeTimer.current);
     }
@@ -117,18 +124,23 @@ export function PanelSplitter({
   onResize,
   minWidth = 120,
   maxWidth = 640,
+  resizes = "previous",
 }: {
   panelKey: string;
   onResize: (panelKey: string, width: number) => void;
   minWidth?: number;
   maxWidth?: number;
+  /** Which sibling the drag resizes — a right-docked panel resizes "next". */
+  resizes?: "previous" | "next";
 }): ReactElement {
   const [dragging, setDragging] = useState(false);
 
   const startDrag = (event: React.MouseEvent<HTMLDivElement>): void => {
     event.preventDefault();
-    const owner = (event.currentTarget as HTMLElement)
-      .previousElementSibling as HTMLElement | null;
+    const target = event.currentTarget as HTMLElement;
+    const owner = (
+      resizes === "previous" ? target.previousElementSibling : target.nextElementSibling
+    ) as HTMLElement | null;
     if (owner === null) {
       return;
     }
@@ -136,9 +148,11 @@ export function PanelSplitter({
     const startX = event.clientX;
     const startWidth = owner.getBoundingClientRect().width;
     const onMove = (move: MouseEvent): void => {
+      // A "next" panel grows as the splitter moves LEFT (drag delta inverts).
+      const delta = move.clientX - startX;
       const width = Math.min(
         maxWidth,
-        Math.max(minWidth, startWidth + (move.clientX - startX)),
+        Math.max(minWidth, startWidth + (resizes === "previous" ? delta : -delta)),
       );
       owner.style.width = `${String(width)}px`;
       owner.style.flex = "none";
