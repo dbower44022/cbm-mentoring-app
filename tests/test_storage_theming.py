@@ -34,6 +34,7 @@ from mentorapp.storage import (
     shared_type_scale,
     utcnow,
 )
+from mentorapp.storage.theming import PRESENCE_OPERATORS
 
 
 def _user(session: Session, username: str = "mentor.one") -> AppUser:
@@ -126,9 +127,23 @@ def test_vocabularies_match_the_standard() -> None:
     assert TYPE_SCALE_STEPS == ("xs", "sm", "md", "lg", "xl")
     # PI-007: the guardrail educates — warns, never blocks.
     assert CONTRAST_GUARDRAIL_BEHAVIORS == ("warn",)
-    # The effect enum is limited to fixed slots (WTK-111).
+    # WTK-121: the rule vocabularies are pinned exactly, like the slot
+    # structure above — the effect enum is limited to the fixed slots a rule
+    # may repaint (WTK-111), and the presence operators are the value-less
+    # subset that write validation and render-time evaluation both split on.
+    assert FORMATTING_EFFECTS == ("rowBackground", "rowText", "accent")
     assert set(FORMATTING_EFFECTS) <= set(COLOR_SLOTS)
-    assert "equals" in CONDITION_OPERATORS
+    assert CONDITION_OPERATORS == (
+        "equals",
+        "notEquals",
+        "greaterThan",
+        "lessThan",
+        "contains",
+        "isEmpty",
+        "isNotEmpty",
+    )
+    assert PRESENCE_OPERATORS == ("isEmpty", "isNotEmpty")
+    assert set(PRESENCE_OPERATORS) < set(CONDITION_OPERATORS)
 
 
 def test_ui_and_storage_share_one_canonical_vocabulary() -> None:
