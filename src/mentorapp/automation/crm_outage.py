@@ -215,19 +215,23 @@ def degraded_crm_read(
     (and not due a probe) short-circuits without touching the network. On
     :class:`CrmUnavailableError` — or a short-circuit — the answer is the
     caller's ``snapshot`` labelled stale, or :class:`UnavailableRead` when
-    none is held. Non-outage exceptions from ``read`` propagate untouched:
-    a CRM refusal is a real answer, not degradation.
+    none is held. The reason is the live failure's own when one happened
+    (specific, per REQ-064), the breaker's stored one on a short-circuit.
+    Non-outage exceptions from ``read`` propagate untouched: a CRM refusal
+    is a real answer, not degradation.
     """
+    reason: str | None = None
     if monitor.allow_attempt(now=now):
         try:
             data = read()
         except CrmUnavailableError as exc:
-            monitor.record_failure(str(exc) or "CRM did not answer", now=now)
+            reason = str(exc) or "CRM did not answer"
+            monitor.record_failure(reason, now=now)
         else:
             monitor.record_success()
             return FreshRead(data=data)
     state = monitor.availability()
-    reason = state.reason or "The CRM is not answering."
+    reason = reason or state.reason or "The CRM is not answering."
     if snapshot is not None:
         return StaleRead(
             data=snapshot.data,
@@ -399,16 +403,18 @@ def submit_or_preserve(
     classifying and retrying those is the WTK-152 write contract, not this
     process.
     """
+    reason: str | None = None
     if monitor.allow_attempt(now=now):
         try:
             result = submit()
         except CrmUnavailableError as exc:
-            monitor.record_failure(str(exc) or "CRM did not answer", now=now)
+            reason = str(exc) or "CRM did not answer"
+            monitor.record_failure(reason, now=now)
         else:
             monitor.record_success()
             discard_draft(store, key)
             return SubmitAccepted(result=result)
     state = monitor.availability()
-    reason = state.reason or "The CRM is not answering."
+    reason = reason or state.reason or "The CRM is not answering."
     draft = preserve_draft(store, key, content, reason=reason, now=now)
     return DraftPreserved(draft=draft, unavailable_since=state.unavailable_since, reason=reason)
