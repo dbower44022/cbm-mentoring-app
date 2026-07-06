@@ -125,6 +125,11 @@ CONDITION_OPERATORS: Final[tuple[str, ...]] = (
     "isNotEmpty",
 )
 
+# The operators that test the field itself and carry no conditionValue — part
+# of the operator vocabulary (write validation and render-time evaluation both
+# split on it, so it lives here with CONDITION_OPERATORS, never a local copy).
+PRESENCE_OPERATORS: Final[tuple[str, ...]] = ("isEmpty", "isNotEmpty")
+
 # The fixed effect slots a matching rule may repaint — the effect enum is
 # limited to these slots (WTK-111); a rule never invents a visual effect.
 FORMATTING_EFFECTS: Final[tuple[str, ...]] = ("rowBackground", "rowText", "accent")
