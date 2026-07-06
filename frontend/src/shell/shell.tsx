@@ -1,9 +1,10 @@
 /**
  * Window shell composition (DEC-080 §A–§C): every window boots the same
- * bundle; the route decides the kind. A main window renders data.mainWindow
- * with navigation; /record/:entityType/:recordId renders data.popOut
- * (record windows are not panel hosts). Both bind the quick-open shortcut
- * from the payload's own declaration and render the shell payload verbatim.
+ * bundle; the route decides the kind. The shell hosts main windows
+ * (navigation + panel host); pop-out record windows are app.tsx's
+ * /records/... route rendering windows/record.tsx — the one canonical
+ * home (WTK-228). The quick-open shortcut binds from the payload's own
+ * declaration and the shell payload renders verbatim.
  */
 
 import { type ReactElement, useCallback, useEffect, useState } from "react";
@@ -21,6 +22,7 @@ import { type SessionState, userHeaders } from "../session";
 import { UrgentBanner } from "./banner";
 import { Header } from "./header";
 import { Navigation } from "./navigation";
+import { PanelSplitter, ResizablePanel, usePanelChrome } from "./panel-chrome";
 import type { PreferencePayload, ShellPayload } from "./payloads";
 import { QuickOpen } from "./quick-open";
 
@@ -48,6 +50,8 @@ export function Shell({ session, onLoggedOut }: ShellProps): ReactElement {
   // Home's render reads its messages (REQ-011 auto-read on view); bumping
   // this token re-fetches the banner so it never banners what was just read.
   const [messagesViewedAt, setMessagesViewedAt] = useState(0);
+  // Panel sizes + per-panel zoom persist per user (REQ-087, WTK-225).
+  const panelChrome = usePanelChrome(session);
   const onMessagesViewed = useCallback(() => {
     setMessagesViewedAt((current) => current + 1);
   }, []);
@@ -180,6 +184,8 @@ export function Shell({ session, onLoggedOut }: ShellProps): ReactElement {
     );
   };
 
+  const sideNavigation = shell.navigation.presentation !== "tabs";
+
   const navigation = (
     <Navigation
       navigation={shell.navigation}
@@ -189,34 +195,11 @@ export function Shell({ session, onLoggedOut }: ShellProps): ReactElement {
     />
   );
 
+  // Pop-out record windows are app.tsx's /records/... route (RecordWindow,
+  // windows/record.tsx) — the one canonical home; the shell hosts only
+  // main windows (WTK-228 rework, SKL-122).
   return (
     <Routes>
-      <Route
-        path="/record/:entityType/:recordId"
-        element={
-          <PopOutWindow
-            shell={shell}
-            session={session}
-            onLoggedOut={onLoggedOut}
-            onMenuAction={onMenuAction}
-            notice={notice}
-            onDismissNotice={() => {
-              setNotice(null);
-            }}
-            palette={
-              paletteOpen ? (
-                <QuickOpen
-                  session={session}
-                  onActivate={openPanel}
-                  onClose={() => {
-                    setPaletteOpen(false);
-                  }}
-                />
-              ) : null
-            }
-          />
-        }
-      />
       <Route
         path="*"
         element={
@@ -225,7 +208,11 @@ export function Shell({ session, onLoggedOut }: ShellProps): ReactElement {
             <Header
               header={shell.mainWindow}
               session={session}
-              navigation={shell.mainWindow.hasNavigation ? navigation : undefined}
+              navigation={
+                shell.mainWindow.hasNavigation && !sideNavigation
+                  ? navigation
+                  : undefined
+              }
               onLoggedOut={onLoggedOut}
               onMenuAction={onMenuAction}
             />
@@ -242,15 +229,43 @@ export function Shell({ session, onLoggedOut }: ShellProps): ReactElement {
                 </button>
               </p>
             )}
-            <main className="panel-host">
-              <Routes>
-                <Route
-                  path="/"
-                  element={<HomePanel onMessagesViewed={onMessagesViewed} />}
-                />
-                <Route path="/panel/:panelKey" element={<RoutedPanel />} />
-              </Routes>
-            </main>
+            {/* Side-presentation navigation is a real left PANEL (SKL-113),
+                resizable through the wide splitter and zoomable like every
+                panel (REQ-087) — only the tabs presentation lives in the
+                header bar. */}
+            <div className="main-body">
+              {sideNavigation && (
+                <ResizablePanel
+                  panelKey="navigation"
+                  savedWidth={panelChrome.document.widths.navigation}
+                  zoom={panelChrome.document.zooms.navigation ?? 100}
+                  onZoom={panelChrome.saveZoom}
+                  className="nav-panel"
+                >
+                  {navigation}
+                </ResizablePanel>
+              )}
+              {sideNavigation && (
+                <PanelSplitter panelKey="navigation" onResize={panelChrome.saveWidth} />
+              )}
+              <ResizablePanel
+                panelKey="mainPanel"
+                savedWidth={undefined}
+                zoom={panelChrome.document.zooms.mainPanel ?? 100}
+                onZoom={panelChrome.saveZoom}
+                className="main-panel"
+              >
+                <main className="panel-host">
+                  <Routes>
+                    <Route
+                      path="/"
+                      element={<HomePanel onMessagesViewed={onMessagesViewed} />}
+                    />
+                    <Route path="/panel/:panelKey" element={<RoutedPanel />} />
+                  </Routes>
+                </main>
+              </ResizablePanel>
+            </div>
             {paletteOpen && (
               <QuickOpen
                 session={session}
@@ -273,51 +288,6 @@ function RoutedPanel(): ReactElement {
   // Gantt, chart) ship — the grid renders its own four states, so a panel
   // whose surface isn't served yet shows the educate-voice error, never a blank.
   return <GridPanel panelKey={panelKey ?? ""} />;
-}
-
-function PopOutWindow({
-  shell,
-  session,
-  onLoggedOut,
-  onMenuAction,
-  notice,
-  onDismissNotice,
-  palette,
-}: {
-  shell: ShellPayload;
-  session: SessionState;
-  onLoggedOut: () => void;
-  onMenuAction: (key: string) => void;
-  notice: string | null;
-  onDismissNotice: () => void;
-  palette: ReactElement | null;
-}): ReactElement {
-  const { entityType, recordId } = useParams();
-  return (
-    <div className="pop-out-window">
-      <Header
-        header={shell.popOut}
-        session={session}
-        onLoggedOut={onLoggedOut}
-        onMenuAction={onMenuAction}
-      />
-      {notice !== null && (
-        <p className="notice" role="status">
-          {notice}{" "}
-          <button type="button" onClick={onDismissNotice}>
-            Dismiss
-          </button>
-        </p>
-      )}
-      <main className="panel-host">
-        <p className="panel-placeholder">
-          Record window for {entityType ?? "?"}/{recordId ?? "?"}. The read-optimized
-          record view renders with WTK-198.
-        </p>
-      </main>
-      {palette}
-    </div>
-  );
 }
 
 function parseShortcut(declaration: string): {
