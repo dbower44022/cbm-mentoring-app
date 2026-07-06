@@ -271,3 +271,31 @@ in via the governed release-correction path (as REL-001 → REL-002)
 before/at the next planning slice. Skill authoring file updated in step
 with the DB (layout-standard.md); SKL-114/117 amendments are DB-only
 (no authoring file exists for them).
+
+## DONE 2026-07-05/06 (post-gate) — REVIEWS, PI-009 SHIPPED, REL-003 READY
+
+- **Dev-lane review (DEC-086):** PI-001 + PI-008 Resolved (backend, tests
+  green, standards-aligned); PI-002/003/011 HELD — rework under REL-003;
+  the approved reference surface is `prototype/`, not the built frontend.
+- **PI-009 CRM integration: ran and shipped** (local AdoScheduler,
+  subscription agents): Design/Develop/Test all complete, 13 tasks merged,
+  affected-test gate green throughout; app-owned mentoring entities +
+  Espo reference layer landed. Now In Review.
+- **REL-003 planned and READY** (droplet driver
+  `/opt/crmbuilder/rel003_planning_delta_droplet.py`, ~$0.27 metered):
+  REL-002 superseded (guarded transition); PRJ-001 recomposed; frozen;
+  7 delta demands (REQ-089/090/092); Doug's reconciliation +
+  architecture sign-offs recorded (PI-238); finalized → ready. Delta
+  work tasks WTK-201..212 injected into existing PI-002/004/007
+  workstreams + rework-comparison tasks for PI-002/003/011 (duplicates
+  WTK-213..224 from a non-idempotent rerun verified + soft-deleted).
+- **Platform findings → ENG-001 candidate REQ-471 (3 facets):** correction
+  releases have no delta path — (1) decomposition skips PIs with
+  workstreams; (2) delivery detection is phase-completion-based, so new
+  scope on an already-run PI (REQ-087/088/091 on PI-002) is dropped from
+  demands; (3) the architecture PLAN step skips entirely when all PIs are
+  decomposed, so delta demands never become design versions. Accepted at
+  the sign-offs; design deltas land via the injected Design tasks
+  (design-as-code).
+- NEXT: dispatch the UI-area dev lane over REL-003 (PI-004/007 delta +
+  PI-002/003/011 rework-comparison Design tasks), review PI-009.
