@@ -19,7 +19,14 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
-from mentorapp.storage import Base, OptionSet, utcnow
+from mentorapp.storage import (
+    SHARED_TYPE_SCALE_NAME,
+    TYPE_SCALE_DEFAULT_SIZES,
+    Base,
+    OptionSet,
+    shared_type_scale,
+    utcnow,
+)
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _ALEMBIC_INI = _REPO_ROOT / "alembic.ini"
@@ -111,6 +118,17 @@ def test_partial_unique_index_enforces_live_rows_only(migrated_engine: Engine) -
         session.add(OptionSet(option_set_name="engagementStatus"))
         with pytest.raises(IntegrityError):
             session.commit()
+
+
+def test_upgrade_head_seeds_the_shared_type_scale(migrated_engine: Engine) -> None:
+    # WTK-116/REQ-046: the ONE app-wide scale exists from first boot with the
+    # design-default sizes — the row the WTK-114 type-scale surface serves.
+    with Session(migrated_engine) as session:
+        scale = shared_type_scale(session)
+        assert scale.type_scale_name == SHARED_TYPE_SCALE_NAME
+        assert scale.scale_steps == TYPE_SCALE_DEFAULT_SIZES
+        assert scale.row_version == 1
+        assert scale.created_by is None  # seeded, no acting user
 
 
 def test_downgrade_base_removes_every_table(migrated_engine: Engine) -> None:

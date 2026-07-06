@@ -6,7 +6,9 @@ theme — its fixed color/font slot structure, the launch-set membership
 (Standard/Compact/Large print/Dark), its chosen type step, and the contrast
 guardrail. ``typeScale`` is the shared app-wide typography scale: a defined
 step set that every font size must come from — off-scale sizes are prohibited
-(API-validated, like every vocabulary here per DB-S7).
+(API-validated per DB-S7, with ORM ``@validates`` backstops at the
+persistence boundary; WTK-116 seeds the ONE shared row, read via
+:func:`shared_type_scale`).
 ``conditionalFormattingRule`` is one rule of a template's conditional
 formatting (the grid standard: "conditional formatting lives in the theme"),
 evaluated first-match-wins in ``evaluationOrder``; its effect paints a STATUS
@@ -38,10 +40,11 @@ name of the primary key it references (DB-R2b).
 from __future__ import annotations
 
 import uuid
+from collections.abc import Mapping
 from typing import Any, Final
 
-from sqlalchemy import ForeignKey, Index, String, text
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy import ForeignKey, Index, String, select, text
+from sqlalchemy.orm import Mapped, Session, mapped_column, relationship, validates
 
 from mentorapp.storage.base import Base, JsonValue, StructuralColumnsMixin, uuid7
 
@@ -108,6 +111,24 @@ FONT_SLOTS: Final[tuple[str, ...]] = ("uiFont", "dataFont")
 # each step to a concrete size; fonts choose steps, never raw sizes.
 TYPE_SCALE_STEPS: Final[tuple[str, ...]] = ("xs", "sm", "md", "lg", "xl")
 
+# The well-known name of the ONE persisted app-wide scale (WTK-116, REQ-046):
+# migration 0011 seeds it, :func:`shared_type_scale` reads it, and the WTK-114
+# type-scale surface retunes exactly this row. No create-scale endpoint
+# exists, so the seed + this name IS the singleton contract.
+SHARED_TYPE_SCALE_NAME: Final = "App-wide type scale"
+
+# The design-default px size of every defined step (the UX design's scale,
+# WTK-112) — what the seed persists and what a new scale row starts from.
+# The one canonical home (FND-905 direction): ``ui.theming`` re-exports this
+# mapping; the LIVE values are the seeded row, retunable per REQ-046.
+TYPE_SCALE_DEFAULT_SIZES: Final[dict[str, int]] = {
+    "xs": 11,
+    "sm": 12,
+    "md": 14,
+    "lg": 16,
+    "xl": 20,
+}
+
 # PI-007 rules the guardrail educate-style: it WARNS on unreadable slot
 # combinations and never blocks a save. "warn" is the only sanctioned value;
 # the column names the contract rather than hardcoding it (the keyboardModelKey
@@ -161,10 +182,29 @@ class TypeScale(StructuralColumnsMixin, Base):
     type_scale_name: Mapped[str] = mapped_column("typeScaleName", String(200), nullable=False)
     # {stepKey: sizePx} covering exactly TYPE_SCALE_STEPS.
     scale_steps: Mapped[dict[str, Any]] = mapped_column(
-        "scaleSteps", JsonValue, nullable=False, default=dict
+        "scaleSteps",
+        JsonValue,
+        nullable=False,
+        default=lambda: dict(TYPE_SCALE_DEFAULT_SIZES),
     )
 
     color_templates: Mapped[list[ColorTemplate]] = relationship(back_populates="type_scale")
+
+    @validates("scale_steps")
+    def _reject_off_scale_steps(self, _key: str, value: dict[str, Any]) -> dict[str, Any]:
+        # The persistence-boundary backstop of the off-scale prohibition
+        # (WTK-116, REQ-046) for writers that never ride the API surface
+        # (seeds, jobs, tests); the WTK-114 validators stay the field-shaped
+        # user-facing home. Step-set exactness only — size shape/order rules
+        # live there, not here.
+        off_scale = sorted(set(value) - set(TYPE_SCALE_STEPS))
+        missing = sorted(set(TYPE_SCALE_STEPS) - set(value))
+        if off_scale or missing:
+            raise ValueError(
+                f"scaleSteps must map exactly the defined steps {TYPE_SCALE_STEPS}; "
+                f"off-scale {off_scale}, missing {missing} (REQ-046)."
+            )
+        return value
 
 
 class ColorTemplate(StructuralColumnsMixin, Base):
@@ -244,6 +284,32 @@ class ColorTemplate(StructuralColumnsMixin, Base):
         order_by="ConditionalFormattingRule.evaluation_order",
     )
 
+    @validates("type_step_choice")
+    def _reject_off_scale_choice(self, _key: str, step: str) -> str:
+        # Same persistence-boundary backstop as TypeScale._reject_off_scale_steps.
+        if step not in TYPE_SCALE_STEPS:
+            raise ValueError(
+                f"typeStepChoice must name a defined type-scale step "
+                f"{TYPE_SCALE_STEPS}, got {step!r} — off-scale sizes are "
+                f"prohibited (REQ-046)."
+            )
+        return step
+
+    @validates("font_slots")
+    def _reject_off_scale_font_steps(self, _key: str, value: dict[str, Any]) -> dict[str, Any]:
+        # Off-scale step references only; spec shape (family, weight, exact
+        # slot set) is the WTK-114 surface's field-shaped validation.
+        for slot, spec in value.items():
+            if not isinstance(spec, Mapping) or "stepKey" not in spec:
+                continue
+            if spec["stepKey"] not in TYPE_SCALE_STEPS:
+                raise ValueError(
+                    f"fontSlots.{slot} names step {spec['stepKey']!r}; font sizes "
+                    f"must name a defined type-scale step {TYPE_SCALE_STEPS} "
+                    f"(REQ-046)."
+                )
+        return value
+
 
 class ConditionalFormattingRule(StructuralColumnsMixin, Base):
     """One conditional-formatting rule of a template (PI-007).
@@ -297,3 +363,26 @@ class ConditionalFormattingRule(StructuralColumnsMixin, Base):
     evaluation_order: Mapped[int] = mapped_column("evaluationOrder", nullable=False)
 
     color_template: Mapped[ColorTemplate] = relationship(back_populates="formatting_rules")
+
+
+def shared_type_scale(session: Session) -> TypeScale:
+    """The ONE persisted app-wide type scale (WTK-116, REQ-046).
+
+    Returns the live seeded row named :data:`SHARED_TYPE_SCALE_NAME` — the
+    single scale every template links and the WTK-114 type-scale surface
+    serves/retunes. Excludes soft-deleted rows (DB-S3 default-read rule).
+    Raises :class:`LookupError` if the seed (migration 0011) is absent —
+    a broken deployment, not a normal state.
+    """
+    scale = session.scalars(
+        select(TypeScale).where(
+            TypeScale.type_scale_name == SHARED_TYPE_SCALE_NAME,
+            TypeScale.deleted_at.is_(None),
+        )
+    ).one_or_none()
+    if scale is None:
+        raise LookupError(
+            f"The shared type scale {SHARED_TYPE_SCALE_NAME!r} is not seeded; "
+            f"run migrations (0011 persists it)."
+        )
+    return scale
