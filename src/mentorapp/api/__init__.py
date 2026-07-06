@@ -33,6 +33,11 @@ feature:
   silent overwrite), the same-user cross-window freshness fan-out (save
   notices ARE change-feed tuples), the dirty-window guard, and the
   edit-collision switch.
+- ``crm_writes`` — CRM write-through and write-retry (WTK-157,
+  REQ-062/REQ-064): the synchronous master-record write-back as the user
+  with its one transient-vs-terminal fork, the ``crmWriteRetry`` queue
+  handler running deferred writes under the integration credential, and the
+  duplicate-safe replay contract they share.
 - ``grid_surface`` — the grid server API surface design (WTK-042,
   REQ-020/023/026/027/028): the five endpoint contracts with their DB-S11
   over-ten-seconds declarations, whole-filtered-set footer/group aggregates,
@@ -44,6 +49,16 @@ feature:
   search, and deep-link resolution (links are references, never grants).
 """
 
+from mentorapp.api.crm_writes import (
+    CrmWriteOutcome,
+    WriteApplied,
+    WriteDeferred,
+    WriteRefused,
+    crm_fault_cause,
+    crm_write_retry_job,
+    crm_write_through,
+    integration_credential_from_env,
+)
 from mentorapp.api.edit_safety import (
     AlreadyCurrent,
     DirtyWindowGuard,
@@ -108,6 +123,7 @@ __all__ = [
     "AlreadyCurrent",
     "ApiError",
     "ApiValidationError",
+    "CrmWriteOutcome",
     "DirtyWindowGuard",
     "DuplicateCandidatesError",
     "EditCollisionSwitch",
@@ -129,9 +145,15 @@ __all__ = [
     "Selection",
     "SortKey",
     "StaleRowVersionError",
+    "WriteApplied",
+    "WriteDeferred",
+    "WriteRefused",
     "aggregate_expressions",
     "count_and_aggregates",
     "create_record",
+    "crm_fault_cause",
+    "crm_write_retry_job",
+    "crm_write_through",
     "decode_cursor",
     "encode_cursor",
     "export_job_payload",
@@ -140,6 +162,7 @@ __all__ = [
     "group_row_aggregates",
     "hidden_rows_confirmation",
     "hidden_selection_count",
+    "integration_credential_from_env",
     "keyset_page",
     "last_view_preference_key",
     "normalize_for_match",
