@@ -21,14 +21,17 @@ from mentorapp.storage import (
     FORMATTING_EFFECTS,
     LAUNCH_SETS,
     ROW_THEME_COLOR_SLOTS,
+    SHARED_TYPE_SCALE_NAME,
     STATUS_COLOR_SLOTS,
     TEMPLATE_TYPES,
+    TYPE_SCALE_DEFAULT_SIZES,
     TYPE_SCALE_STEPS,
     AppUser,
     ColorTemplate,
     ConditionalFormattingRule,
     GridView,
     TypeScale,
+    shared_type_scale,
     utcnow,
 )
 
@@ -138,6 +141,78 @@ def test_ui_and_storage_share_one_canonical_vocabulary() -> None:
     assert ui_theming.CHROME_COLOR_SLOTS is CHROME_COLOR_SLOTS
     assert ui_theming.ROW_THEME_COLOR_SLOTS is ROW_THEME_COLOR_SLOTS
     assert ui_theming.STATUS_COLOR_SLOTS is STATUS_COLOR_SLOTS
+    # WTK-116: the design-default step sizes too — what the UI resolves as
+    # the design default is exactly what migration 0011 persisted.
+    assert ui_theming.TYPE_SCALE_STEPS is TYPE_SCALE_DEFAULT_SIZES
+
+
+def test_default_sizes_cover_exactly_the_defined_steps() -> None:
+    # REQ-046: the persisted default maps every defined step, no extras, and
+    # sizes strictly ascend xs → xl (the shape the WTK-114 PATCH enforces).
+    assert tuple(TYPE_SCALE_DEFAULT_SIZES) == TYPE_SCALE_STEPS
+    sizes = list(TYPE_SCALE_DEFAULT_SIZES.values())
+    assert sizes == sorted(set(sizes))
+
+
+def test_new_scale_defaults_to_the_design_default_sizes(session: Session) -> None:
+    scale = TypeScale(type_scale_name="Fresh scale")
+    session.add(scale)
+    session.flush()
+
+    assert scale.scale_steps == TYPE_SCALE_DEFAULT_SIZES
+
+
+def test_scale_rejects_off_scale_and_missing_steps() -> None:
+    # WTK-116: the persistence boundary refuses to mint or drop a step.
+    with pytest.raises(ValueError, match="off-scale \\['xxl'\\]"):
+        TypeScale(
+            type_scale_name="Minted",
+            scale_steps={**TYPE_SCALE_DEFAULT_SIZES, "xxl": 28},
+        )
+    with pytest.raises(ValueError, match="missing"):
+        TypeScale(type_scale_name="Partial", scale_steps={"xs": 11})
+
+
+def test_template_rejects_off_scale_step_choice(session: Session) -> None:
+    scale = _scale(session)
+
+    with pytest.raises(ValueError, match="off-scale"):
+        ColorTemplate(
+            color_template_name="Huge",
+            template_type="system",
+            type_scale_id=scale.type_scale_id,
+            color_slots={slot: "#ffffff" for slot in COLOR_SLOTS},
+            font_slots={slot: {"stepKey": "md"} for slot in FONT_SLOTS},
+            type_step_choice="huge",
+        )
+
+
+def test_template_rejects_off_scale_font_step(session: Session) -> None:
+    scale = _scale(session)
+
+    with pytest.raises(ValueError, match="fontSlots.uiFont"):
+        ColorTemplate(
+            color_template_name="Off scale",
+            template_type="system",
+            type_scale_id=scale.type_scale_id,
+            color_slots={slot: "#ffffff" for slot in COLOR_SLOTS},
+            font_slots={"uiFont": {"stepKey": "17px"}, "dataFont": {"stepKey": "md"}},
+        )
+
+
+def test_shared_type_scale_reads_the_one_live_seeded_row(session: Session) -> None:
+    # Absent seed = broken deployment, answered loudly (never a silent None).
+    with pytest.raises(LookupError, match="not seeded"):
+        shared_type_scale(session)
+
+    seeded = _scale(session, name=SHARED_TYPE_SCALE_NAME)
+    assert shared_type_scale(session) is seeded
+
+    # DB-S3: the default read excludes a soft-deleted shared row.
+    seeded.deleted_at = utcnow()
+    session.flush()
+    with pytest.raises(LookupError):
+        shared_type_scale(session)
 
 
 def test_template_defaults_speak_the_ruled_contract(session: Session) -> None:
