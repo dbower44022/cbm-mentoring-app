@@ -121,7 +121,8 @@ def test_required_markers_come_from_served_settings(client: TestClient, seeded: 
 
 
 def test_on_exit_validates_against_served_option_ids(client: TestClient, seeded: None) -> None:
-    status = {settings.field_name: settings for settings in _served_form(client)}["mentorStatus"]
+    form = {settings.field_name: settings for settings in _served_form(client)}
+    status = form["mentorStatus"]
     assert status.option_set is not None
     served = {
         value.option_value_label: value.option_value_id
@@ -139,7 +140,8 @@ def test_sweep_over_served_form_reports_all_and_focuses_first(
 ) -> None:
     # Bad capacity, name never touched, status never touched: ALL three fail
     # in one sweep, inline, and focus goes to the first in display order.
-    sweep = sweep_before_save(_served_form(client), {"mentorCapacity": "many", "mentorNotes": ""})
+    values = {"mentorCapacity": "many", "mentorNotes": ""}
+    sweep = sweep_before_save(_served_form(client), values)
     assert not sweep.ok
     assert [(error["fieldName"], error["code"]) for error in sweep.inline] == [
         ("mentorCapacity", "typeMismatch"),
