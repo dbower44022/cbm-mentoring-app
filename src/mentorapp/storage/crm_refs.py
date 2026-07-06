@@ -48,6 +48,7 @@ class CrmClientRef(BaseEntity):
     """App-side anchor for a client record mastered in the CRM (REQ-062)."""
 
     __tablename__ = "crmClientRef"
+    __ownership_side__ = "crm"
     __table_args__ = (live_unique("uq_crmClientRef_crmClientID_live", "crmClientID"),)
 
     crm_client_ref_id: Mapped[uuid.UUID] = entity_key("crmClientRefID")
@@ -63,6 +64,7 @@ class CrmEngagementRef(BaseEntity):
     """App-side anchor for an engagement record mastered in the CRM (REQ-062)."""
 
     __tablename__ = "crmEngagementRef"
+    __ownership_side__ = "crm"
     __table_args__ = (
         live_unique("uq_crmEngagementRef_crmEngagementID_live", "crmEngagementID"),
     )
@@ -80,6 +82,7 @@ class CrmMentorRef(BaseEntity):
     """App-side anchor for a mentor record mastered in the CRM (REQ-062)."""
 
     __tablename__ = "crmMentorRef"
+    __ownership_side__ = "crm"
     __table_args__ = (live_unique("uq_crmMentorRef_crmMentorID_live", "crmMentorID"),)
 
     crm_mentor_ref_id: Mapped[uuid.UUID] = entity_key("crmMentorRefID")

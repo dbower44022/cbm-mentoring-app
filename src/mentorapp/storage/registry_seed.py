@@ -84,6 +84,11 @@ class BuiltInField:
     option_set_name: str | None
     option_values: tuple[tuple[str, str], ...]
     visibility_hints: dict[str, Any] | None
+    # DB-R2b's sanctioned duplicate: this column is a foreign key carrying the
+    # identical name as the primary key it references (e.g. sessionLog's
+    # crmEngagementRefID). The one case where a fieldName may appear on more
+    # than one entity — same name, same meaning.
+    r2b_reappearance: bool = False
 
 
 @dataclass(frozen=True)
@@ -93,6 +98,12 @@ class RegistrySeedResult:
     inserted: tuple[str, ...]
     updated: tuple[str, ...]
     retired: tuple[str, ...]
+
+
+def _r2b_reappearance(column: Column[Any]) -> bool:
+    # entity_ref derives the FK's name from the referenced key, so name
+    # equality is exactly the DB-R2b shape — not a heuristic.
+    return any(fk.column.name == column.name for fk in column.foreign_keys)
 
 
 def _derived_label(field_name: str) -> str:
@@ -168,6 +179,7 @@ def built_in_field_from_column(entity_type: str, column: Column[Any]) -> BuiltIn
         option_set_name=option_set_name,
         option_values=option_values,
         visibility_hints=info.get("visibilityHints"),
+        r2b_reappearance=_r2b_reappearance(column),
     )
 
 
@@ -269,20 +281,42 @@ def seed_built_in_registry(
     """
     fields = built_in_fields(entities)
     names = [spec.field_name for spec in fields]
-    duplicates = sorted({name for name in names if names.count(name) > 1})
+    # DB-R2: one name, one meaning, system-wide. The single sanctioned
+    # duplicate is DB-R2b's key re-appearance — an FK carrying the identical
+    # name as the PK it references; anything else colliding is a defect.
+    non_r2b = [spec.field_name for spec in fields if not spec.r2b_reappearance]
+    duplicates = sorted({name for name in non_r2b if non_r2b.count(name) > 1})
     if duplicates:
         raise RegistrySeedError(f"built-in field names collide across entities: {duplicates}")
 
     live_rows = session.scalars(
         select(SchemaRegistry).where(SchemaRegistry.deleted_at.is_(None))
     ).all()
-    built_in_rows = {row.field_name: row for row in live_rows if not row.user_defined_flag}
+    built_in_rows = {
+        (row.entity_type, row.field_name): row for row in live_rows if not row.user_defined_flag
+    }
     user_defined_names = {row.field_name for row in live_rows if row.user_defined_flag}
     collisions = sorted(set(names) & user_defined_names)
     if collisions:
         raise RegistrySeedError(
             f"built-in fields collide with live user-defined fields: {collisions}"
         )
+    # Cross-entity collisions with live rows outside this sweep: allowed only
+    # for the R2b shape (the spec is a key re-appearance, or the foreign rows
+    # are reference re-appearances of the spec's own key).
+    for spec in fields:
+        if spec.r2b_reappearance:
+            continue
+        foreign = [
+            row
+            for (entity_type, name), row in built_in_rows.items()
+            if name == spec.field_name and entity_type != spec.entity_type
+        ]
+        if any(row.field_type != "reference" for row in foreign):
+            raise RegistrySeedError(
+                f"built-in field {spec.field_name!r} collides with a live "
+                f"registry row on another entity"
+            )
 
     inserted: list[str] = []
     updated: list[str] = []
@@ -290,7 +324,7 @@ def seed_built_in_registry(
         option_set_id = (
             _ensure_option_set(session, spec) if spec.option_set_name is not None else None
         )
-        row = built_in_rows.get(spec.field_name)
+        row = built_in_rows.get((spec.entity_type, spec.field_name))
         if row is None:
             session.add(
                 SchemaRegistry(
@@ -310,10 +344,10 @@ def seed_built_in_registry(
             updated.append(spec.field_name)
 
     retired: list[str] = []
-    wanted_names = set(names)
+    wanted = {(spec.entity_type, spec.field_name) for spec in fields}
     seeded_entity_types = {spec.entity_type for spec in fields}
-    for name, row in built_in_rows.items():
-        if row.entity_type in seeded_entity_types and name not in wanted_names:
+    for (entity_type, name), row in built_in_rows.items():
+        if entity_type in seeded_entity_types and (entity_type, name) not in wanted:
             # StructuralColumnsMixin has no soft_delete helper; stamp directly.
             row.deleted_at = utcnow()
             retired.append(name)
