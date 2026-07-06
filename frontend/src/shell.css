@@ -267,3 +267,70 @@ body {
   margin: 0;
   padding: 0.5rem 0 0;
 }
+
+/* Row banding on ALL lists (REQ-092 / the WTK-207 delta design): every
+   row-oriented display alternates the banding pair from the fixed
+   color-template slot structure. These variables ARE the slots
+   (rowBackground / rowAlternateBackground / selectedRow*), filled with the
+   org-default Standard template's values (ui/theming.py STANDARD_TEMPLATE);
+   template delivery re-fills them from the user's app-wide choice — the
+   rules below never hardcode a color. */
+:root {
+  --slot-row-background: #ffffff;
+  --slot-row-alternate-background: #f0f4f8;
+  --slot-selected-row-background: #d6e6f2;
+  --slot-selected-row-text: #102a43;
+}
+
+/* The grid (and a dashlet mini-list, which is this same table rendered
+   small): tbody holds DATA rows only — the aggregate footer lives in tfoot —
+   so nth-child IS the design's 1-based data-row cadence, first row always
+   the base color. Group rows, when they land, must render outside this
+   cadence rather than consume a position (WTK-207 corrects the prototype's
+   nth-child accident; keep it corrected). */
+.grid-table tbody tr:nth-child(odd) {
+  background: var(--slot-row-background);
+}
+
+.grid-table tbody tr:nth-child(even) {
+  background: var(--slot-row-alternate-background);
+}
+
+/* Banding never signals: a state color replaces the band for its row —
+   selection paints over it; focus stays an outline so the band (or the
+   selection color) shows through underneath. */
+.grid-table tbody tr[aria-selected="true"] {
+  background: var(--slot-selected-row-background);
+  color: var(--slot-selected-row-text);
+}
+
+.grid-table tbody tr.grid-row-focused {
+  outline: 2px solid var(--slot-selected-row-text);
+  outline-offset: -2px;
+}
+
+/* Chrome lists carry no view, so they band from the template layers alone:
+   the Home messages dashlet and the notification bell's entries. */
+.message-list > article:nth-child(odd),
+.bell-entries > li:nth-child(odd) {
+  background: var(--slot-row-background);
+}
+
+.message-list > article:nth-child(even),
+.bell-entries > li:nth-child(even) {
+  background: var(--slot-row-alternate-background);
+}
+
+.message-list > article {
+  padding: 0.35rem 0.5rem;
+}
+
+.bell-entries {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.bell-entries > li {
+  padding: 0.35rem 0.5rem;
+}
