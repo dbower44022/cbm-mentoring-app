@@ -24,6 +24,13 @@ export interface GridViewPayload {
   label: string;
   /** What the view shows, in words — cited by the empty-view state. */
   criteria: string;
+  /**
+   * The data source this view reads (REQ-018: the first thing a view
+   * defines is its data source; `gridView.dataSourceID` in storage). The
+   * workprocess action list is served per data source (REQ-041), so the
+   * panel keys its `/workprocesses/actions/{key}` read off the ACTIVE view.
+   */
+  dataSourceKey: string;
   isSystemView: boolean;
   allowAdHocFilters: boolean;
 }

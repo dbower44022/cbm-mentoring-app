@@ -211,16 +211,20 @@ export interface ActionMenus {
 /**
  * Two common buttons + the ONE full menu serving both the Other Actions
  * dropdown and the right-click menu — common actions lead, Help always last.
+ * `appended` is the data source's registered workprocesses (REQ-041): they
+ * join the same menu after the grid's own actions — present in BOTH menu
+ * paths, never hidden or disabled — with Help still closing the list.
  */
 export function actionMenus(
   actions: readonly ActionPayload[],
   commonKeys: readonly string[],
+  appended: readonly ActionPayload[] = [],
 ): ActionMenus {
   const buttons = commonKeys
     .map((key) => actions.find((action) => action.key === key))
     .filter((action): action is ActionPayload => action !== undefined);
   const rest = actions.filter((action) => !commonKeys.includes(action.key));
-  return { buttons, menu: [...buttons, ...rest, HELP_ACTION] };
+  return { buttons, menu: [...buttons, ...rest, ...appended, HELP_ACTION] };
 }
 
 /** The never-hide explainer: why THIS invocation can't run, or null. */

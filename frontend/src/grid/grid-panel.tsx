@@ -58,6 +58,9 @@ import {
   type GridRowsPayload,
 } from "./payloads";
 import { type EducatePayload } from "../api/payloads";
+import { launchSelection, workprocessPanelAction } from "../workprocess/model";
+import { type WorkprocessActionPayload } from "../workprocess/payloads";
+import { WorkprocessRunPanel } from "../workprocess/run-panel";
 
 /** How close to the bottom edge (rows) the scroll gets before the next page loads. */
 const LOAD_AHEAD_ROWS = 10;
@@ -143,8 +146,24 @@ function LoadedGrid({
   const [confirmation, setConfirmation] = useState<ActionConfirmation | null>(null);
   const [showErrorDetail, setShowErrorDetail] = useState(false);
   const [generation, setGeneration] = useState(0);
+  // The data source's registered workprocesses (REQ-041), joined into the
+  // same action menus as the grid's own actions.
+  const [workprocessEntries, setWorkprocessEntries] = useState<
+    WorkprocessActionPayload[]
+  >([]);
+  // A destructive workprocess held behind the shared confirmation dialog:
+  // Continue launches it; Cancel drops it (REQ-042's confirm-before-launch).
+  const [pendingLaunch, setPendingLaunch] = useState<WorkprocessActionPayload | null>(
+    null,
+  );
+  const [activeRun, setActiveRun] = useState<{
+    entry: WorkprocessActionPayload;
+    dataSourceKey: string;
+    selectedRecordIds: string[];
+  } | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const activeView = panel.views.find((v) => v.viewKey === view.activeViewKey);
+  const dataSourceKey = activeView?.dataSourceKey;
 
   // First page + aggregates load in parallel; both re-run when the query
   // (view / armed search / sort) changes. Aggregates never wait for rows.
@@ -202,6 +221,34 @@ function LoadedGrid({
     };
   }, [panel.gridId, view, searchText, sortKeys, generation]);
 
+  // The active view's data source names its workprocess action list
+  // (REQ-041). The read is additive: a failed fetch must not degrade the
+  // grid — the built-in actions still serve — and an uncovered source
+  // already answers an empty list, indistinguishable from an unknown one.
+  useEffect(() => {
+    if (dataSourceKey === undefined) {
+      setWorkprocessEntries([]);
+      return;
+    }
+    let cancelled = false;
+    void callApi<WorkprocessActionPayload[]>(
+      `/workprocesses/actions/${encodeURIComponent(dataSourceKey)}`,
+    )
+      .then((result) => {
+        if (!cancelled) {
+          setWorkprocessEntries(result.data);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setWorkprocessEntries([]);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [dataSourceKey]);
+
   const loadNextPage = useCallback(() => {
     if (rowsState.nextCursor === null || rowsState.loading) {
       return;
@@ -246,15 +293,38 @@ function LoadedGrid({
         ).length
       : 0;
 
-  const menus = actionMenus(panel.actions, panel.commonActionKeys);
+  const menus = actionMenus(
+    panel.actions,
+    panel.commonActionKeys,
+    workprocessEntries.map(workprocessPanelAction),
+  );
+
+  const openWorkprocess = (entry: WorkprocessActionPayload): void => {
+    if (dataSourceKey === undefined) {
+      return; // No live view — there was no action list to invoke from.
+    }
+    setActiveRun({
+      entry,
+      dataSourceKey,
+      // The run inherits the selection AT LAUNCH (REQ-042): captured here,
+      // not read live, so grid interaction behind the dialog can't move it.
+      selectedRecordIds: launchSelection(selection, rowsState.rows),
+    });
+  };
 
   const runAction = (action: ActionPayload): void => {
     setMenuOpen(false);
+    // One explainer for every entry, workprocess or built-in (REQ-041): the
+    // model mirrors the server's grid-standard invalid_invocation verbatim,
+    // so a violating selection gets the server's own educate words here.
     const refusal = invalidInvocation(action, selCount);
     if (refusal !== null) {
       setExplainer(refusal);
       return;
     }
+    const workprocess = workprocessEntries.find(
+      (entry) => entry.workprocessRegistrationID === action.key,
+    );
     if (action.classification === "destructive") {
       const titles =
         selection.kind === "explicit"
@@ -263,6 +333,14 @@ function LoadedGrid({
             )
           : rowsState.rows.map((row) => row.title);
       setConfirmation(destructiveConfirmation(action, titles, hiddenSelected));
+      // A destructive workprocess launches only after the SAME confirmation
+      // voice a destructive grid action gets (REQ-042): held here until
+      // Continue; built-in actions keep their confirm-only contract below.
+      setPendingLaunch(workprocess ?? null);
+      return;
+    }
+    if (workprocess !== undefined) {
+      openWorkprocess(workprocess);
       return;
     }
     // Safe/modifying invocation wiring rides the records router's action
@@ -483,6 +561,7 @@ function LoadedGrid({
               type="button"
               onClick={() => {
                 setConfirmation(null);
+                setPendingLaunch(null);
               }}
             >
               Cancel
@@ -491,11 +570,34 @@ function LoadedGrid({
               type="button"
               onClick={() => {
                 setConfirmation(null);
+                if (pendingLaunch !== null) {
+                  openWorkprocess(pendingLaunch);
+                  setPendingLaunch(null);
+                }
               }}
             >
               Continue
             </button>
           </dialog>
+        ) : null}
+
+        {activeRun !== null ? (
+          <WorkprocessRunPanel
+            entry={activeRun.entry}
+            dataSourceKey={activeRun.dataSourceKey}
+            selectedRecordIds={activeRun.selectedRecordIds}
+            onCompleted={() => {
+              // Completion re-reads rows + aggregates in place (REQ-042's
+              // "the launching grid refreshes"). A direct callback suffices
+              // because the run is an overlay of THIS panel — the
+              // BroadcastChannel pattern (session.ts) is only needed when a
+              // surface lives in a separate window.
+              setGeneration((g) => g + 1);
+            }}
+            onClose={() => {
+              setActiveRun(null);
+            }}
+          />
         ) : null}
 
         {/* Region 2: the data table, or the one distinguished state. */}

@@ -69,6 +69,7 @@ function makePanel(): GridPanelPayload {
         viewKey: "v-all",
         label: "All engagements",
         criteria: "every engagement",
+        dataSourceKey: "engagements",
         isSystemView: true,
         allowAdHocFilters: true,
       },
@@ -76,6 +77,7 @@ function makePanel(): GridPanelPayload {
         viewKey: "v-follow",
         label: "Needs follow-up",
         criteria: "engagements needing follow-up",
+        dataSourceKey: "engagements",
         isSystemView: true,
         allowAdHocFilters: true,
       },
@@ -106,35 +108,49 @@ interface ServerConfig {
   panel?: GridPanelPayload;
   rows?: (url: URL) => unknown;
   aggregates?: (url: URL) => unknown;
+  /** The data source's workprocess action list (REQ-041); default none. */
+  workprocessActions?: unknown[];
+  /** Routes the four /workprocesses/runs verbs when a test drives a run. */
+  workprocessRun?: (url: URL, init: RequestInit | undefined) => unknown;
 }
 
 const DEFAULT_AGGREGATES = { totalCount: 200, unnarrowedCount: 200, footer: {} };
 
-/** Serve the three grid endpoints; every request is logged for assertions. */
+/** Serve the grid + workprocess endpoints; requests are logged for assertions. */
 function renderGrid(config: ServerConfig = {}): { calls: URL[] } {
   const calls: URL[] = [];
   // The component always calls fetch with a path string; typing the stub
   // that way keeps String(input) well-defined.
-  vi.stubGlobal("fetch", (input: string | URL): Promise<Response> => {
-    const url = new URL(String(input), "http://grid.test");
-    calls.push(url);
-    let body: unknown;
-    if (url.pathname.endsWith("/grid")) {
-      body = ok(config.panel ?? makePanel());
-    } else if (url.pathname.includes("/rows")) {
-      body = (config.rows ?? (() => ok({ rows: makeRows(1, 25), nextCursor: null })))(
-        url,
-      );
-    } else if (url.pathname.includes("/aggregates")) {
-      body = (config.aggregates ?? (() => ok(DEFAULT_AGGREGATES)))(url);
-    } else {
-      throw new Error(`Unrouted request: ${url.pathname}`);
-    }
-    return Promise.resolve({
-      status: 200,
-      json: () => Promise.resolve(body),
-    } as unknown as Response);
-  });
+  vi.stubGlobal(
+    "fetch",
+    (input: string | URL, init?: RequestInit): Promise<Response> => {
+      const url = new URL(String(input), "http://grid.test");
+      calls.push(url);
+      let body: unknown;
+      if (url.pathname.endsWith("/grid")) {
+        body = ok(config.panel ?? makePanel());
+      } else if (url.pathname.includes("/rows")) {
+        body = (config.rows ?? (() => ok({ rows: makeRows(1, 25), nextCursor: null })))(
+          url,
+        );
+      } else if (url.pathname.includes("/aggregates")) {
+        body = (config.aggregates ?? (() => ok(DEFAULT_AGGREGATES)))(url);
+      } else if (url.pathname.startsWith("/workprocesses/actions/")) {
+        body = ok(config.workprocessActions ?? []);
+      } else if (url.pathname.startsWith("/workprocesses/runs")) {
+        if (config.workprocessRun === undefined) {
+          throw new Error(`Unrouted run request: ${url.pathname}`);
+        }
+        body = config.workprocessRun(url, init);
+      } else {
+        throw new Error(`Unrouted request: ${url.pathname}`);
+      }
+      return Promise.resolve({
+        status: 200,
+        json: () => Promise.resolve(body),
+      } as unknown as Response);
+    },
+  );
   render(<GridPanel panelKey="engagements" />);
   return { calls };
 }
@@ -596,5 +612,183 @@ describe("the four grid states (REQ-030)", () => {
       ),
     ).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+  });
+});
+
+// --- REQ-041/REQ-042: workprocess entries in the action lists -------------------
+
+describe("workprocess actions (REQ-041, REQ-042)", () => {
+  const REASSIGN = {
+    workprocessRegistrationID: "wp-reassign",
+    label: "Reassign Mentor",
+    description: "Moves the selected engagement to another mentor.",
+    selectionContract: "single",
+    classification: "modifying",
+  };
+  const PURGE = {
+    workprocessRegistrationID: "wp-purge",
+    label: "Purge Engagements",
+    description: "Removes the selected engagements.",
+    selectionContract: "multiple",
+    classification: "destructive",
+  };
+
+  function makeRun(over: Record<string, unknown>): unknown {
+    return {
+      workprocessRunID: "run-1",
+      workprocessRegistrationID: "wp-reassign",
+      runState: "inFlight",
+      selectedRecordIDs: ["r1"],
+      stepAnswers: {},
+      currentStepKey: "chooseMentor",
+      completable: false,
+      rowVersion: 1,
+      ...over,
+    };
+  }
+
+  it("appends the data source's workprocesses to the one full menu, before Help", async () => {
+    const { calls } = renderGrid({ workprocessActions: [REASSIGN, PURGE] });
+    await screen.findByText("Engagement 1");
+
+    // The list was read for the ACTIVE view's data source.
+    expect(
+      calls.some((url) => url.pathname === "/workprocesses/actions/engagements"),
+    ).toBe(true);
+
+    fireEvent.click(screen.getByRole("button", { name: "Other Actions" }));
+    const menu = screen.getByRole("list", { name: "All actions" });
+    const labels = [...menu.querySelectorAll("button")].map((b) => b.textContent);
+    expect(labels).toEqual([
+      "Open",
+      "Export",
+      "Remove",
+      "Reassign Mentor",
+      "Purge Engagements",
+      "Help",
+    ]);
+    // Never hidden, never disabled — REQ-041's whole point.
+    expect(
+      [...menu.querySelectorAll("button")].every((button) => !button.disabled),
+    ).toBe(true);
+  });
+
+  it("explains a violating selection through the one invalid-invocation surface", async () => {
+    renderGrid({ workprocessActions: [REASSIGN] });
+    await screen.findByText("Engagement 1");
+
+    // No selection against a single-record contract: the same educate words
+    // the server's grid-standard explainer would give the same mistake.
+    fireEvent.click(screen.getByRole("button", { name: "Other Actions" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reassign Mentor" }));
+    const dialog = screen.getByRole("dialog", { name: "Why this didn't run" });
+    expect(dialog.textContent).toContain("'Reassign Mentor' didn't run.");
+    expect(dialog.textContent).toContain(
+      "'Reassign Mentor' works on exactly one record, and no row is selected.",
+    );
+  });
+
+  it("launches with the inherited selection, walks the steps, and refreshes on completion", async () => {
+    const bodies: unknown[] = [];
+    const { calls } = renderGrid({
+      workprocessActions: [REASSIGN],
+      workprocessRun: (url, init) => {
+        // The surface always sends JSON string bodies (the envelope client's
+        // replay contract) — anything else would be a defect worth failing on.
+        bodies.push(typeof init?.body === "string" ? JSON.parse(init.body) : null);
+        if (url.pathname === "/workprocesses/runs") {
+          return ok(makeRun({}));
+        }
+        if (url.pathname.endsWith("/step")) {
+          return ok(
+            makeRun({
+              stepAnswers: { chooseMentor: "mentor-9" },
+              currentStepKey: null,
+              completable: true,
+            }),
+          );
+        }
+        if (url.pathname.endsWith("/commit")) {
+          return ok(
+            makeRun({
+              runState: "committed",
+              currentStepKey: null,
+              completable: false,
+              confirmation: "'Reassign Mentor' completed and its changes were applied.",
+            }),
+          );
+        }
+        throw new Error(`Unrouted run verb: ${url.pathname}`);
+      },
+    });
+    await screen.findByText("Engagement 1");
+    fireEvent.click(screen.getByText("Engagement 1"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Other Actions" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reassign Mentor" }));
+
+    // The launch inherited the selection and named the launching source.
+    await screen.findByRole("dialog", { name: "Run 'Reassign Mentor'" });
+    await screen.findByRole("heading", { name: "chooseMentor" });
+    expect(bodies[0]).toEqual({
+      workprocessRegistrationID: "wp-reassign",
+      dataSourceKey: "engagements",
+      selectedRecordIDs: ["r1"],
+    });
+
+    // The current step renders as the author's key with one free answer
+    // control; the answer travels verbatim.
+    fireEvent.change(screen.getByLabelText("Answer for step 'chooseMentor'"), {
+      target: { value: "mentor-9" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    await screen.findByText(/Every step is answered/);
+    expect(bodies[1]).toEqual({ stepKey: "chooseMentor", answer: "mentor-9" });
+
+    // Nothing committed until completion; Complete applies and confirms.
+    const rowReadsBefore = calls.filter((u) => u.pathname.includes("/rows")).length;
+    fireEvent.click(screen.getByRole("button", { name: "Complete" }));
+    await screen.findByText(
+      "'Reassign Mentor' completed and its changes were applied.",
+    );
+
+    // The launching grid re-reads its rows in place after the commit.
+    await waitFor(() => {
+      expect(calls.filter((u) => u.pathname.includes("/rows")).length).toBe(
+        rowReadsBefore + 1,
+      );
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog", { name: "Run 'Reassign Mentor'" })).toBeNull();
+  });
+
+  it("confirms a destructive workprocess in the shared voice before any launch", async () => {
+    const launches: string[] = [];
+    renderGrid({
+      workprocessActions: [PURGE],
+      workprocessRun: (url) => {
+        launches.push(url.pathname);
+        return ok(makeRun({ workprocessRegistrationID: "wp-purge" }));
+      },
+    });
+    await screen.findByText("Engagement 1");
+    fireEvent.click(screen.getByText("Engagement 1"));
+    fireEvent.click(screen.getByText("Engagement 2"), { ctrlKey: true });
+
+    // Cancel drops the held launch — nothing was posted.
+    fireEvent.click(screen.getByRole("button", { name: "Other Actions" }));
+    fireEvent.click(screen.getByRole("button", { name: "Purge Engagements" }));
+    let dialog = screen.getByRole("dialog", { name: "Purge Engagements 2 records?" });
+    expect(dialog.textContent).toContain("an administrator can restore them");
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(launches).toEqual([]);
+
+    // Continue proceeds into the run.
+    fireEvent.click(screen.getByRole("button", { name: "Other Actions" }));
+    fireEvent.click(screen.getByRole("button", { name: "Purge Engagements" }));
+    dialog = screen.getByRole("dialog", { name: "Purge Engagements 2 records?" });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    await screen.findByRole("dialog", { name: "Run 'Purge Engagements'" });
+    expect(launches).toEqual(["/workprocesses/runs"]);
   });
 });
