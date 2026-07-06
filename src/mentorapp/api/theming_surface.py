@@ -49,10 +49,12 @@ writes a per-grid override row or a precedence number; templates are picked,
 and the view's row theme overlays row scope only.
 
 The contrast guardrail (REQ-046) rides create/update of USER templates:
-:func:`template_contrast_warnings` reuses the WTK-112 WCAG math over the
-pairs that exist in the persisted slot structure and answers wire-shaped
-warnings for ``meta.contrastWarnings`` — warnings, never refusals
-(``ui.theming.GUARDRAIL_NEVER_BLOCKS``); structure violations alone block.
+:func:`template_contrast_warnings` delegates to the WTK-118 guardrail pass
+(``ui.contrast_guardrail`` — the WTK-112 WCAG math plus the WTK-207
+banding-subtlety check, one review per save) and answers its wire-shaped,
+preview-carrying entries for ``meta.contrastWarnings`` — warnings, never
+refusals (``ui.theming.GUARDRAIL_NEVER_BLOCKS``); structure violations alone
+block.
 
 Two checks are declared here but need the build's seams, so they are
 WTK-120's to wire: ``conditionField`` must be a field the consuming view's
@@ -70,7 +72,6 @@ from typing import Any, Final
 from mentorapp.api.envelope import ApiError, field_error
 from mentorapp.api.errors import ApiValidationError
 from mentorapp.api.grid_surface import EndpointContract
-from mentorapp.observability import get_logger
 from mentorapp.storage.theming import (
     COLOR_SLOTS,
     CONDITION_OPERATORS,
@@ -79,9 +80,8 @@ from mentorapp.storage.theming import (
     STATUS_COLOR_SLOTS,
     TYPE_SCALE_STEPS,
 )
-from mentorapp.ui.theming import CONTRAST_CHECKED_PAIRS, CONTRAST_MINIMUM, contrast_ratio
-
-log = get_logger(__name__)
+from mentorapp.ui.contrast_guardrail import guardrail_warning_entries, run_template_guardrail
+from mentorapp.ui.theming import CONTRAST_CHECKED_PAIRS
 
 CODE_MISSING_SLOT = "missingSlot"
 CODE_UNKNOWN_SLOT = "unknownSlot"
@@ -609,36 +609,13 @@ TEMPLATE_CONTRAST_PAIRS: Final[tuple[tuple[str, str], ...]] = CONTRAST_CHECKED_P
 def template_contrast_warnings(color_slots: Mapping[str, str]) -> list[dict[str, Any]]:
     """The ``meta.contrastWarnings`` entries for one USER-template save.
 
-    Wire shape: ``{textSlot, backgroundSlot, ratio, minimum, message}`` per
-    unreadable pair — educate voice, and NEVER an error: the save verb
-    proceeds regardless (REQ-046; system templates ship curated and skip
-    this pass). Call only after :func:`validate_template_write` — a
-    malformed document is a contract violation, not a styling choice.
+    Delegates to the WTK-118 guardrail pass, so one save gets ONE review —
+    readability warnings over the WTK-112 pairs plus the WTK-207
+    banding-subtlety check — in the preview-carrying wire shape
+    (:func:`~mentorapp.ui.contrast_guardrail.guardrail_warning_entries`).
+    Educate voice, and NEVER an error: the save verb proceeds regardless
+    (REQ-046; system templates ship curated and skip this pass). Call only
+    after :func:`validate_template_write` — a malformed document is a
+    contract violation, not a styling choice.
     """
-    warnings = []
-    for text_slot, background_slot in TEMPLATE_CONTRAST_PAIRS:
-        ratio = contrast_ratio(color_slots[text_slot], color_slots[background_slot])
-        if ratio >= CONTRAST_MINIMUM:
-            continue
-        warnings.append(
-            {
-                "textSlot": text_slot,
-                "backgroundSlot": background_slot,
-                "ratio": round(ratio, 2),
-                "minimum": CONTRAST_MINIMUM,
-                "message": (
-                    f"'{text_slot}' on '{background_slot}' may be hard to read "
-                    f"(contrast {ratio:.1f}:1, below {CONTRAST_MINIMUM}:1). "
-                    "You can adjust either color, or keep this combination — "
-                    "saving is never blocked."
-                ),
-            }
-        )
-    if warnings:
-        log.info(
-            "template contrast guardrail warned",
-            extra={
-                "context": {"pairs": [[w["textSlot"], w["backgroundSlot"]] for w in warnings]}
-            },
-        )
-    return warnings
+    return guardrail_warning_entries(run_template_guardrail(color_slots))
