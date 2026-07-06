@@ -302,7 +302,7 @@ def list_templates(session: _SessionDep, user_id: _UserDep) -> Envelope:
         select(ColorTemplate)
         .where(ColorTemplate.deleted_at.is_(None))
         .where(or_(ColorTemplate.user_id.is_(None), ColorTemplate.user_id == user_id))
-        .order_by(ColorTemplate.template_type.desc(), ColorTemplate.color_template_name)
+        .order_by(ColorTemplate.template_type, ColorTemplate.color_template_name)
     ).all()
     return ok(data=[_template_payload(t) for t in templates])
 

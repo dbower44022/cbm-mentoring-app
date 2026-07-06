@@ -45,6 +45,7 @@ from mentorapp.api.routers.home import get_home_catalog, get_message_center
 from mentorapp.api.routers.outage import get_draft_store
 from mentorapp.api.routers.records import get_record_catalog
 from mentorapp.api.routers.shell import get_shell_catalog
+from mentorapp.api.routers.theming import get_condition_field_catalog
 from mentorapp.automation.crm_outage import InMemoryDraftStore
 from mentorapp.crm.auth import CredentialsRejectedError
 from mentorapp.main import create_app
@@ -244,6 +245,13 @@ class _SweepShellCatalog:
         return frozenset()
 
 
+class _SweepConditionFieldCatalog:
+    """Know no grid fields — the sweep only needs a wired backend."""
+
+    def is_condition_field(self, field_name: str) -> bool:
+        return False
+
+
 @pytest.fixture()
 def mounted_client(session: Session) -> TestClient:
     app = create_app()
@@ -275,6 +283,9 @@ def mounted_client(session: Session) -> TestClient:
     # The draft store is fail-loud until its durable table wires it
     # (WTK-159); same treatment as the seams above.
     app.dependency_overrides[get_draft_store] = InMemoryDraftStore
+    # The condition-field catalog is fail-loud until the theming wiring binds
+    # it to the grid entity catalog (WTK-120); same treatment as the seams above.
+    app.dependency_overrides[get_condition_field_catalog] = _SweepConditionFieldCatalog
     return TestClient(app, raise_server_exceptions=False)
 
 
