@@ -190,7 +190,7 @@ def test_template_rejects_off_scale_step_choice(session: Session) -> None:
 def test_template_rejects_off_scale_font_step(session: Session) -> None:
     scale = _scale(session)
 
-    with pytest.raises(ValueError, match="fontSlots.uiFont"):
+    with pytest.raises(ValueError, match=r"fontSlots\.uiFont"):
         ColorTemplate(
             color_template_name="Off scale",
             template_type="system",
