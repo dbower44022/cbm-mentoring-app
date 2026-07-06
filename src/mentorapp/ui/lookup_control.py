@@ -172,6 +172,24 @@ def lookup_no_access_message(related_label: str, data_source_key: str) -> Educat
     )
 
 
+def lookup_unbound_message(related_label: str) -> EducateMessage:
+    """The never-hide explainer for a lookup nobody bound a source to.
+
+    Deliberately distinct from :func:`lookup_no_access_message`: a role miss
+    is a per-user fact, an unbound entity is a configuration defect (the
+    access layer logs it as one) — telling the user "your roles" would send
+    them chasing the wrong fix.
+    """
+    return EducateMessage(
+        what_happened=f"{related_label} records can't be searched.",
+        why=(
+            f"No data source has been configured to govern {related_label} "
+            "lookups, so the search has no permission boundary to run under."
+        ),
+        what_next=f"Ask an administrator to bind a data source to {related_label} lookups.",
+    )
+
+
 def nothing_linked_message(field_label: str) -> EducateMessage:
     """The never-hide explainer for Open on a field with no record linked."""
     return EducateMessage(
