@@ -78,6 +78,13 @@ from mentorapp.api.edit_safety import (
     surface_needs_refresh,
 )
 from mentorapp.api.envelope import ApiError, Envelope, field_error, ok, request_error
+from mentorapp.api.errors import (
+    ApiValidationError,
+    DuplicateCandidatesError,
+    RecordNotFoundError,
+    StaleRowVersionError,
+    register_error_handlers,
+)
 from mentorapp.api.form_validation import (
     MESSAGE_PLACEMENT,
     REQUIRED_MARKER,
@@ -88,13 +95,6 @@ from mentorapp.api.form_validation import (
     place_save_errors,
     sweep_before_save,
     validate_on_exit,
-)
-from mentorapp.api.errors import (
-    ApiValidationError,
-    DuplicateCandidatesError,
-    RecordNotFoundError,
-    StaleRowVersionError,
-    register_error_handlers,
 )
 from mentorapp.api.grid_surface import (
     GRID_SURFACE,

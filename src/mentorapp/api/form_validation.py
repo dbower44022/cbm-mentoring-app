@@ -183,8 +183,7 @@ def sweep_before_save(
     problems = tuple(
         error
         for settings in fields
-        if (error := validate_on_exit(settings, values.get(settings.field_name)))
-        is not None
+        if (error := validate_on_exit(settings, values.get(settings.field_name))) is not None
     )
     if problems:
         log.info(
@@ -222,9 +221,7 @@ def place_save_errors(
             key=lambda error: display_order[str(error["fieldName"])],
         )
     )
-    form_level = tuple(
-        error for error in errors if error["fieldName"] not in display_order
-    )
+    form_level = tuple(error for error in errors if error["fieldName"] not in display_order)
     if form_level:
         log.info(
             "save errors with no displayed field",
