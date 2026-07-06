@@ -51,6 +51,13 @@ feature:
   SAME ``validate_value`` the API runs, the settings-sourced required marker,
   the all-problems save sweep focusing the first problem in display order,
   and inline placement of both client-side and server-returned errors.
+- ``form_input`` — the smart input parsing & formatting design (WTK-058,
+  REQ-034): focus-exit auto-format for phone/email/website/postal fields
+  (a convenience, never a gate), composite-field paste resolution over the
+  SAME ``automation.normalization`` parsers that feed the duplicate-match
+  shadow columns (confident components fill, the remainder stays visible,
+  the paste is never blocked), and the postal → city/state auto-fill read
+  that only ever fills empty controls.
 - ``grid_surface`` — the grid server API surface design (WTK-042,
   REQ-020/023/026/027/028): the five endpoint contracts with their DB-S11
   over-ten-seconds declarations, whole-filtered-set footer/group aggregates,
@@ -102,6 +109,17 @@ from mentorapp.api.field_edit import (
     FieldEditSwitch,
     NothingToSave,
     single_field_patch,
+)
+from mentorapp.api.form_input import (
+    PASTE_RESOLVABLE_TYPES,
+    PasteResolution,
+    auto_format,
+    format_email,
+    format_phone,
+    format_postal_code,
+    format_website,
+    postal_autofill,
+    resolve_paste,
 )
 from mentorapp.api.form_validation import (
     MESSAGE_PLACEMENT,
@@ -162,6 +180,7 @@ __all__ = [
     "FIELD_EDIT_WINDOW",
     "GRID_SURFACE",
     "MESSAGE_PLACEMENT",
+    "PASTE_RESOLVABLE_TYPES",
     "REQUIRED_MARKER",
     "AggregateSpec",
     "AlreadyCurrent",
@@ -190,6 +209,7 @@ __all__ = [
     "ManualMerge",
     "NothingToSave",
     "OpenLinkedView",
+    "PasteResolution",
     "RecordNotFoundError",
     "RetrySave",
     "SaveNotice",
@@ -201,6 +221,7 @@ __all__ = [
     "WriteDeferred",
     "WriteRefused",
     "aggregate_expressions",
+    "auto_format",
     "count_and_aggregates",
     "create_record",
     "crm_fault_cause",
@@ -211,6 +232,10 @@ __all__ = [
     "export_job_payload",
     "field_error",
     "form_label",
+    "format_email",
+    "format_phone",
+    "format_postal_code",
+    "format_website",
     "grid_search_filter",
     "group_row_aggregates",
     "hidden_rows_confirmation",
@@ -224,6 +249,7 @@ __all__ = [
     "parse_selection",
     "partial_update",
     "place_save_errors",
+    "postal_autofill",
     "print_job_payload",
     "recent_searches_key",
     "register_error_handlers",
@@ -233,6 +259,7 @@ __all__ = [
     "resolve_concurrent_save_conflict",
     "resolve_export_scope",
     "resolve_grid_link",
+    "resolve_paste",
     "selection_record_filter",
     "serialize_record",
     "single_field_patch",
