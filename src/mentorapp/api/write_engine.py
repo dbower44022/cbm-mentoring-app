@@ -24,8 +24,9 @@ bag; concurrency for the bag is record-level via ``rowVersion`` (DB-S4).
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 from datetime import date, datetime
-from typing import Any
+from typing import Any, Protocol
 
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy import func, select
@@ -72,7 +73,50 @@ CODE_INACTIVE_OPTION = "inactiveOption"
 _TEXT_TYPES = frozenset({"text", "email", "phone"})
 
 
-def _validate_value(row: SchemaRegistry, value: Any) -> ApiError | None:
+class OptionValueRule(Protocol):
+    """The slice of an option value :func:`validate_value` reads (DB-S7)."""
+
+    @property
+    def option_value_id(self) -> object: ...
+    @property
+    def active_flag(self) -> bool: ...
+    @property
+    def deleted_at(self) -> object | None: ...
+
+
+class OptionSetRule(Protocol):
+    """The slice of an option set :func:`validate_value` reads."""
+
+    @property
+    def option_values(self) -> Sequence[OptionValueRule]: ...
+
+
+class FieldRule(Protocol):
+    """The field settings :func:`validate_value` reads — satisfied by the
+    ``SchemaRegistry`` row here AND by ``form_validation.FieldSettings`` built
+    from the ``GET /schema/{entity}`` payload, so form-side and API-side
+    validation cannot diverge (REQ-033)."""
+
+    @property
+    def field_name(self) -> str: ...
+    @property
+    def field_type(self) -> str: ...
+    @property
+    def required_flag(self) -> bool: ...
+    @property
+    def option_set(self) -> OptionSetRule | None: ...
+
+
+def validate_value(row: FieldRule, value: Any) -> ApiError | None:
+    """Validate ONE value against ONE field's settings — the single definition.
+
+    Returns the structured :class:`ApiError` (``requiredField``,
+    ``typeMismatch``, ``unknownOption``, ``inactiveOption``) or ``None`` when
+    the value is acceptable. ``None`` values fail only on required fields;
+    choice values must be a live, active ``optionValueID`` from the field's
+    option set. Every validation path — create, PATCH, and the form engine's
+    on-exit/save-sweep checks — calls this one function (REQ-033).
+    """
     if value is None:
         if row.required_flag:
             return field_error(row.field_name, CODE_REQUIRED_FIELD, "This field is required.")
@@ -98,7 +142,7 @@ def _validate_value(row: SchemaRegistry, value: Any) -> ApiError | None:
     return None
 
 
-def _validate_choice(row: SchemaRegistry, value: Any) -> ApiError | None:
+def _validate_choice(row: FieldRule, value: Any) -> ApiError | None:
     # Records store the optionValueID (DB-S7); the validator reads the same
     # option rows the dropdown serves, so drift is impossible by construction.
     live_values = [
@@ -136,7 +180,7 @@ def _validate_changes(
         if row is None:
             errors.append(field_error(name, CODE_UNKNOWN_FIELD, "No such field."))
             continue
-        error = _validate_value(row, value)
+        error = validate_value(row, value)
         if error is not None:
             errors.append(error)
             continue

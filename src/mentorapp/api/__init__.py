@@ -38,6 +38,12 @@ feature:
   with its one transient-vs-terminal fork, the ``crmWriteRetry`` queue
   handler running deferred writes under the integration credential, and the
   duplicate-safe replay contract they share.
+- ``form_validation`` — the field-settings-driven validation engine design
+  (WTK-057, REQ-033): field settings from ``GET /schema/{entity}`` adapted to
+  the write engine's ``FieldRule`` so on-exit and save-sweep checks run the
+  SAME ``validate_value`` the API runs, the settings-sourced required marker,
+  the all-problems save sweep focusing the first problem in display order,
+  and inline placement of both client-side and server-returned errors.
 - ``grid_surface`` — the grid server API surface design (WTK-042,
   REQ-020/023/026/027/028): the five endpoint contracts with their DB-S11
   over-ten-seconds declarations, whole-filtered-set footer/group aggregates,
@@ -79,6 +85,17 @@ from mentorapp.api.errors import (
     StaleRowVersionError,
     register_error_handlers,
 )
+from mentorapp.api.form_validation import (
+    MESSAGE_PLACEMENT,
+    REQUIRED_MARKER,
+    FieldSettings,
+    ValidationSweep,
+    form_label,
+    normalized_input,
+    place_save_errors,
+    sweep_before_save,
+    validate_on_exit,
+)
 from mentorapp.api.grid_surface import (
     GRID_SURFACE,
     AggregateSpec,
@@ -115,10 +132,17 @@ from mentorapp.api.list_engine import (
     trigram_search_filter,
 )
 from mentorapp.api.records import registry_for, serialize_record
-from mentorapp.api.write_engine import create_record, normalize_for_match, partial_update
+from mentorapp.api.write_engine import (
+    create_record,
+    normalize_for_match,
+    partial_update,
+    validate_value,
+)
 
 __all__ = [
     "GRID_SURFACE",
+    "MESSAGE_PLACEMENT",
+    "REQUIRED_MARKER",
     "AggregateSpec",
     "AlreadyCurrent",
     "ApiError",
@@ -133,6 +157,7 @@ __all__ = [
     "ExportScope",
     "FallbackToLastUsed",
     "FieldConflict",
+    "FieldSettings",
     "FilteredSetSelection",
     "GridDocumentRequest",
     "GridLink",
@@ -145,6 +170,7 @@ __all__ = [
     "Selection",
     "SortKey",
     "StaleRowVersionError",
+    "ValidationSweep",
     "WriteApplied",
     "WriteDeferred",
     "WriteRefused",
@@ -158,6 +184,7 @@ __all__ = [
     "encode_cursor",
     "export_job_payload",
     "field_error",
+    "form_label",
     "grid_search_filter",
     "group_row_aggregates",
     "hidden_rows_confirmation",
@@ -166,9 +193,11 @@ __all__ = [
     "keyset_page",
     "last_view_preference_key",
     "normalize_for_match",
+    "normalized_input",
     "ok",
     "parse_selection",
     "partial_update",
+    "place_save_errors",
     "print_job_payload",
     "recent_searches_key",
     "register_error_handlers",
@@ -181,5 +210,8 @@ __all__ = [
     "selection_record_filter",
     "serialize_record",
     "surface_needs_refresh",
+    "sweep_before_save",
     "trigram_search_filter",
+    "validate_on_exit",
+    "validate_value",
 ]
