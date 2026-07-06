@@ -27,6 +27,14 @@ from mentorapp.storage import (
 
 _MENTORING_ENTITIES = (MeetingNote, NextStep, ProgressGoal, SessionLog)
 
+# The four narrative (entityType, fieldName) pairs REQ-090 retypes (WTK-205).
+_NARRATIVE_FIELDS = (
+    ("meetingNote", "meetingNoteBody"),
+    ("nextStep", "nextStepDescription"),
+    ("progressGoal", "progressGoalDescription"),
+    ("sessionLog", "sessionLogSummary"),
+)
+
 
 def _session_log(anchor: CrmEngagementRef) -> SessionLog:
     return SessionLog(
@@ -112,6 +120,45 @@ def test_registry_definitions_include_the_r2b_key_reappearance() -> None:
     for narrative in ("meetingNoteBody", "sessionLogSummary"):
         entity = "meetingNote" if narrative == "meetingNoteBody" else "sessionLog"
         assert by_entity_field[(entity, narrative)].searchable_flag
+
+
+def test_narrative_columns_adopt_the_rich_text_registry_type() -> None:
+    # REQ-090 (WTK-205, the WTK-204 delta design): the registry type — never
+    # a UI-side list of field names — is what routes a narrative column to
+    # the one rich-text control; the retype leaves searchability intact.
+    specs = built_in_fields(list(_MENTORING_ENTITIES))
+    by_entity_field = {(spec.entity_type, spec.field_name): spec for spec in specs}
+    for key in _NARRATIVE_FIELDS:
+        assert by_entity_field[key].field_type == "richText"
+        assert by_entity_field[key].searchable_flag
+
+
+def test_reseed_retypes_a_stale_text_narrative_row(session: Session) -> None:
+    # Migration 0009's mechanism: rows the 0007/0008 seeds registered as
+    # "text" reconcile to the source-controlled richText declaration on the
+    # next seed — an update in place, never a duplicate row.
+    seed_built_in_registry(session, [MeetingNote])
+    session.commit()
+    row = session.scalars(
+        select(SchemaRegistry).where(
+            SchemaRegistry.entity_type == "meetingNote",
+            SchemaRegistry.field_name == "meetingNoteBody",
+            SchemaRegistry.deleted_at.is_(None),
+        )
+    ).one()
+    row.field_type = "text"
+    session.commit()
+
+    seed_built_in_registry(session, [MeetingNote])
+    session.commit()
+    rows = session.scalars(
+        select(SchemaRegistry).where(
+            SchemaRegistry.entity_type == "meetingNote",
+            SchemaRegistry.field_name == "meetingNoteBody",
+            SchemaRegistry.deleted_at.is_(None),
+        )
+    ).all()
+    assert [record.field_type for record in rows] == ["richText"]
 
 
 def test_seed_registers_both_appearances_of_the_shared_key_name(session: Session) -> None:

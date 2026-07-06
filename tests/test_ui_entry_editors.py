@@ -4,6 +4,13 @@ from __future__ import annotations
 
 import pytest
 
+from mentorapp.storage import (
+    MeetingNote,
+    NextStep,
+    ProgressGoal,
+    SessionLog,
+    built_in_fields,
+)
 from mentorapp.ui.entry_editors import (
     MIN_EDITOR_HEIGHT,
     PREP_ACTION_ITEMS_EDITOR,
@@ -15,6 +22,7 @@ from mentorapp.ui.entry_editors import (
     fill_entry_layout,
     is_rich_text,
 )
+from mentorapp.ui.field_edit_window import window_control
 
 # --- The rich-text control declaration (REQ-090) -----------------------------------
 
@@ -52,6 +60,27 @@ def test_every_rich_text_entry_point_gets_the_same_control() -> None:
     # editors carry the one control, not per-form widget choices.
     assert PREP_NOTES_EDITOR.control == RICH_TEXT_CONTROL
     assert PREP_ACTION_ITEMS_EDITOR.control == RICH_TEXT_CONTROL
+
+
+def test_narrative_columns_route_to_the_one_control_through_the_registry() -> None:
+    # WTK-205 closes the design's deferred wiring: the mentoring narrative
+    # columns carry the registry type, so every entry point resolves them to
+    # RICH_TEXT_CONTROL by type alone — no UI-side field-name list exists.
+    narrative_names = {
+        "meetingNoteBody",
+        "nextStepDescription",
+        "progressGoalDescription",
+        "sessionLogSummary",
+    }
+    specs = [
+        spec
+        for spec in built_in_fields([MeetingNote, NextStep, ProgressGoal, SessionLog])
+        if spec.field_name in narrative_names
+    ]
+    assert {spec.field_name for spec in specs} == narrative_names
+    for spec in specs:
+        assert is_rich_text(spec.field_type)
+        assert window_control(spec.field_type) is RICH_TEXT_CONTROL
 
 
 # --- Fill-the-panel sizing (REQ-089) ------------------------------------------------

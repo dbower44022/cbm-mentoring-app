@@ -131,6 +131,19 @@ def test_on_exit_type_mismatch_speaks_the_server_code() -> None:
     assert (error["fieldName"], error["code"]) == ("mentorCapacity", "typeMismatch")
 
 
+def test_on_exit_rich_text_is_string_valued() -> None:
+    # REQ-090 (WTK-205): a richText value is clean HTML — still a string to
+    # the type gate; sanitization is the shared DB-S13 services' job, never
+    # validation's.
+    bio = FieldSettings.from_wire(
+        _wire_field("mentorBio", fieldType="richText", fieldLabel="Bio")
+    )
+    assert validate_on_exit(bio, "<p>Twenty years in <b>manufacturing</b>.</p>") is None
+    error = validate_on_exit(bio, 42)
+    assert error is not None
+    assert (error["fieldName"], error["code"]) == ("mentorBio", "typeMismatch")
+
+
 def test_on_exit_choice_validates_against_the_option_set() -> None:
     assert validate_on_exit(MENTOR_STATUS, ACTIVE_OPTION) is None
     unknown = validate_on_exit(MENTOR_STATUS, "0197dead-0000-7000-8000-000000000000")

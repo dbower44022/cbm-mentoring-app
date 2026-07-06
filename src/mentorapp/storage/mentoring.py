@@ -32,6 +32,13 @@ from mentorapp.storage.entity import BaseEntity, entity_key, entity_ref, live_in
 _NARRATIVE_LENGTH = 4000
 _DESCRIPTION_LENGTH = 2000
 
+# REQ-090 (WTK-205, wiring the WTK-204 delta design): the narrative columns
+# carry clean semantic HTML from the one rich-text control — the registry
+# fieldType is what routes them to ui.entry_editors.RICH_TEXT_CONTROL, never
+# a UI-side list of field names. Save-time sanitization/normalization stays
+# with the shared DB-S13 services, not per entry point.
+_RICH_TEXT_REGISTRY = {"fieldType": "richText", "searchableFlag": True}
+
 
 class MeetingNote(BaseEntity):
     """A mentor's note from a meeting — app-owned mentoring history (REQ-063)."""
@@ -44,7 +51,7 @@ class MeetingNote(BaseEntity):
         "meetingNoteBody",
         String(_NARRATIVE_LENGTH),
         nullable=False,
-        info={"registry": {"searchableFlag": True}},
+        info={"registry": _RICH_TEXT_REGISTRY},
     )
 
 
@@ -59,7 +66,7 @@ class NextStep(BaseEntity):
         "nextStepDescription",
         String(_DESCRIPTION_LENGTH),
         nullable=False,
-        info={"registry": {"searchableFlag": True}},
+        info={"registry": _RICH_TEXT_REGISTRY},
     )
 
 
@@ -74,7 +81,7 @@ class ProgressGoal(BaseEntity):
         "progressGoalDescription",
         String(_DESCRIPTION_LENGTH),
         nullable=False,
-        info={"registry": {"searchableFlag": True}},
+        info={"registry": _RICH_TEXT_REGISTRY},
     )
 
 
@@ -109,7 +116,7 @@ class SessionLog(BaseEntity):
         "sessionLogSummary",
         String(_NARRATIVE_LENGTH),
         nullable=False,
-        info={"registry": {"searchableFlag": True}},
+        info={"registry": _RICH_TEXT_REGISTRY},
     )
 
     crm_engagement_ref: Mapped[CrmEngagementRef] = relationship()
