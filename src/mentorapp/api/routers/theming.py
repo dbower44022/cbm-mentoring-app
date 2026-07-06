@@ -16,6 +16,10 @@ PERSISTED vocabularies in ``storage.theming``, never a local copy.
 - Type scale: GET serves the ONE seeded app-wide scale; PATCH retunes step
   sizes only — the write carries exactly the fixed step keys, so a step can
   never be minted or dropped through the API (REQ-046).
+- Effective theme (WTK-230): ``GET /theming/effective`` serves the caller's
+  boot-time resolution over REQ-044 layers one and two — the org-default
+  template replaced wholesale by the stored app-wide choice — plus the
+  shared type scale; the per-grid ``rowTheme`` layer stays with the grid.
 - Rules: nested under their template; POST appends at the END of the
   evaluation order (the body carries no ``evaluationOrder``); reorder is its
   own PUT taking a FULL permutation, last-write-wins with no version
@@ -64,13 +68,20 @@ from mentorapp.api.theming_surface import (
     validate_type_scale_write,
 )
 from mentorapp.observability import get_logger
-from mentorapp.storage import utcnow
+from mentorapp.storage import UserPreference, utcnow
 from mentorapp.storage.theming import (
     ColorTemplate,
     ConditionalFormattingRule,
     TypeScale,
     shared_type_scale,
 )
+
+# The api → ui import direction is established (theming_surface pulls the
+# WTK-118 guardrail from ``ui.contrast_guardrail``); these are the layer
+# vocabulary's canonical homes, never re-declared here.
+from mentorapp.ui.template_flow import TEMPLATE_CHOICE_PREFERENCE_KEY
+from mentorapp.ui.template_manager import FONT_WEIGHT_REGULAR
+from mentorapp.ui.theming import ORG_DEFAULT_TEMPLATE_KEY, STANDARD_TEMPLATE
 
 log = get_logger(__name__)
 
@@ -520,6 +531,118 @@ def patch_type_scale(
         _flush_or_conflict(session, TypeScale, scale.type_scale_id, "typeScale")
         session.commit()
     return ok(data=_scale_payload(scale))
+
+
+# --- The caller's effective theme (WTK-230, REQ-044 layers one and two) -------------
+
+
+def _org_default_template(session: Session) -> ColorTemplate | None:
+    """The seeded org-default row — REQ-044 layer one, when the seed exists.
+
+    The design marks it the way the storage model does: the SYSTEM template
+    whose ``launchSetKey`` is the org-branded Standard
+    (``ORG_DEFAULT_TEMPLATE_KEY``); there is no separate is-org-default flag.
+    """
+    return session.scalars(
+        select(ColorTemplate)
+        .where(ColorTemplate.deleted_at.is_(None))
+        .where(ColorTemplate.user_id.is_(None))
+        .where(ColorTemplate.launch_set_key == ORG_DEFAULT_TEMPLATE_KEY)
+    ).first()
+
+
+def _chosen_template(session: Session, user_id: uuid.UUID) -> ColorTemplate | None:
+    """The live template the caller's stored layer-two choice names, if any.
+
+    The choice rides the one preference mechanism (REQ-060): the WTK-113
+    flow's ``as_preference_value`` document — ``{"templateKey": …}`` — under
+    :data:`TEMPLATE_CHOICE_PREFERENCE_KEY`. The CALLER's own row only: an
+    org-wide default row would restate layer one, and layer one is the
+    org-default TEMPLATE, not a preference. The key is a ``colorTemplateID``
+    (the stored-record picker key) or a launch-set key (the curated set's).
+    Anything stale — a deleted template, another user's, an unknown key —
+    resolves to ``None`` so the org default shows through instead of a 500:
+    a broken choice must never cost the user a working app.
+    """
+    row = session.scalars(
+        select(UserPreference)
+        .where(UserPreference.deleted_at.is_(None))
+        .where(UserPreference.preference_key == TEMPLATE_CHOICE_PREFERENCE_KEY)
+        .where(UserPreference.user_id == user_id)
+    ).first()
+    if row is None or not isinstance(row.preference_value, dict):
+        return None
+    key = row.preference_value.get("templateKey")
+    if not isinstance(key, str) or not key:
+        return None
+    try:
+        template = session.get(ColorTemplate, uuid.UUID(key))
+    except ValueError:
+        # Not an ID: the launch-set key form ("dark") names a curated
+        # system template, mirroring the picker's launch entries.
+        template = session.scalars(
+            select(ColorTemplate)
+            .where(ColorTemplate.deleted_at.is_(None))
+            .where(ColorTemplate.user_id.is_(None))
+            .where(ColorTemplate.launch_set_key == key)
+        ).first()
+    if (
+        template is None
+        or template.deleted_at is not None
+        or template.user_id not in (None, user_id)
+    ):
+        log.info(
+            "stored template choice did not resolve; org default applies",
+            extra={"context": {"userId": str(user_id), "templateKey": key}},
+        )
+        return None
+    return template
+
+
+def _builtin_org_default_slots() -> tuple[dict[str, Any], dict[str, Any]]:
+    """``STANDARD_TEMPLATE`` rendered in the persisted slot shapes.
+
+    No migration seeds system ``colorTemplate`` rows yet, so a fresh store
+    has no org-default ROW; the shipped org-branded default is the in-code
+    Standard document (``ui.theming.STANDARD_TEMPLATE``). Serving it keeps
+    layer one always present (REQ-044) without inventing a new seed here —
+    once a seed migration lands, the row wins and this fallback goes quiet.
+    """
+    step: str = STANDARD_TEMPLATE["sizeStep"]
+    font_slots: dict[str, Any] = {
+        slot: {"stepKey": step, "fontFamily": family, "fontWeight": FONT_WEIGHT_REGULAR}
+        for slot, family in STANDARD_TEMPLATE["fonts"].items()
+    }
+    return dict(STANDARD_TEMPLATE["colors"]), font_slots
+
+
+@router.get("/theming/effective")
+def get_effective_theme(session: _SessionDep, user_id: _UserDep) -> Envelope:
+    """The caller's resolved app-wide theme (WTK-230): REQ-044 layers one and two.
+
+    The org-default template, replaced WHOLESALE by the caller's app-wide
+    template choice when one is stored — a template is picked, not merged,
+    so the winning template's slots are served exactly as they stand. Layer
+    three (the active view's ``gridView.rowTheme``) is per grid and
+    deliberately absent: it belongs to the grid render, not the app shell.
+
+    One boot-time document: every fixed color slot, both font slots, and
+    ``typeScale`` exactly as ``GET /theming/type-scale`` serves it.
+    """
+    scale = shared_type_scale(session)
+    template = _chosen_template(session, user_id) or _org_default_template(session)
+    if template is not None:
+        color_slots: dict[str, Any] = dict(template.color_slots)
+        font_slots: dict[str, Any] = dict(template.font_slots)
+    else:
+        color_slots, font_slots = _builtin_org_default_slots()
+    return ok(
+        data={
+            "colorSlots": color_slots,
+            "fontSlots": font_slots,
+            "typeScale": _scale_payload(scale),
+        }
+    )
 
 
 # --- Conditional formatting rules --------------------------------------------------
