@@ -25,6 +25,7 @@ import { Navigation } from "./navigation";
 import { PanelSplitter, ResizablePanel, usePanelChrome } from "./panel-chrome";
 import type { PreferencePayload, ShellPayload } from "./payloads";
 import { QuickOpen } from "./quick-open";
+import { applyEffectiveTheme } from "./theming";
 
 const NAVIGATION_PREFERENCE_KEY = "navigation";
 
@@ -83,6 +84,14 @@ export function Shell({ session, onLoggedOut }: ShellProps): ReactElement {
   }, [session]);
 
   useEffect(loadShell, [loadShell]);
+
+  // Deliver the user's effective theme once per boot (WTK-231, REQ-044):
+  // repaints the CSS slot/step variables app-wide. On failure the stylesheet
+  // defaults stay in force — they are the org-default Standard values — so
+  // theming never gates the shell render.
+  useEffect(() => {
+    void applyEffectiveTheme(session);
+  }, [session]);
 
   const shell = state.shell;
 
