@@ -15,6 +15,7 @@ from mentorapp.api.errors import register_error_handlers
 from mentorapp.api.routers.auth import router as auth_router
 from mentorapp.api.routers.grids import router as grids_router
 from mentorapp.api.routers.home import router as home_router
+from mentorapp.api.routers.outage import router as outage_router
 from mentorapp.api.routers.preferences import router as preferences_router
 from mentorapp.api.routers.records import router as records_router
 from mentorapp.api.routers.schema import router as schema_router
@@ -43,6 +44,7 @@ def create_app() -> FastAPI:
     app.include_router(records_router)
     app.include_router(grids_router)
     app.include_router(shell_router)
+    app.include_router(outage_router)
 
     @app.get("/healthz")
     def healthz() -> Envelope:

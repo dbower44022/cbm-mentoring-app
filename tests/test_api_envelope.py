@@ -42,8 +42,10 @@ from mentorapp.api.routers.auth import (
 )
 from mentorapp.api.routers.grids import get_grid_entity_catalog
 from mentorapp.api.routers.home import get_home_catalog, get_message_center
+from mentorapp.api.routers.outage import get_draft_store
 from mentorapp.api.routers.records import get_record_catalog
 from mentorapp.api.routers.shell import get_shell_catalog
+from mentorapp.automation.crm_outage import InMemoryDraftStore
 from mentorapp.crm.auth import CredentialsRejectedError
 from mentorapp.main import create_app
 from mentorapp.ui.home_panel import MessageCenter
@@ -270,6 +272,9 @@ def mounted_client(session: Session) -> TestClient:
     # The shell catalog is fail-loud until the panel catalog wires it
     # (WTK-035); same treatment as the seams above.
     app.dependency_overrides[get_shell_catalog] = _SweepShellCatalog
+    # The draft store is fail-loud until its durable table wires it
+    # (WTK-159); same treatment as the seams above.
+    app.dependency_overrides[get_draft_store] = InMemoryDraftStore
     return TestClient(app, raise_server_exceptions=False)
 
 
