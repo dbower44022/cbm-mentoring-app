@@ -9,8 +9,9 @@ rows from the column-site definitions the drift check verifies (WTK-134);
 ``crm_refs`` carries the CRM reference anchors — the REQ-062 ownership
 boundary (WTK-150); ``mentoring`` carries the application-owned
 mentoring-process entities (REQ-063, WTK-156); ``theming`` carries the
-look-and-feel platform entities (PI-007, WTK-111). One declarative ``Base``
-spans them all.
+look-and-feel platform entities (PI-007, WTK-111); ``help`` carries the
+help-system link mappings and settings singleton (PI-006, WTK-099). One
+declarative ``Base`` spans them all.
 """
 
 from mentorapp.storage.adminsql import (
@@ -52,6 +53,13 @@ from mentorapp.storage.grids import (
     GridSessionState,
     GridView,
     SortSpec,
+)
+from mentorapp.storage.help import (
+    HELP_SOURCE_TYPES,
+    HelpMapping,
+    HelpSettings,
+    help_settings,
+    live_help_mapping,
 )
 from mentorapp.storage.ids import uuid7, uuid7_created_at
 from mentorapp.storage.mentoring import MeetingNote, NextStep, ProgressGoal, SessionLog
@@ -135,6 +143,7 @@ __all__ = [
     "CURRENT_USER_PARAM",
     "FONT_SLOTS",
     "FORMATTING_EFFECTS",
+    "HELP_SOURCE_TYPES",
     "JOB_STATUSES",
     "LAUNCH_SETS",
     "NOTIFICATION_TYPES",
@@ -181,6 +190,8 @@ __all__ = [
     "GridDeepLink",
     "GridSessionState",
     "GridView",
+    "HelpMapping",
+    "HelpSettings",
     "MeetingNote",
     "NextStep",
     "Notification",
@@ -210,6 +221,8 @@ __all__ = [
     "entity_ref",
     "execute_admin_sql",
     "generate_read_view_sql",
+    "help_settings",
+    "live_help_mapping",
     "live_index",
     "live_unique",
     "partial_index_rule_violations",
