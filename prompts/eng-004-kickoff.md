@@ -299,3 +299,19 @@ with the DB (layout-standard.md); SKL-114/117 amendments are DB-only
   (design-as-code).
 - NEXT: dispatch the UI-area dev lane over REL-003 (PI-004/007 delta +
   PI-002/003/011 rework-comparison Design tasks), review PI-009.
+
+## DONE 2026-07-06 — REL-003 DEV LANE: PI-004 + PI-007 SHIPPED & RESOLVED
+
+- PI-009 resolved (DEC-087). PI-004 + PI-007 ran under the amended-skills
+  contracts and were batch-reviewed + resolved (DEC-089): prototype-gate
+  deltas delivered (REQ-089/090 in PI-004 via WTK-205/206; REQ-092 in
+  PI-007 via WTK-207). Main verified at review: 1074 tests, ruff clean.
+- Human-led design reconciliations (grounds = confirmed REQs): FND-029
+  (field settings on the schema registry, REQ-033/SKL-122); FND-905/906/907
+  (theming aligned to UI design — 15-slot vocabulary, status-slot effects,
+  fixed three layers; REQ-044/045/018; commit c6ec071).
+- Ops notes: SIGINT recovery (WTK-077 hand-merged, verified); duplicate
+  delta tasks WTK-213..224 + their edges cleaned (driver now idempotent).
+- REMAINING: PI-005/006/010 undispatched; held PI-002/003/011 rework needs
+  a re-dispatch route for In-Review PIs with new Planned tasks
+  (REQ-471-class); then release-level QA/test/ship gates.
