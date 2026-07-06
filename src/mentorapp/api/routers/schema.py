@@ -57,6 +57,9 @@ def _field_payload(row: SchemaRegistry) -> dict[str, Any]:
         # The create form's prefill source (REQ-037): a default is a field
         # setting, never a per-form constant.
         "defaultValue": row.default_value,
+        # The subtle help affordance's source (REQ-040): field-level help is
+        # a field setting, admin-maintained, never hardcoded client copy.
+        "helpText": row.help_text,
         "historyTrackedFlag": row.history_tracked_flag,
         "searchableFlag": row.searchable_flag,
         "visibilityHints": row.visibility_hints,
