@@ -76,6 +76,12 @@ feature:
   directional sort, FND-021), the per-user grid preference keys (recent
   searches and last view — FND-017/FND-018, DB-S13), displayed-column live
   search, and deep-link resolution (links are references, never grants).
+- ``theming_surface`` — the theming management API surface design (WTK-114,
+  REQ-044/045/046): the twelve endpoint contracts for color-template,
+  type-scale, and conditional-formatting-rule CRUD, fixed-slot/step/operator
+  validation against the ``storage.theming`` vocabularies, append-then-
+  reorder rule ordering, and the warn-never-block contrast pass whose
+  warnings ride ``meta.contrastWarnings``.
 """
 
 from mentorapp.api.crm_writes import (
@@ -191,6 +197,21 @@ from mentorapp.api.record_create import (
     match_rule_fields,
 )
 from mentorapp.api.records import registry_for, serialize_record
+from mentorapp.api.theming_surface import (
+    TEMPLATE_CONTRAST_PAIRS,
+    THEMING_SURFACE,
+    color_slot_errors,
+    font_slot_errors,
+    rule_errors,
+    rule_order_errors,
+    scale_step_errors,
+    template_contrast_warnings,
+    type_step_choice_errors,
+    validate_rule_order,
+    validate_rule_write,
+    validate_template_write,
+    validate_type_scale_write,
+)
 from mentorapp.api.write_engine import (
     create_record,
     find_similar_records,
@@ -209,6 +230,8 @@ __all__ = [
     "MESSAGE_PLACEMENT",
     "PASTE_RESOLVABLE_TYPES",
     "REQUIRED_MARKER",
+    "TEMPLATE_CONTRAST_PAIRS",
+    "THEMING_SURFACE",
     "AggregateSpec",
     "AlreadyCurrent",
     "ApiError",
@@ -256,6 +279,7 @@ __all__ = [
     "WriteRefused",
     "aggregate_expressions",
     "auto_format",
+    "color_slot_errors",
     "count_and_aggregates",
     "create_form_seed",
     "create_record",
@@ -267,6 +291,7 @@ __all__ = [
     "export_job_payload",
     "field_error",
     "find_similar_records",
+    "font_slot_errors",
     "form_label",
     "format_email",
     "format_phone",
@@ -299,12 +324,21 @@ __all__ = [
     "resolve_grid_link",
     "resolve_paste",
     "restore_record",
+    "rule_errors",
+    "rule_order_errors",
+    "scale_step_errors",
     "selection_record_filter",
     "serialize_record",
     "single_field_patch",
     "surface_needs_refresh",
     "sweep_before_save",
+    "template_contrast_warnings",
     "trigram_search_filter",
+    "type_step_choice_errors",
     "validate_on_exit",
+    "validate_rule_order",
+    "validate_rule_write",
+    "validate_template_write",
+    "validate_type_scale_write",
     "validate_value",
 ]
