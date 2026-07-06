@@ -5,8 +5,9 @@ base, structural system columns, and key-naming policy (WTK-125); ``models``
 carries the schema registry, option sets, background jobs, and change feed
 (WTK-126/WTK-127); ``auth`` carries users, sessions, action tokens, access
 grants, and data sources (WTK-001); ``registry_seed`` seeds built-in registry
-rows from the column-site definitions the drift check verifies (WTK-134). One
-declarative ``Base`` spans them all.
+rows from the column-site definitions the drift check verifies (WTK-134);
+``crm_refs`` carries the CRM reference anchors — the REQ-062 ownership
+boundary (WTK-150). One declarative ``Base`` spans them all.
 """
 
 from mentorapp.storage.adminsql import (
@@ -30,6 +31,7 @@ from mentorapp.storage.auth import (
     UserCrmAccount,
 )
 from mentorapp.storage.base import StructuralColumnsMixin, as_utc, utcnow
+from mentorapp.storage.crm_refs import CrmClientRef, CrmEngagementRef, CrmMentorRef
 from mentorapp.storage.entity import (
     Base,
     BaseEntity,
@@ -110,6 +112,9 @@ __all__ = [
     "BaseEntity",
     "BuiltInField",
     "ChangeFeedEntry",
+    "CrmClientRef",
+    "CrmEngagementRef",
+    "CrmMentorRef",
     "DataSource",
     "DataSourceRoleGrant",
     "DriftFinding",
