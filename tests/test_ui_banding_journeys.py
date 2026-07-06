@@ -107,12 +107,8 @@ def test_every_launch_template_bands_every_surface() -> None:
             # Render the grouped list: data rows alternate the exact pair,
             # structural rows never consume a position.
             bands = assign_bands(GROUPED_ROWS)
-            assert [band is None for band in bands] == [
-                not is_data for is_data in GROUPED_ROWS
-            ]
-            backgrounds = [
-                effective_row_background(pair, position) for position in range(1, 6)
-            ]
+            assert [band is None for band in bands] == [not is_data for is_data in GROUPED_ROWS]
+            backgrounds = [effective_row_background(pair, position) for position in range(1, 6)]
             assert backgrounds == [
                 pair.base,
                 pair.alternate,
@@ -137,9 +133,7 @@ def test_launch_set_banding_is_subtle_never_pronounced() -> None:
 def _customized_dark_option() -> TemplateOption:
     """Drive the real management flow: copy Dark, edit ONLY the banding slot,
     pass the guardrail, save, and round-trip the persisted record."""
-    dark = next(
-        option for option in launch_template_options() if option.template_key == "dark"
-    )
+    dark = next(option for option in launch_template_options() if option.template_key == "dark")
     draft = start_user_template(dark)
     control = next(
         control
