@@ -49,6 +49,18 @@ def test_every_entity_declares_its_ownership_side() -> None:
             assert mapper.class_.__ownership_side__ in OWNERSHIP_SIDES
 
 
+def test_ownership_side_defaults_to_application() -> None:
+    # REQ-063: "application" is BaseEntity's declared default side — an entity
+    # that states nothing owns its data app-side. This is the default the
+    # sessionLog declaration restates; only the REQ-062 CRM anchors must
+    # override it. Abstract so the probe never maps a table into the registry.
+    class DefaultOwned(BaseEntity):
+        __abstract__ = True
+
+    assert DefaultOwned.__ownership_side__ == "application"
+    assert SessionLog.__ownership_side__ == "application"
+
+
 def test_invalid_ownership_side_declaration_is_rejected_at_class_definition() -> None:
     # Enforcement is at class definition — an undeclared side can never map a
     # table, so it can never reach a migration.
