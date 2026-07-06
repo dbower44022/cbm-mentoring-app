@@ -256,7 +256,7 @@ STEP_COLOR_SLOTS: Final[dict[str, tuple[str, ...]]] = {
     "statusColors": STATUS_COLOR_SLOTS,
 }
 
-_STEP_FOR_SLOT: Final[dict[str, str]] = {
+STEP_FOR_SLOT: Final[dict[str, str]] = {
     slot: step for step, slots in STEP_COLOR_SLOTS.items() for slot in slots
 }
 
@@ -364,13 +364,20 @@ class ContrastWarningCard:
     actions: tuple[str, ...] = CONTRAST_WARNING_ACTIONS
 
 
-def _card(warning: ContrastWarning) -> ContrastWarningCard:
+def contrast_warning_card(warning: ContrastWarning) -> ContrastWarningCard:
+    """Present one WTK-112 warning as the card every guardrail surface renders.
+
+    The one card builder (WTK-118 composes it for the save-time pass):
+    inputs are a :class:`~mentorapp.ui.theming.ContrastWarning`; the card
+    carries the plain ratio label and the Adjust jump target, and cannot
+    fail — every checked slot has exactly one slot-filling step.
+    """
     return ContrastWarningCard(
         warning=warning,
         ratio_label=(
             f"{warning.ratio:.1f}:1 — below the {warning.minimum:g}:1 readability minimum"
         ),
-        adjust_step=_STEP_FOR_SLOT[warning.text_slot],
+        adjust_step=STEP_FOR_SLOT[warning.text_slot],
     )
 
 
@@ -390,7 +397,7 @@ def review_step(draft: TemplateDraft) -> TemplateReview:
     """
     warnings = review_user_template(draft.document)
     return TemplateReview(
-        cards=tuple(_card(warning) for warning in warnings),
+        cards=tuple(contrast_warning_card(warning) for warning in warnings),
         save_enabled=GUARDRAIL_NEVER_BLOCKS,
     )
 
@@ -510,7 +517,7 @@ def review_row_theme(layers: ThemeLayers) -> tuple[ContrastWarningCard, ...]:
     """
     effective = resolve_effective_grid_theme(layers)
     return tuple(
-        _card(warning)
+        contrast_warning_card(warning)
         for warning in check_template_contrast(effective.colors)
         if (warning.text_slot, warning.background_slot) in ROW_THEME_CHECKED_PAIRS
     )
