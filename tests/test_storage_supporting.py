@@ -1,4 +1,8 @@
-"""Tests for the supporting entities (REQ-054, REQ-059, REQ-060, REQ-061, REQ-041)."""
+"""Tests for the supporting entities (REQ-054, REQ-059, REQ-060, REQ-061).
+
+The workprocess entities moved to ``storage.workprocess`` with the PI-005
+backend rework; their tests live in ``test_storage_workprocess.py``.
+"""
 
 from __future__ import annotations
 
@@ -11,19 +15,13 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from mentorapp.storage import (
-    SELECTION_CONTRACTS,
     DuplicateOverride,
     FieldChange,
     PostalCode,
     UserPreference,
-    WorkprocessRegistration,
     utcnow,
     uuid7,
 )
-
-
-def test_selection_contract_vocabulary_matches_the_standard() -> None:
-    assert SELECTION_CONTRACTS == ("none", "single", "multiple")
 
 
 def test_field_change_history_panel_is_one_indexed_ordered_lookup(session: Session) -> None:
@@ -226,32 +224,3 @@ def test_postal_code_unique_per_country_and_code_across_live_rows(session: Sessi
     )
     session.commit()
     assert session.scalars(select(PostalCode)).all()[0].country_code == "US"
-
-
-def test_workprocess_registration_round_trips_the_contract(session: Session) -> None:
-    session.add(
-        WorkprocessRegistration(
-            workprocess_name="Bulk Reassign Mentor",
-            workprocess_description="Reassign selected engagements to another mentor",
-            target_data_source_keys=["engagementRoster", "mentorRoster"],
-            selection_contract="multiple",
-            action_classification="bulk",
-        )
-    )
-    session.commit()
-
-    loaded = session.scalars(select(WorkprocessRegistration)).one()
-    assert loaded.selection_contract in SELECTION_CONTRACTS
-    assert loaded.target_data_source_keys == ["engagementRoster", "mentorRoster"]
-
-    # Display names are unique across live registrations (action-list identity).
-    session.add(
-        WorkprocessRegistration(
-            workprocess_name="Bulk Reassign Mentor",
-            workprocess_description="Duplicate name",
-            selection_contract="none",
-            action_classification="bulk",
-        )
-    )
-    with pytest.raises(IntegrityError):
-        session.commit()

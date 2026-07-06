@@ -18,8 +18,8 @@ system-wide history table for history-tracked fields; ``duplicateOverride``
 (REQ-059) records every explicit duplicate-detection override;
 ``userPreference`` (REQ-060) is the single store for all per-user
 personalization with org-default rows; ``postalCode`` (REQ-061) is the
-refreshable postal → city/state reference table; ``workprocessRegistration``
-(REQ-041) registers admin-authored multi-step apps against data sources.
+refreshable postal → city/state reference table. The workprocess entities
+(REQ-041/REQ-042) live in ``mentorapp.storage.workprocess`` (WTK-090).
 REQ-049's storage surface (the attribute registry + per-table
 ``customAttributes``) already ships in ``schemaRegistry`` and the structural
 columns — nothing is duplicated here.
@@ -588,53 +588,3 @@ class PostalCode(StructuralColumnsMixin, Base):
     )
     city_name: Mapped[str] = mapped_column("cityName", String(200), nullable=False)
     state_code: Mapped[str] = mapped_column("stateCode", String(10), nullable=False)
-
-
-# REQ-041's selection contract: what row selection a workprocess needs from its
-# host data source. App-validated vocabulary, never a database enum (DB-S7).
-SELECTION_CONTRACTS: Final[tuple[str, ...]] = ("none", "single", "multiple")
-
-
-class WorkprocessRegistration(StructuralColumnsMixin, Base):
-    """An administrator-registered custom multi-step app (REQ-041).
-
-    Registration is data, not framework code: a live row surfaces the
-    workprocess in its target data sources' action lists; no code change adds
-    one. Permission is inherited from data-source access — deliberately no
-    per-app grant columns. ``selectionContract`` (``SELECTION_CONTRACTS``)
-    drives the standard invalid-invocation explanations.
-    """
-
-    __tablename__ = "workprocessRegistration"
-    __table_args__ = (
-        Index(
-            "uq_workprocessRegistration_name_live",
-            "workprocessName",
-            unique=True,
-            sqlite_where=_LIVE,
-            postgresql_where=_LIVE,
-        ),
-    )
-
-    workprocess_registration_id: Mapped[uuid.UUID] = mapped_column(
-        "workprocessRegistrationID", primary_key=True, default=uuid7
-    )
-    workprocess_name: Mapped[str] = mapped_column(
-        "workprocessName", String(200), nullable=False
-    )
-    workprocess_description: Mapped[str] = mapped_column(
-        "workprocessDescription", String(2000), nullable=False
-    )
-    # Data-source records live in app tables that land with the read-surface
-    # work (DB-S9); until that table exists this is a soft reference by
-    # data-source key, validated by the API — not a foreign key.
-    target_data_source_keys: Mapped[list[str]] = mapped_column(
-        "targetDataSourceKeys", JsonValue, nullable=False, default=list
-    )
-    selection_contract: Mapped[str] = mapped_column(
-        "selectionContract", String(50), nullable=False
-    )
-    # Where the action sorts/groups in the host data source's action list.
-    action_classification: Mapped[str] = mapped_column(
-        "actionClassification", String(100), nullable=False
-    )
