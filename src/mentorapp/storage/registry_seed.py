@@ -293,9 +293,7 @@ def seed_built_in_registry(
         select(SchemaRegistry).where(SchemaRegistry.deleted_at.is_(None))
     ).all()
     built_in_rows = {
-        (row.entity_type, row.field_name): row
-        for row in live_rows
-        if not row.user_defined_flag
+        (row.entity_type, row.field_name): row for row in live_rows if not row.user_defined_flag
     }
     user_defined_names = {row.field_name for row in live_rows if row.user_defined_flag}
     collisions = sorted(set(names) & user_defined_names)
