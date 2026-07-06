@@ -33,9 +33,7 @@ def curated_colors() -> dict[str, str]:
 
 def test_curated_colors_pass_clean() -> None:
     review = run_template_guardrail(curated_colors())
-    assert review == GuardrailReview(
-        readability_cards=(), banding_cards=(), save_enabled=True
-    )
+    assert review == GuardrailReview(readability_cards=(), banding_cards=(), save_enabled=True)
 
 
 def test_unreadable_pair_yields_a_readability_card() -> None:
@@ -82,9 +80,7 @@ def test_invisible_banding_warns_from_the_distinction_floor() -> None:
 def test_readability_card_previews_the_actual_combination() -> None:
     colors = curated_colors() | {"headerText": "#3a4a66"}  # dark on dark header
     review = run_template_guardrail(colors)
-    card = next(
-        c for c in review.readability_cards if c.warning.text_slot == "headerText"
-    )
+    card = next(c for c in review.readability_cards if c.warning.text_slot == "headerText")
     assert card.warning.preview.text_color == "#3a4a66"
     assert card.warning.preview.background_color == colors["headerBackground"]
     assert card.adjust_step == "chromeColors"  # Adjust jumps to the failing pair's step
