@@ -65,18 +65,22 @@ function Dashlet({
   messages: AdminMessagePayload[];
 }): ReactElement {
   return (
-    <section aria-label={dashlet.title}>
+    <section aria-label={dashlet.title} className="dashlet">
       <h2>{dashlet.title}</h2>
-      {dashlet.notice !== null ? (
-        <EducateNotice notice={dashlet.notice} />
-      ) : dashlet.viewKey === MESSAGES_DASHLET_VIEW_KEY ? (
-        <MessagesDashlet messages={messages} />
-      ) : (
-        // A dashlet is a view rendered small; the grid-panel renderer that
-        // draws view content is a later PI-011 slice, so a live view dashlet
-        // shows its identity honestly rather than an invented mini-grid.
-        <p>This dashlet shows the view '{dashlet.viewKey}'.</p>
-      )}
+      {/* The body flexes to consume the dashlet's share of the panel and
+          scrolls within it (REQ-091): dashlets fill Home, never idle space. */}
+      <div className="dashlet-body">
+        {dashlet.notice !== null ? (
+          <EducateNotice notice={dashlet.notice} />
+        ) : dashlet.viewKey === MESSAGES_DASHLET_VIEW_KEY ? (
+          <MessagesDashlet messages={messages} />
+        ) : (
+          // A dashlet is a view rendered small; the grid-panel renderer that
+          // draws view content is a later PI-011 slice, so a live view dashlet
+          // shows its identity honestly rather than an invented mini-grid.
+          <p>This dashlet shows the view '{dashlet.viewKey}'.</p>
+        )}
+      </div>
     </section>
   );
 }
@@ -104,7 +108,7 @@ export function HomePanel({
       return <UnreachableNotice />;
     case "loaded":
       return (
-        <main aria-label="Home">
+        <main aria-label="Home" className="home-panel">
           {state.data.dashlets.map((dashlet) => (
             <Dashlet
               key={dashlet.viewKey}
