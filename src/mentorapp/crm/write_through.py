@@ -58,9 +58,12 @@ app and land in the CRM system of record, decided once for every write path:
   trail and structured logs. A credential failure under the integration
   account is broken configuration, not weather — it parks for a human.
 
-The seam is a ``Protocol`` (the ``FeedPushTransport`` pattern): the EspoCRM
-binding arrives with the implementation work task; tests and local runs plug
-fakes.
+The seam is a ``Protocol`` (the ``FeedPushTransport`` pattern):
+:class:`EspoWriteThrough` (WTK-157) is the EspoCRM plug, generic over
+:class:`~mentorapp.crm.auth.CrmAccess` so it inherits the gateway's fault
+vocabulary instead of re-deriving HTTP policy; tests and local runs plug
+fakes. The request-time fork and the retry job handler live in
+:mod:`mentorapp.api.crm_writes`.
 """
 
 from __future__ import annotations
@@ -70,7 +73,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol
 
-from mentorapp.crm.auth import CrmUnavailableError, CrmUserCredential
+from mentorapp.crm.auth import CrmAccess, CrmUnavailableError, CrmUserCredential
 from mentorapp.crm.espo import EspoOperationRejectedError
 from mentorapp.storage.ids import uuid7
 
@@ -127,6 +130,31 @@ class CrmWriteThrough(Protocol):
     """
 
     def apply(self, credential: CrmUserCredential, write: CrmWrite) -> None: ...
+
+
+@dataclass(frozen=True)
+class EspoWriteThrough:
+    """The EspoCRM plug of :class:`CrmWriteThrough` (WTK-157, REQ-062).
+
+    ``apply`` maps one :class:`CrmWrite` onto ``PUT {entityType}/{recordID}``
+    over :class:`~mentorapp.crm.auth.CrmAccess`. It returns only on success
+    and lets the access seam's fault vocabulary propagate untouched for
+    :func:`classify_crm_write_fault` — no fault judgement is made here.
+    """
+
+    access: CrmAccess
+
+    def apply(self, credential: CrmUserCredential, write: CrmWrite) -> None:
+        # Espo's PUT applies only the attributes present in the body (its
+        # partial-update semantics), which is exactly the PATCH-shaped
+        # changed-fields contract: a replay re-sends the same absolute values
+        # to the same record and converges instead of duplicating (REQ-064).
+        self.access.execute(
+            credential,
+            "PUT",
+            f"{write.crm_entity_type}/{write.crm_record_id}",
+            json=dict(write.changed_fields),
+        )
 
 
 def classify_crm_write_fault(fault: Exception) -> WriteFaultDisposition:
