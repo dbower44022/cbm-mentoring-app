@@ -34,6 +34,8 @@ def _wire_field(name: str, **overrides: Any) -> dict[str, Any]:
         "fieldLabel": name.capitalize(),
         "requiredFlag": False,
         "validationRules": None,
+        "defaultValue": None,
+        "helpText": None,
         "historyTrackedFlag": False,
         "searchableFlag": False,
         "visibilityHints": None,
