@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, ClassVar, Final
 
 from sqlalchemy import DateTime, ForeignKey, Index, MetaData, Uuid, text
 from sqlalchemy.dialects.postgresql import JSONB
@@ -42,6 +42,11 @@ JsonObject = JSON().with_variant(JSONB(), "postgresql")
 # are identifier quoting on both Postgres and SQLite — camelCase needs them.
 _LIVE_ROWS = text('"deletedAt" IS NULL')
 
+# REQ-063: which side of the REQ-062 ownership boundary masters a data set.
+# "application" — this store is the system of record; "crm" — the CRM is, and
+# the app table only anchors/references that truth (never a fork of it).
+OWNERSHIP_SIDES: Final[tuple[str, ...]] = ("application", "crm")
+
 
 def _utcnow() -> datetime:
     return datetime.now(UTC)
@@ -66,14 +71,23 @@ def entity_key(column_name: str) -> MappedColumn[uuid.UUID]:
     return mapped_column(column_name, primary_key=True, default=uuid7)
 
 
-def entity_ref(target: str, *, nullable: bool = False) -> MappedColumn[uuid.UUID]:
+def entity_ref(
+    target: str, *, nullable: bool = False, registry: dict[str, Any] | None = None
+) -> MappedColumn[uuid.UUID]:
     """A foreign key to ``"Table.columnID"`` carrying the identical column name.
 
     The name is derived from the referenced key, so DB-R2b (FK named exactly
     as the PK it references) holds mechanically, not by convention.
+    ``registry`` is the column-site registry metadata, exactly as
+    ``mapped_column(info={"registry": ...})`` declares it.
     """
     column_name = target.rsplit(".", maxsplit=1)[-1]
-    return mapped_column(column_name, ForeignKey(target), nullable=nullable)
+    return mapped_column(
+        column_name,
+        ForeignKey(target),
+        nullable=nullable,
+        info={"registry": registry} if registry is not None else {},
+    )
 
 
 def live_index(name: str, *expressions: Any, unique: bool = False) -> Index:
@@ -102,6 +116,23 @@ class BaseEntity(Base):
     """
 
     __abstract__ = True
+
+    # REQ-063's ownership-side declaration: every entity states, at design
+    # time in source, which side of the REQ-062 boundary owns its data set.
+    # Mentoring-process entities take the "application" default; CRM anchor
+    # entities must override with "crm".
+    __ownership_side__: ClassVar[str] = "application"
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        # Validated before SQLAlchemy maps the class, so an invalid or cleared
+        # declaration can never produce a mapped table (REQ-063 enforcement).
+        side = getattr(cls, "__ownership_side__", None)
+        if side not in OWNERSHIP_SIDES:
+            raise TypeError(
+                f"{cls.__name__} declares ownership side {side!r}; "
+                f"REQ-063 requires one of {OWNERSHIP_SIDES}"
+            )
+        super().__init_subclass__(**kwargs)
 
     created_at: Mapped[datetime] = mapped_column("createdAt", nullable=False, default=_utcnow)
     # *By columns are nullable: system-originated writes (seeds, migrations,
