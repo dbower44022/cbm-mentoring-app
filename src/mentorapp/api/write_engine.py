@@ -69,8 +69,10 @@ CODE_UNKNOWN_OPTION = "unknownOption"
 CODE_INACTIVE_OPTION = "inactiveOption"
 
 # fieldType vocabulary shared with the schema registry; validated here, never
-# a database enum (DB-S7). Text-like types differ only in normalization.
-_TEXT_TYPES = frozenset({"text", "email", "phone"})
+# a database enum (DB-S7). Text-like types differ only in normalization —
+# richText's value is clean HTML but still a string here; sanitization
+# belongs to the shared DB-S13 services (REQ-090), not this type gate.
+_TEXT_TYPES = frozenset({"text", "email", "phone", "richText"})
 
 
 class OptionValueRule(Protocol):
