@@ -112,6 +112,8 @@ interface ServerConfig {
   workprocessActions?: unknown[];
   /** Routes the four /workprocesses/runs verbs when a test drives a run. */
   workprocessRun?: (url: URL, init: RequestInit | undefined) => unknown;
+  /** The GET /help/resolve answer (REQ-043); default a mapped page URL. */
+  helpResolution?: unknown;
 }
 
 const DEFAULT_AGGREGATES = { totalCount: 200, unnarrowedCount: 200, footer: {} };
@@ -142,6 +144,10 @@ function renderGrid(config: ServerConfig = {}): { calls: URL[] } {
           throw new Error(`Unrouted run request: ${url.pathname}`);
         }
         body = config.workprocessRun(url, init);
+      } else if (url.pathname === "/help/resolve") {
+        body =
+          config.helpResolution ??
+          ok({ url: "https://docs.example.org/help/x", mapped: true, notice: null });
       } else {
         throw new Error(`Unrouted request: ${url.pathname}`);
       }
@@ -362,12 +368,44 @@ describe("actions (REQ-021, REQ-022)", () => {
     expect(
       [...menu.querySelectorAll("button")].every((button) => !button.disabled),
     ).toBe(true);
+    vi.spyOn(window, "open").mockReturnValue(null);
     fireEvent.click(screen.getByRole("button", { name: "Help" }));
     expect(screen.queryByRole("list", { name: "All actions" })).toBeNull();
 
     // Right-click opens the SAME full menu.
     fireEvent.contextMenu(element(".grid-panel"));
     expect(screen.getByRole("list", { name: "All actions" })).toBeTruthy();
+  });
+
+  it("wires the menu's Help to the one resolver with the data set identity", async () => {
+    // REQ-043 via SKL-122: the grid's Help resolves its CONTENT — the active
+    // view's data set — and a generic landing's notice shows dismissible.
+    const { calls } = renderGrid({
+      helpResolution: ok({
+        url: "https://docs.example.org/help",
+        mapped: false,
+        notice: "No page-specific help exists yet for this data set.",
+      }),
+    });
+    const opened = vi.spyOn(window, "open").mockReturnValue(null);
+    await screen.findByText("Engagement 1");
+
+    fireEvent.click(screen.getByRole("button", { name: "Other Actions" }));
+    fireEvent.click(screen.getByRole("button", { name: "Help" }));
+
+    const notice = await screen.findByText(/No page-specific help exists yet/);
+    expect(notice).toBeTruthy();
+    const resolve = calls.find((url) => url.pathname === "/help/resolve");
+    expect(resolve?.searchParams.get("sourceType")).toBe("dataSet");
+    expect(resolve?.searchParams.get("sourceIdentifier")).toBe("engagements");
+    // A separate tab, never a navigation of the working grid window.
+    expect(opened).toHaveBeenCalledWith(
+      "https://docs.example.org/help",
+      "_blank",
+      "noopener",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    expect(screen.queryByText(/No page-specific help exists yet/)).toBeNull();
   });
 
   it("explains an invalid invocation in educate voice instead of hiding it", async () => {

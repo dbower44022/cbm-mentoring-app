@@ -22,6 +22,7 @@ import {
 import { callApi, EnvelopeError } from "../api/envelope";
 import { useEnvelope } from "../api/useEnvelope";
 import { DeclinedNotice, EducateNotice, UnreachableNotice } from "../shell/educate";
+import { openHelp } from "../shell/help";
 import { PanelSplitter, ResizablePanel, usePanelChrome } from "../shell/panel-chrome";
 import { readSession } from "../session";
 import { RecordPreview } from "../windows/record";
@@ -30,6 +31,7 @@ import {
   bindingFor,
   destructiveConfirmation,
   EMPTY_SELECTION,
+  HELP_ACTION,
   invalidInvocation,
   isModified,
   markModified,
@@ -112,15 +114,22 @@ export function GridPanel({ panelKey }: { panelKey: string }): ReactElement {
     return <UnreachableNotice />;
   }
   return (
-    <LoadedGrid key={state.data.gridId} panel={state.data} onReloadPanel={reload} />
+    <LoadedGrid
+      key={state.data.gridId}
+      panel={state.data}
+      panelKey={panelKey}
+      onReloadPanel={reload}
+    />
   );
 }
 
 function LoadedGrid({
   panel,
+  panelKey,
   onReloadPanel,
 }: {
   panel: GridPanelPayload;
+  panelKey: string;
   onReloadPanel: () => void;
 }): ReactElement {
   const [view, setView] = useState<ViewSelectorState>(() =>
@@ -143,6 +152,9 @@ function LoadedGrid({
   const [aggregates, setAggregates] = useState<GridAggregatesPayload | null>(null);
   const [menuOpen, setMenuOpen] = useState<false | "dropdown" | "context">(false);
   const [explainer, setExplainer] = useState<EducatePayload | null>(null);
+  // The educate notice a generic help landing carries (REQ-043) — the
+  // grid's own dismissible surface for the shell resolver's notice sink.
+  const [helpNotice, setHelpNotice] = useState<string | null>(null);
   const [confirmation, setConfirmation] = useState<ActionConfirmation | null>(null);
   const [showErrorDetail, setShowErrorDetail] = useState(false);
   const [generation, setGeneration] = useState(0);
@@ -314,6 +326,18 @@ function LoadedGrid({
 
   const runAction = (action: ActionPayload): void => {
     setMenuOpen(false);
+    if (action.key === HELP_ACTION.key) {
+      // Every menu's last item is Help (REQ-043), resolved through the ONE
+      // path (SKL-122). The grid's help identity is its CONTENT: the active
+      // view's data set when one is live — that's what the user is looking
+      // at — falling back to the hosting panel before a view resolves.
+      void openHelp(
+        dataSourceKey !== undefined ? "dataSet" : "panel",
+        dataSourceKey ?? panelKey,
+        setHelpNotice,
+      );
+      return;
+    }
     // One explainer for every entry, workprocess or built-in (REQ-041): the
     // model mirrors the server's grid-standard invalid_invocation verbatim,
     // so a violating selection gets the server's own educate words here.
@@ -524,6 +548,20 @@ function LoadedGrid({
               </li>
             ))}
           </menu>
+        ) : null}
+
+        {helpNotice !== null ? (
+          <p className="notice" role="status">
+            {helpNotice}{" "}
+            <button
+              type="button"
+              onClick={() => {
+                setHelpNotice(null);
+              }}
+            >
+              Dismiss
+            </button>
+          </p>
         ) : null}
 
         {explainer !== null ? (

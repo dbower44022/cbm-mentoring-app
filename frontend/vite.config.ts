@@ -16,6 +16,7 @@ const API_PREFIXES = [
   "/schema",
   "/theming",
   "/workprocesses",
+  "/help",
   "/openapi.json",
 ];
 

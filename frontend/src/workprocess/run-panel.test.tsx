@@ -250,15 +250,33 @@ describe("leaving = cancel, behind the dirty guard (REQ-042)", () => {
   });
 });
 
-describe("per-step Help (REQ-042)", () => {
-  it("answers Help with the shell's interim notice, dismissible in place", async () => {
-    renderRun(() => ok(makeRun()));
+describe("per-step Help (REQ-042, REQ-043)", () => {
+  it("resolves the workprocess's help through the one path and surfaces the notice", async () => {
+    // The frame's Help identity is the WORKPROCESS by display name — the
+    // action-list identity administrators map (SKL-122's one resolver).
+    const { exchanges } = renderRun((pathname) =>
+      pathname === "/help/resolve"
+        ? ok({
+            url: "https://docs.example.org/help",
+            mapped: false,
+            notice: "No page-specific help exists yet for this workprocess.",
+          })
+        : ok(makeRun()),
+    );
+    const opened = vi.spyOn(window, "open").mockReturnValue(null);
     await screen.findByRole("heading", { name: "chooseMentor" });
 
     fireEvent.click(screen.getByRole("button", { name: "Help" }));
-    const notice = screen.getByRole("status");
-    expect(notice.textContent).toContain("No step-specific help exists yet");
+    // The generic landing opens in a separate tab AND explains itself.
+    const notice = await screen.findByText(/No page-specific help exists yet/);
+    expect(notice.textContent).toContain("workprocess");
+    expect(opened).toHaveBeenCalledWith(
+      "https://docs.example.org/help",
+      "_blank",
+      "noopener",
+    );
+    expect(exchanges.map((e) => e.pathname)).toContain("/help/resolve");
     fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
-    expect(screen.queryByText(/No step-specific help exists yet/)).toBeNull();
+    expect(screen.queryByText(/No page-specific help exists yet/)).toBeNull();
   });
 });

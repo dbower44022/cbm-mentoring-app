@@ -21,6 +21,7 @@ import { type ReactElement, useEffect, useReducer, useRef, useState } from "reac
 
 import { type ApiError, callApi, EnvelopeError } from "../api/envelope";
 import { DeclinedNotice, UnreachableNotice } from "../shell/educate";
+import { openHelp } from "../shell/help";
 import {
   discardWarning,
   guardsUnload,
@@ -74,7 +75,7 @@ export function WorkprocessRunPanel({
   const [phase, dispatch] = useReducer(reduceRun, LAUNCHING);
   const [answerText, setAnswerText] = useState("");
   const [confirmingLeave, setConfirmingLeave] = useState(false);
-  const [helpNotice, setHelpNotice] = useState(false);
+  const [helpNotice, setHelpNotice] = useState<string | null>(null);
   const launched = useRef(false);
 
   // Launch exactly once per surface. POST /workprocesses/runs is not
@@ -233,7 +234,10 @@ export function WorkprocessRunPanel({
             <button
               type="button"
               onClick={() => {
-                setHelpNotice(true);
+                // The frame's Help identity is the WORKPROCESS, by its
+                // display name — the action-list identity admins map —
+                // through the one resolution path (SKL-122, REQ-043).
+                void openHelp("workprocess", entry.label, setHelpNotice);
               }}
             >
               Help
@@ -276,17 +280,15 @@ export function WorkprocessRunPanel({
         </>
       ) : null}
 
-      {/* Per-step Help: the shell's interim help mechanism and voice
-          (shell.tsx onMenuAction) — a dismissible notice, never a dead
-          control, until the admin-configured help mapping ships. */}
-      {helpNotice ? (
+      {/* A generic help landing's educate notice (REQ-043): the server's
+          own words, dismissible in place — never a dead control. */}
+      {helpNotice !== null ? (
         <p className="notice" role="status">
-          No step-specific help exists yet for this workprocess. The help mapping is
-          configured by administrators and hasn&apos;t shipped.{" "}
+          {helpNotice}{" "}
           <button
             type="button"
             onClick={() => {
-              setHelpNotice(false);
+              setHelpNotice(null);
             }}
           >
             Dismiss
