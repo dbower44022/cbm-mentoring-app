@@ -378,16 +378,27 @@ def test_contrast_pairs_are_the_ui_originals() -> None:
 def test_unreadable_pair_warns_with_the_wire_shape() -> None:
     colors = readable_colors() | {"rowText": "#c9ced4"}  # light grey on white
     warnings = template_contrast_warnings(colors)
-    pairs = {(w["textSlot"], w["backgroundSlot"]) for w in warnings}
+    pairs = {
+        (w["textSlot"], w["backgroundSlot"]) for w in warnings if w["kind"] == "readability"
+    }
     assert ("rowText", "rowBackground") in pairs
     for warning in warnings:
+        assert warning["kind"] == "readability"
         assert warning["ratio"] < CONTRAST_MINIMUM
         assert warning["minimum"] == CONTRAST_MINIMUM
-        assert "never blocked" in warning["message"]
+        # Warn-with-preview (WTK-118): the entry carries the actual failing
+        # combination for the client to render, and the educate payload.
+        assert warning["preview"]["textColor"] == "#c9ced4"
+        assert "never blocked" in warning["message"]["whatNext"].lower()
+        assert warning["actions"] == ["adjustSlots", "saveAnyway"]
 
 
 def test_guardrail_never_raises_even_when_everything_is_unreadable() -> None:
     colors = {slot: "#808080" for slot in COLOR_SLOTS}
     warnings = template_contrast_warnings(colors)
-    # Every checked pair is grey-on-grey (ratio 1.0) — still only warnings.
-    assert len(warnings) == len(TEMPLATE_CONTRAST_PAIRS) == 5
+    # Every checked pair is grey-on-grey (ratio 1.0) — still only warnings;
+    # the identical banding pair adds the WTK-207 invisibility warning.
+    readability = [w for w in warnings if w["kind"] == "readability"]
+    banding = [w for w in warnings if w["kind"] == "banding"]
+    assert len(readability) == len(TEMPLATE_CONTRAST_PAIRS) == 5
+    assert len(banding) == 1
