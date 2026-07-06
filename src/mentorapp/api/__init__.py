@@ -38,6 +38,13 @@ feature:
   with its one transient-vs-terminal fork, the ``crmWriteRetry`` queue
   handler running deferred writes under the integration credential, and the
   duplicate-safe replay contract they share.
+- ``field_edit`` — the per-field edit window design (WTK-059, REQ-035):
+  double-click on a read-only element opens a small window editing just that
+  field with its own Save and Cancel; Save commits the smallest legal DB-S12
+  write (one field plus ``rowVersion``) through the same PATCH path as the
+  full form, a 409 routes through ``edit_safety``'s standard resolver (the
+  field-level auto-retry, or the walk-through on a real same-field overlap),
+  and a landed save broadcasts the standard ``SaveNotice``.
 - ``form_validation`` — the field-settings-driven validation engine design
   (WTK-057, REQ-033): field settings from ``GET /schema/{entity}`` adapted to
   the write engine's ``FieldRule`` so on-exit and save-sweep checks run the
@@ -84,6 +91,17 @@ from mentorapp.api.errors import (
     RecordNotFoundError,
     StaleRowVersionError,
     register_error_handlers,
+)
+from mentorapp.api.field_edit import (
+    FIELD_EDIT_TRIGGER,
+    FIELD_EDIT_WINDOW,
+    CommitSingleField,
+    FieldEditOpened,
+    FieldEditors,
+    FieldEditRefused,
+    FieldEditSwitch,
+    NothingToSave,
+    single_field_patch,
 )
 from mentorapp.api.form_validation import (
     MESSAGE_PLACEMENT,
@@ -140,6 +158,8 @@ from mentorapp.api.write_engine import (
 )
 
 __all__ = [
+    "FIELD_EDIT_TRIGGER",
+    "FIELD_EDIT_WINDOW",
     "GRID_SURFACE",
     "MESSAGE_PLACEMENT",
     "REQUIRED_MARKER",
@@ -147,6 +167,7 @@ __all__ = [
     "AlreadyCurrent",
     "ApiError",
     "ApiValidationError",
+    "CommitSingleField",
     "CrmWriteOutcome",
     "DirtyWindowGuard",
     "DuplicateCandidatesError",
@@ -157,12 +178,17 @@ __all__ = [
     "ExportScope",
     "FallbackToLastUsed",
     "FieldConflict",
+    "FieldEditOpened",
+    "FieldEditRefused",
+    "FieldEditSwitch",
+    "FieldEditors",
     "FieldSettings",
     "FilteredSetSelection",
     "GridDocumentRequest",
     "GridLink",
     "LinkAccessDenied",
     "ManualMerge",
+    "NothingToSave",
     "OpenLinkedView",
     "RecordNotFoundError",
     "RetrySave",
@@ -209,6 +235,7 @@ __all__ = [
     "resolve_grid_link",
     "selection_record_filter",
     "serialize_record",
+    "single_field_patch",
     "surface_needs_refresh",
     "sweep_before_save",
     "trigram_search_filter",
