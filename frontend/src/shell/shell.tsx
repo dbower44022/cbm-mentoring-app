@@ -1,9 +1,10 @@
 /**
  * Window shell composition (DEC-080 §A–§C): every window boots the same
- * bundle; the route decides the kind. A main window renders data.mainWindow
- * with navigation; /record/:entityType/:recordId renders data.popOut
- * (record windows are not panel hosts). Both bind the quick-open shortcut
- * from the payload's own declaration and render the shell payload verbatim.
+ * bundle; the route decides the kind. The shell hosts main windows
+ * (navigation + panel host); pop-out record windows are app.tsx's
+ * /records/... route rendering windows/record.tsx — the one canonical
+ * home (WTK-228). The quick-open shortcut binds from the payload's own
+ * declaration and the shell payload renders verbatim.
  */
 
 import { type ReactElement, useCallback, useEffect, useState } from "react";
@@ -189,34 +190,11 @@ export function Shell({ session, onLoggedOut }: ShellProps): ReactElement {
     />
   );
 
+  // Pop-out record windows are app.tsx's /records/... route (RecordWindow,
+  // windows/record.tsx) — the one canonical home; the shell hosts only
+  // main windows (WTK-228 rework, SKL-122).
   return (
     <Routes>
-      <Route
-        path="/record/:entityType/:recordId"
-        element={
-          <PopOutWindow
-            shell={shell}
-            session={session}
-            onLoggedOut={onLoggedOut}
-            onMenuAction={onMenuAction}
-            notice={notice}
-            onDismissNotice={() => {
-              setNotice(null);
-            }}
-            palette={
-              paletteOpen ? (
-                <QuickOpen
-                  session={session}
-                  onActivate={openPanel}
-                  onClose={() => {
-                    setPaletteOpen(false);
-                  }}
-                />
-              ) : null
-            }
-          />
-        }
-      />
       <Route
         path="*"
         element={
@@ -273,51 +251,6 @@ function RoutedPanel(): ReactElement {
   // Gantt, chart) ship — the grid renders its own four states, so a panel
   // whose surface isn't served yet shows the educate-voice error, never a blank.
   return <GridPanel panelKey={panelKey ?? ""} />;
-}
-
-function PopOutWindow({
-  shell,
-  session,
-  onLoggedOut,
-  onMenuAction,
-  notice,
-  onDismissNotice,
-  palette,
-}: {
-  shell: ShellPayload;
-  session: SessionState;
-  onLoggedOut: () => void;
-  onMenuAction: (key: string) => void;
-  notice: string | null;
-  onDismissNotice: () => void;
-  palette: ReactElement | null;
-}): ReactElement {
-  const { entityType, recordId } = useParams();
-  return (
-    <div className="pop-out-window">
-      <Header
-        header={shell.popOut}
-        session={session}
-        onLoggedOut={onLoggedOut}
-        onMenuAction={onMenuAction}
-      />
-      {notice !== null && (
-        <p className="notice" role="status">
-          {notice}{" "}
-          <button type="button" onClick={onDismissNotice}>
-            Dismiss
-          </button>
-        </p>
-      )}
-      <main className="panel-host">
-        <p className="panel-placeholder">
-          Record window for {entityType ?? "?"}/{recordId ?? "?"}. The read-optimized
-          record view renders with WTK-198.
-        </p>
-      </main>
-      {palette}
-    </div>
-  );
 }
 
 function parseShortcut(declaration: string): {
