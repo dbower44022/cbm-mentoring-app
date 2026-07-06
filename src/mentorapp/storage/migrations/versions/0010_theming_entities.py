@@ -1,14 +1,17 @@
 """Color-template, type-scale, and conditional-formatting entities (WTK-111, PI-007).
 
 Creates the look-and-feel platform tables: ``typeScale`` (the shared
-app-wide typography scale), ``colorTemplate`` (fixed color/font slots,
-launch set, type-step choice, contrast guardrail, layer precedence),
-``conditionalFormattingRule`` (first-match-wins per template), and
-``rowThemeOverride`` (the per-grid colorTemplate ↔ grid association).
-Same structural rules as 0001/0005: UUIDv7 app-generated keys (REQ-047),
-the eight structural system columns (REQ-053), and partial live-row
-indexes (REQ-052). Platform tables — no schema-registry rows and no read
-views.
+app-wide typography scale), ``colorTemplate`` (fixed color/font slots over
+the UI design's 15-slot + 2-font vocabulary — FND-905, REQ-044 — launch
+set, type-step choice, contrast guardrail), and
+``conditionalFormattingRule`` (first-match-wins per template; its
+``effectSlot`` names a status color slot, never a literal color — FND-906,
+REQ-045). NO ``rowThemeOverride`` table and no ``layerPrecedence`` column
+(FND-907, REQ-044/REQ-018): layering is exactly three fixed positional
+layers, and the third already lives on ``gridView.rowTheme`` (0005). Same
+structural rules as 0001/0005: UUIDv7 app-generated keys (REQ-047), the
+eight structural system columns (REQ-053), and partial live-row indexes
+(REQ-052). Platform tables — no schema-registry rows and no read views.
 
 Revision ID: 0010
 Revises: 0009
@@ -80,7 +83,6 @@ def upgrade() -> None:
         sa.Column("launchSetKey", sa.String(length=50), nullable=True),
         sa.Column("typeStepChoice", sa.String(length=20), nullable=False),
         sa.Column("contrastGuardrailBehavior", sa.String(length=20), nullable=False),
-        sa.Column("layerPrecedence", sa.Integer(), nullable=False),
         *_structural_columns(),
         sa.ForeignKeyConstraint(
             ["userID"], ["appUser.userID"], name=op.f("fk_colorTemplate_userID_appUser")
@@ -119,7 +121,8 @@ def upgrade() -> None:
         sa.Column("conditionOperator", sa.String(length=50), nullable=False),
         sa.Column("conditionValue", _JSON_OBJECT, nullable=True),
         sa.Column("effect", sa.String(length=50), nullable=False),
-        sa.Column("effectColor", sa.String(length=50), nullable=False),
+        # FND-906: the applied color names a status slot, never a hex literal.
+        sa.Column("effectSlot", sa.String(length=50), nullable=False),
         sa.Column("evaluationOrder", sa.Integer(), nullable=False),
         *_structural_columns(),
         sa.ForeignKeyConstraint(
@@ -145,45 +148,8 @@ def upgrade() -> None:
             postgresql_where=_LIVE,
         )
 
-    op.create_table(
-        "rowThemeOverride",
-        sa.Column("rowThemeOverrideID", sa.Uuid(), nullable=False),
-        sa.Column("gridID", sa.Uuid(), nullable=False),
-        sa.Column("colorTemplateID", sa.Uuid(), nullable=False),
-        *_structural_columns(),
-        sa.ForeignKeyConstraint(
-            ["gridID"], ["grid.gridID"], name=op.f("fk_rowThemeOverride_gridID_grid")
-        ),
-        sa.ForeignKeyConstraint(
-            ["colorTemplateID"],
-            ["colorTemplate.colorTemplateID"],
-            name=op.f("fk_rowThemeOverride_colorTemplateID_colorTemplate"),
-        ),
-        sa.PrimaryKeyConstraint("rowThemeOverrideID", name=op.f("pk_rowThemeOverride")),
-    )
-    with op.batch_alter_table("rowThemeOverride", schema=None) as batch_op:
-        batch_op.create_index(
-            batch_op.f("ix_rowThemeOverride_modifiedAt"), ["modifiedAt"], unique=False
-        )
-        batch_op.create_index(
-            "uq_rowThemeOverride_gridID_live",
-            ["gridID"],
-            unique=True,
-            sqlite_where=_LIVE,
-            postgresql_where=_LIVE,
-        )
-
 
 def downgrade() -> None:
-    with op.batch_alter_table("rowThemeOverride", schema=None) as batch_op:
-        batch_op.drop_index(
-            "uq_rowThemeOverride_gridID_live",
-            sqlite_where=_LIVE,
-            postgresql_where=_LIVE,
-        )
-        batch_op.drop_index(batch_op.f("ix_rowThemeOverride_modifiedAt"))
-    op.drop_table("rowThemeOverride")
-
     with op.batch_alter_table("conditionalFormattingRule", schema=None) as batch_op:
         batch_op.drop_index(
             "uq_conditionalFormattingRule_template_order_live",

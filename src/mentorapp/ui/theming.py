@@ -43,6 +43,27 @@ from dataclasses import dataclass, field
 from typing import Any, Final
 
 from mentorapp.observability import get_logger
+
+# The fixed slot structure (REQ-044): the ONLY styling surface. One canonical
+# home (FND-905 reconciliation): the tuples are DEFINED in storage.theming —
+# what the UI resolves is exactly what the store persists, and the import
+# direction (ui → storage, the SELECTION_CONTRACTS precedent) is the one that
+# cannot cycle through the ``ui`` package init.
+from mentorapp.storage.theming import (
+    CHROME_COLOR_SLOTS as CHROME_COLOR_SLOTS,
+)
+from mentorapp.storage.theming import (
+    COLOR_SLOTS as COLOR_SLOTS,
+)
+from mentorapp.storage.theming import (
+    FONT_SLOTS as FONT_SLOTS,
+)
+from mentorapp.storage.theming import (
+    ROW_THEME_COLOR_SLOTS as ROW_THEME_COLOR_SLOTS,
+)
+from mentorapp.storage.theming import (
+    STATUS_COLOR_SLOTS as STATUS_COLOR_SLOTS,
+)
 from mentorapp.ui.auth_flows import EducateMessage
 
 log = get_logger(__name__)
@@ -51,42 +72,6 @@ log = get_logger(__name__)
 class ThemingError(ValueError):
     """A slot-structure violation rejected before any write, with the reason."""
 
-
-# --- The fixed slot structure (REQ-044): the ONLY styling surface -------------------
-
-# App-chrome color slots: shared shell surfaces a row theme may never touch.
-CHROME_COLOR_SLOTS: Final[tuple[str, ...]] = (
-    "appBackground",
-    "panelBackground",
-    "headerBackground",
-    "headerText",
-    "accent",
-)
-
-# Row-scoped color slots: the grid-row surfaces a view's row theme may override.
-ROW_THEME_COLOR_SLOTS: Final[tuple[str, ...]] = (
-    "rowBackground",
-    "rowAlternateBackground",
-    "rowText",
-    "selectedRowBackground",
-    "selectedRowText",
-    "groupHeaderBackground",
-    "groupHeaderText",
-)
-
-# Status slots: the palette conditional-formatting effects draw from (REQ-045
-# rules name these slots, never literal colors — evaluation lives in WTK-117).
-STATUS_COLOR_SLOTS: Final[tuple[str, ...]] = (
-    "statusPositive",
-    "statusWarning",
-    "statusNegative",
-)
-
-COLOR_SLOTS: Final[tuple[str, ...]] = (
-    CHROME_COLOR_SLOTS + ROW_THEME_COLOR_SLOTS + STATUS_COLOR_SLOTS
-)
-
-FONT_SLOTS: Final[tuple[str, ...]] = ("uiFont", "dataFont")
 
 # The ONE shared app-wide type scale (REQ-046): every size anywhere names a
 # step; WTK-116 persists the step values, this mapping is the design default.

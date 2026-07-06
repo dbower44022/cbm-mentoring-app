@@ -1,23 +1,32 @@
 """Color-template, type-scale, and conditional-formatting entities (WTK-111).
 
-Implements the look-and-feel data model (PI-007): ``colorTemplate`` is one
-curated or user-authored theme — its fixed color/font slot structure, the
-launch-set membership (Standard/Compact/Large print/Dark), its chosen type
-step, the contrast guardrail, and its layer precedence. ``typeScale`` is the
-shared app-wide typography scale: a defined step set that every font size
-must come from — off-scale sizes are prohibited (API-validated, like every
-vocabulary here per DB-S7). ``conditionalFormattingRule`` is one rule of a
-template's conditional formatting (the grid standard: "conditional
-formatting lives in the theme"), evaluated first-match-wins in
-``evaluationOrder``.
+Implements the look-and-feel data model (PI-007), reconciled to the UI design
+(WSK-019, FND-905/906/907): ``colorTemplate`` is one curated or user-authored
+theme — its fixed color/font slot structure, the launch-set membership
+(Standard/Compact/Large print/Dark), its chosen type step, and the contrast
+guardrail. ``typeScale`` is the shared app-wide typography scale: a defined
+step set that every font size must come from — off-scale sizes are prohibited
+(API-validated, like every vocabulary here per DB-S7).
+``conditionalFormattingRule`` is one rule of a template's conditional
+formatting (the grid standard: "conditional formatting lives in the theme"),
+evaluated first-match-wins in ``evaluationOrder``; its effect paints a STATUS
+slot's color, never a literal color (REQ-045, FND-906).
 
 Associations: ``colorTemplate.typeScaleID`` is the many-to-one
 colorTemplate ↔ typeScale association (the template's font slots and
 ``typeStepChoice`` must name steps of THAT scale);
 ``conditionalFormattingRule.colorTemplateID`` + ``evaluationOrder`` is the
-ordered one-to-many theme ↔ rule association; ``rowThemeOverride`` is the
-per-grid colorTemplate ↔ grid row-theme-override association — at most one
-live override per grid.
+ordered one-to-many theme ↔ rule association. There is NO per-grid override
+entity and no numeric layer precedence (FND-907): the layering model is
+exactly three fixed positional layers — org-default template → the user's
+app-wide template choice → the ACTIVE VIEW's ``gridView.rowTheme``
+(REQ-044/REQ-018) — so the row-theme association already lives on the view.
+
+This module is the one canonical home of the persisted slot vocabulary; the
+tuples below ARE the UI design's fixed slot structure (FND-905, REQ-044) and
+``mentorapp.ui.theming`` re-exports them (ui imports storage here — the
+repo's vocab-sharing direction, e.g. ``SELECTION_CONTRACTS`` — because the
+reverse import would cycle through the ``ui`` package).
 
 These are platform tables (``StructuralColumnsMixin`` + ``Base``, not
 ``BaseEntity``): like ``grid`` and ``gridView`` they are app configuration,
@@ -50,21 +59,50 @@ TEMPLATE_TYPES: Final[tuple[str, ...]] = ("system", "user")
 # The curated launch set (PI-007): Standard, Compact, Large print, Dark.
 LAUNCH_SETS: Final[tuple[str, ...]] = ("standard", "compact", "largePrint", "dark")
 
-# The fixed color-slot structure (PI-007): every template fills exactly these
-# slots — a template never invents a slot, so every consumer (grid rows,
-# selection, accents) reads a color that is guaranteed to exist.
-COLOR_SLOTS: Final[tuple[str, ...]] = (
-    "rowBackground",
-    "alternateRowBackground",
-    "rowText",
-    "selectedRowBackground",
-    "selectedRowText",
+# The fixed color-slot structure is the UI design's 15-slot vocabulary
+# (FND-905, REQ-044): every template fills exactly these slots — a template
+# never invents a slot, so every consumer (chrome, grid rows, status effects)
+# reads a color that is guaranteed to exist. The three groups carry the
+# scoping the UI semantics depend on.
+
+# App-chrome color slots: shared shell surfaces a view's row theme may never
+# touch (REQ-018 — a row theme's reach is its grid's rows).
+CHROME_COLOR_SLOTS: Final[tuple[str, ...]] = (
+    "appBackground",
+    "panelBackground",
+    "headerBackground",
+    "headerText",
     "accent",
 )
 
-# The fixed font-slot structure: each slot names a step of the template's
-# type scale (plus family/weight) — the slot set is as fixed as COLOR_SLOTS.
-FONT_SLOTS: Final[tuple[str, ...]] = ("rowFont", "headerFont")
+# Row-scoped color slots: the grid-row surfaces a view's row theme may
+# override (the UI's exact names — ``rowAlternateBackground``, FND-905).
+ROW_THEME_COLOR_SLOTS: Final[tuple[str, ...]] = (
+    "rowBackground",
+    "rowAlternateBackground",
+    "rowText",
+    "selectedRowBackground",
+    "selectedRowText",
+    "groupHeaderBackground",
+    "groupHeaderText",
+)
+
+# Status slots: the palette conditional-formatting effects draw from —
+# REQ-045: rules name these slots, never literal colors (FND-906).
+STATUS_COLOR_SLOTS: Final[tuple[str, ...]] = (
+    "statusPositive",
+    "statusWarning",
+    "statusNegative",
+)
+
+COLOR_SLOTS: Final[tuple[str, ...]] = (
+    CHROME_COLOR_SLOTS + ROW_THEME_COLOR_SLOTS + STATUS_COLOR_SLOTS
+)
+
+# The fixed font-slot structure — the UI design's two slots (FND-905): each
+# names a step of the template's type scale (plus family/weight); the slot
+# set is as fixed as COLOR_SLOTS.
+FONT_SLOTS: Final[tuple[str, ...]] = ("uiFont", "dataFont")
 
 # The defined step set of the app-wide typography scale. A typeScale row maps
 # each step to a concrete size; fonts choose steps, never raw sizes.
@@ -136,9 +174,10 @@ class ColorTemplate(StructuralColumnsMixin, Base):
     fills ``FONT_SLOTS`` with {stepKey, fontFamily, fontWeight} specs whose
     steps — like ``typeStepChoice``, the template's base step — must be
     steps of the linked type scale (the many-to-one colorTemplate ↔
-    typeScale association). ``layerPrecedence`` orders templates when
-    presentation layers stack (a view theme over a grid override): higher
-    wins, 0 is the base-layer default.
+    typeScale association). Templates carry NO layer precedence (FND-907,
+    REQ-044): layering is exactly three fixed positional layers — org
+    default → user choice → the active view's ``gridView.rowTheme`` — so
+    position, never a number, decides what wins.
     """
 
     __tablename__ = "colorTemplate"
@@ -191,7 +230,6 @@ class ColorTemplate(StructuralColumnsMixin, Base):
     contrast_guardrail_behavior: Mapped[str] = mapped_column(
         "contrastGuardrailBehavior", String(20), nullable=False, default="warn"
     )
-    layer_precedence: Mapped[int] = mapped_column("layerPrecedence", nullable=False, default=0)
 
     type_scale: Mapped[TypeScale] = relationship(back_populates="color_templates")
     # The ordered theme ↔ rule association: rules evaluate first-match-wins
@@ -212,7 +250,10 @@ class ConditionalFormattingRule(StructuralColumnsMixin, Base):
     null for the presence operators); ``conditionField`` must be a field the
     consuming view's data source exposes, API-validated like a view's
     displayed fields (REQ-019). ``effect`` names the fixed slot the rule
-    repaints (``FORMATTING_EFFECTS``) and ``effectColor`` the color applied.
+    repaints (``FORMATTING_EFFECTS``) and ``effectSlot`` the STATUS slot
+    whose template color paints it — REQ-045: effects name status slots,
+    never literal colors (FND-906), so a rule restyles WITH the theme, and
+    switching templates recolors every rule coherently.
     """
 
     __tablename__ = "conditionalFormattingRule"
@@ -245,38 +286,9 @@ class ConditionalFormattingRule(StructuralColumnsMixin, Base):
     )
     # ``FORMATTING_EFFECTS`` vocabulary — the effect enum is slot-limited.
     effect: Mapped[str] = mapped_column("effect", String(50), nullable=False)
-    effect_color: Mapped[str] = mapped_column("effectColor", String(50), nullable=False)
+    # ``STATUS_COLOR_SLOTS`` vocabulary — REQ-045: the applied color is a
+    # status slot of the owning template, never a literal value (FND-906).
+    effect_slot: Mapped[str] = mapped_column("effectSlot", String(50), nullable=False)
     evaluation_order: Mapped[int] = mapped_column("evaluationOrder", nullable=False)
 
     color_template: Mapped[ColorTemplate] = relationship(back_populates="formatting_rules")
-
-
-class RowThemeOverride(StructuralColumnsMixin, Base):
-    """The per-grid colorTemplate ↔ grid row-theme-override association (WTK-111).
-
-    At most one live override per grid: the named template replaces the
-    standard row theme for every view of that grid that does not carry its
-    own ``rowTheme`` — resolution order is the API's; this row only records
-    the association.
-    """
-
-    __tablename__ = "rowThemeOverride"
-    __table_args__ = (
-        Index(
-            "uq_rowThemeOverride_gridID_live",
-            "gridID",
-            unique=True,
-            sqlite_where=_LIVE,
-            postgresql_where=_LIVE,
-        ),
-    )
-
-    row_theme_override_id: Mapped[uuid.UUID] = mapped_column(
-        "rowThemeOverrideID", primary_key=True, default=uuid7
-    )
-    grid_id: Mapped[uuid.UUID] = mapped_column(
-        "gridID", ForeignKey("grid.gridID"), nullable=False
-    )
-    color_template_id: Mapped[uuid.UUID] = mapped_column(
-        "colorTemplateID", ForeignKey("colorTemplate.colorTemplateID"), nullable=False
-    )
