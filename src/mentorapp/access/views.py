@@ -58,9 +58,14 @@ CAP_VIEW_PROMOTE: Final = "gridView.promote"
 # boundary, deliberately not a capability (permission is inherited, never
 # per-app).
 CAP_WORKPROCESS_REGISTER: Final = "workprocess.register"
+# REQ-043: CONFIGURING the help system — the page → URL mappings and the
+# fallback settings — is the Administrator persona's act. Configuration only;
+# RESOLVING help is every signed-in user's read (Help is never hidden), so no
+# capability gates it.
+CAP_HELP_ADMIN: Final = "help.admin"
 
 ADMIN_CAPABILITIES: Final[frozenset[str]] = frozenset(
-    {CAP_DATA_SOURCE_AUTHOR, CAP_VIEW_PROMOTE, CAP_WORKPROCESS_REGISTER}
+    {CAP_DATA_SOURCE_AUTHOR, CAP_VIEW_PROMOTE, CAP_WORKPROCESS_REGISTER, CAP_HELP_ADMIN}
 )
 
 # Intrinsic baseline: what being a signed-in user MEANS (REQ-017/REQ-028).

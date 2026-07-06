@@ -33,6 +33,10 @@ identity bridge they all stand on:
   access to its target data sources — derived from the REQ-006 grant
   boundary like Areas, never a second permission table; REGISTERING one is
   the admin ``workprocess.register`` capability.
+- :mod:`~mentorapp.access.help` — HelpAdministration (WTK-102, REQ-043):
+  configuring the help system's page → URL mappings and fallback settings is
+  the admin ``help.admin`` capability; RESOLVING help is every signed-in
+  user's read — Help is never hidden, so no capability gates it.
 - :mod:`~mentorapp.access.sessions` — SessionManagement (REQ-005):
   server-side sessions behind an opaque browser reference, with in-place
   re-authentication, the dirty-window guard, and cross-window logout.
@@ -71,6 +75,10 @@ from mentorapp.access.grants import (
     roles_cover_data_source,
     run_data_source,
     run_stored_data_source,
+)
+from mentorapp.access.help import (
+    authorize_help_administration,
+    authorize_stored_help_administration,
 )
 from mentorapp.access.identity import IdentityBridge, StoredIdentityBridge, VerifiedIdentity
 from mentorapp.access.lookup_grants import (
@@ -125,6 +133,7 @@ from mentorapp.access.view_enforcement import (
 from mentorapp.access.views import (
     ADMIN_CAPABILITIES,
     CAP_DATA_SOURCE_AUTHOR,
+    CAP_HELP_ADMIN,
     CAP_LINK_SHARE,
     CAP_VIEW_APPLY_TEMPORARY,
     CAP_VIEW_MANAGE_OWN,
@@ -167,6 +176,7 @@ from mentorapp.access.workprocess import (
 __all__ = [
     "ADMIN_CAPABILITIES",
     "CAP_DATA_SOURCE_AUTHOR",
+    "CAP_HELP_ADMIN",
     "CAP_LINK_SHARE",
     "CAP_VIEW_APPLY_TEMPORARY",
     "CAP_VIEW_MANAGE_OWN",
@@ -234,8 +244,10 @@ __all__ = [
     "authorize_capability",
     "authorize_data_source",
     "authorize_data_source_authoring",
+    "authorize_help_administration",
     "authorize_lookup_search",
     "authorize_stored_data_source_authoring",
+    "authorize_stored_help_administration",
     "authorize_stored_view_management",
     "authorize_stored_view_promotion",
     "authorize_stored_workprocess_registration",

@@ -211,6 +211,21 @@ body {
   margin: 0.25rem 0.5rem;
 }
 
+/* The floating Help affordance (REQ-043): present on every main-window
+   page, fixed so it survives scroll; above panel content, below dialogs. */
+.floating-help {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 50%;
+  font-size: 1.1rem;
+  line-height: 1;
+  z-index: 10;
+  cursor: pointer;
+}
+
 .shell-boot,
 .panel-placeholder {
   padding: 0.75rem;

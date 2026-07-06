@@ -12,6 +12,7 @@ import {
   createSearchParams,
   Route,
   Routes,
+  useLocation,
   useNavigate,
   useParams,
 } from "react-router-dom";
@@ -21,6 +22,7 @@ import { HomePanel } from "../panels/home";
 import { type SessionState, userHeaders } from "../session";
 import { UrgentBanner } from "./banner";
 import { Header } from "./header";
+import { openHelp } from "./help";
 import { Navigation } from "./navigation";
 import { PanelSplitter, ResizablePanel, usePanelChrome } from "./panel-chrome";
 import type { PreferencePayload, ShellPayload } from "./payloads";
@@ -57,6 +59,7 @@ export function Shell({ session, onLoggedOut }: ShellProps): ReactElement {
     setMessagesViewedAt((current) => current + 1);
   }, []);
   const navigate = useNavigate();
+  const location = useLocation();
 
   const loadShell = useCallback((): void => {
     void callApi<ShellPayload>("/shell", { headers: userHeaders(session) })
@@ -173,6 +176,24 @@ export function Shell({ session, onLoggedOut }: ShellProps): ReactElement {
       .then(loadShell);
   };
 
+  // The shell's page identity for Help (REQ-043): the route IS the panel —
+  // /panel/:panelKey names the routed panel, everything else is the home
+  // panel. Read from the location rather than component state so the header
+  // menu and the floating icon agree with whatever the panel host shows.
+  const currentPanelKey = (): string => {
+    const routed = /^\/panel\/([^/]+)/.exec(location.pathname);
+    return routed?.[1] !== undefined
+      ? decodeURIComponent(routed[1])
+      : shell.homePanelKey;
+  };
+
+  const openPageHelp = (): void => {
+    // The one resolution path (SKL-122): mapping → pattern → home, opened in
+    // a separate tab; a generic landing's educate notice rides the shell's
+    // existing notice surface.
+    void openHelp("panel", currentPanelKey(), setNotice);
+  };
+
   const onMenuAction = (key: string): void => {
     if (key === "navigationStyle") {
       const options = shell.navigation.presentations;
@@ -183,13 +204,14 @@ export function Shell({ session, onLoggedOut }: ShellProps): ReactElement {
       }
       return;
     }
-    // Interim educate notices while these surfaces are unbuilt or unserved
-    // (Help's page→URL mapping is admin data no endpoint serves yet) —
+    if (key === "help") {
+      openPageHelp();
+      return;
+    }
+    // Interim educate notice while the preference screens are unbuilt —
     // never a dead control, never a hidden item.
     setNotice(
-      key === "help"
-        ? "No page-specific help exists yet for this panel. The help mapping is configured by administrators and hasn't shipped."
-        : "This preference screen hasn't been built yet. It arrives with a later planning item; everything else keeps working.",
+      "This preference screen hasn't been built yet. It arrives with a later planning item; everything else keeps working.",
     );
   };
 
@@ -284,6 +306,19 @@ export function Shell({ session, onLoggedOut }: ShellProps): ReactElement {
                 }}
               />
             )}
+            {/* The floating Help icon (REQ-043): on EVERY main-window page,
+                fixed so it survives scroll, resolving the same page identity
+                through the same path as the menus' Help — one mapping, one
+                resolver, never a hidden icon. */}
+            <button
+              type="button"
+              className="floating-help"
+              aria-label="Help for this page"
+              title="Help for this page"
+              onClick={openPageHelp}
+            >
+              ?
+            </button>
           </div>
         }
       />
