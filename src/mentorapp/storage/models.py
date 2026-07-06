@@ -297,7 +297,15 @@ class BackgroundJob(StructuralColumnsMixin, Base):
 # Both terminal failure statuses (failed, needsAttention) surface to the user
 # as jobFailed: needsAttention is an operator distinction, not a mentor-facing
 # one, and failure entries speak the educate voice either way.
-NOTIFICATION_TYPES: Final[tuple[str, ...]] = ("jobCompleted", "jobFailed")
+# workprocessCompleted is REQ-042's ran-long entry: a workprocess commit is
+# not a background job (it applies inside the caller's transaction), so it
+# rides the bell through the nullable jobID the model reserved for exactly
+# this kind of non-job entry.
+NOTIFICATION_TYPES: Final[tuple[str, ...]] = (
+    "jobCompleted",
+    "jobFailed",
+    "workprocessCompleted",
+)
 
 # The badge count scans only unread live rows; the trim scan only expiring ones.
 _LIVE_UNREAD = text('"deletedAt" IS NULL AND "readAt" IS NULL')

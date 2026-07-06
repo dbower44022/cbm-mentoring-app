@@ -46,6 +46,7 @@ from mentorapp.api.routers.outage import get_draft_store
 from mentorapp.api.routers.records import get_record_catalog
 from mentorapp.api.routers.shell import get_shell_catalog
 from mentorapp.api.routers.theming import get_condition_field_catalog
+from mentorapp.api.routers.workprocess import get_role_source
 from mentorapp.automation.crm_outage import InMemoryDraftStore
 from mentorapp.crm.auth import CredentialsRejectedError
 from mentorapp.main import create_app
@@ -252,6 +253,13 @@ class _SweepConditionFieldCatalog:
         return False
 
 
+class _SweepRoleSource:
+    """Grant no roles — the sweep only needs a wired backend."""
+
+    def user_roles(self, user_id: uuid.UUID) -> frozenset[str]:
+        return frozenset()
+
+
 @pytest.fixture()
 def mounted_client(session: Session) -> TestClient:
     app = create_app()
@@ -286,6 +294,9 @@ def mounted_client(session: Session) -> TestClient:
     # The condition-field catalog is fail-loud until the theming wiring binds
     # it to the grid entity catalog (WTK-120); same treatment as the seams above.
     app.dependency_overrides[get_condition_field_catalog] = _SweepConditionFieldCatalog
+    # The workprocess role source is fail-loud until session-derived roles
+    # wire it (WTK-092); same treatment as the seams above.
+    app.dependency_overrides[get_role_source] = _SweepRoleSource
     return TestClient(app, raise_server_exceptions=False)
 
 
