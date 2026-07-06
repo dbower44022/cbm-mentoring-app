@@ -315,3 +315,21 @@ with the DB (layout-standard.md); SKL-114/117 amendments are DB-only
 - REMAINING: PI-005/006/010 undispatched; held PI-002/003/011 rework needs
   a re-dispatch route for In-Review PIs with new Planned tasks
   (REQ-471-class); then release-level QA/test/ship gates.
+
+## DONE 2026-07-06 (later) — INTERACTIVE REWORK COMPLETE; PI-002/003/011 RESOLVED
+
+Doug's cost ruling: no more agent fan-out — comparison + build ran
+interactively in-session ("build as you go"). WTK-210/211/212 compared the
+built frontend against the amended standards with prototype/ as reference;
+every finding built + merged same-sitting: WTK-225 splitters+zoom
+(panelChrome pref doc, REQ-087), WTK-226 Home fill (REQ-091), WTK-227
+banding no-op (WTK-207 had it), WTK-228 duplicate pop-out route removed,
+WTK-229 docked grid preview (REQ-012), WTK-230 GET /theming/effective
+(REQ-044 L1-2; theming.templateChoice pref key named), WTK-231 frontend
+theme application + type-scale tokens (REQ-046). Delta tasks WTK-201..203
+reconciled; REQ-088 fill residual = WTK-232 on PI-010. Verified at merge
+e512f85: backend 1081, frontend 61, linters clean. **PI-002/003/011
+RESOLVED (DEC-090). Review queue empty.**
+
+REMAINING: PI-005 workprocess, PI-006 help, PI-010 mentoring domain
+(carries WTK-232) — then REL-003 release-level QA/test/ship gates.
