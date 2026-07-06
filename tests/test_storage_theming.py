@@ -24,6 +24,7 @@ from mentorapp.storage import (
     Grid,
     RowThemeOverride,
     TypeScale,
+    utcnow,
 )
 
 
@@ -133,7 +134,7 @@ def test_type_scale_name_unique_among_live_rows(session: Session) -> None:
     session.rollback()
 
     session.add(first)
-    first.soft_delete()
+    first.deleted_at = utcnow()
     session.flush()
     replacement = _scale(session)
     assert replacement.type_scale_id != first.type_scale_id
@@ -150,7 +151,7 @@ def test_system_template_names_unique_but_soft_deleted_names_reusable(
     session.rollback()
 
     session.add_all([scale, first])
-    first.soft_delete()
+    first.deleted_at = utcnow()
     session.flush()
     assert _template(session, scale).color_template_name == "Standard"
 
@@ -237,8 +238,15 @@ def test_row_theme_override_is_at_most_one_per_grid(session: Session) -> None:
     session.rollback()
 
     # Soft-deleting the live override frees the grid for a new one (DB-S3).
-    session.add_all([scale, template, grid, override])
-    override.soft_delete()
+    scale = _scale(session)
+    template = _template(session, scale)
+    grid = _grid(session)
+    corpse = RowThemeOverride(
+        grid_id=grid.grid_id, color_template_id=template.color_template_id
+    )
+    session.add(corpse)
+    session.flush()
+    corpse.deleted_at = utcnow()
     session.flush()
     replacement = RowThemeOverride(
         grid_id=grid.grid_id, color_template_id=template.color_template_id
