@@ -50,6 +50,7 @@ def seeded(session: Session) -> None:
         field_label="Name",
         required_flag=True,
         searchable_flag=True,
+        help_text="The mentor's full legal name.",
     )
     status_field = SchemaRegistry(
         entity_type="mentor",
@@ -95,6 +96,9 @@ def test_schema_endpoint_serves_live_fields_in_the_envelope(
     assert name_field["requiredFlag"] is True
     assert name_field["searchableFlag"] is True
     assert name_field["optionSet"] is None
+    # REQ-040: the field setting's help text rides the one metadata endpoint.
+    assert name_field["helpText"] == "The mentor's full legal name."
+    assert body["data"]["fields"][1]["helpText"] is None
 
 
 def test_choice_field_carries_its_option_set_inline(client: TestClient, seeded: None) -> None:
