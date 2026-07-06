@@ -1,4 +1,4 @@
-"""Form keyboard standard gate: tab cycle, initial focus, key dispatch (WTK-075)."""
+"""Form keyboard standard gate: tab cycle, initial focus, key dispatch (WTK-075, WTK-084)."""
 
 from __future__ import annotations
 
@@ -17,6 +17,8 @@ from mentorapp.ui.form_keyboard import (
     ENTER_KEY,
     ESCAPE_KEY,
     FORM_KEYBOARD_MODEL,
+    SHIFT_TAB_KEY,
+    TAB_KEY,
     ActivateFocusedControl,
     form_key,
     initial_focus,
@@ -171,3 +173,103 @@ def test_model_reads_the_owning_frames_facts() -> None:
     assert FORM_KEYBOARD_MODEL.escape_per_field_window == FIELD_EDIT_FRAME.escape == "cancel"
     assert FORM_KEYBOARD_MODEL.initial_focus == EDIT_FORM_SCREEN.initial_focus
     assert FORM_KEYBOARD_MODEL.enter == "activateFocusedControl"
+
+
+# --- WTK-084 verification pass: the REQ-038 lines WTK-075 left unexercised ----------
+
+
+def test_system_fields_take_no_tab_stop_either() -> None:
+    # The third REQ-039 kind in the cycle: name-detected system fields (the
+    # entity's own ID, structural columns) — the registry seed keeps them out
+    # of GET /schema, but the cycle must skip them even if a schema hands
+    # them over, same as computed and permission-blocked.
+    with_system = (
+        {"fieldName": "mentorID", "fieldLabel": "ID", "visibilityHints": None},
+        *SCHEMA_FIELDS,
+        {"fieldName": "modifiedAt", "fieldLabel": "Modified", "visibilityHints": None},
+    )
+    dispositions = edit_form_disposition(
+        "mentor", with_system, permission_blocks={"mentorRate": RATE_BLOCK}
+    )
+    stops = tab_order(dispositions)
+    assert [s.field_name for s in stops] == ["mentorName", "mentorPhone", "mentorNotes"]
+    # Initial focus skips the leading system field too.
+    assert initial_focus(dispositions).field_name == "mentorName"
+
+
+def test_shift_tab_walks_backwards_mid_cycle() -> None:
+    dispositions = _dispositions()
+    # Backwards past Rate's dead stop: Notes -> Phone, skipping both read-onlys.
+    assert next_tab_stop(dispositions, "mentorNotes", backwards=True).field_name == "mentorPhone"
+    assert next_tab_stop(dispositions, "mentorPhone", backwards=True).field_name == "mentorName"
+
+
+def test_shift_tab_from_outside_the_cycle_reenters_at_the_last_stop() -> None:
+    dispositions = _dispositions()
+    # Focus on a read-only element is outside the cycle in both directions:
+    # Shift+Tab re-enters at the LAST stop, mirroring Tab's first-stop rule.
+    assert (
+        next_tab_stop(dispositions, "mentorSessionCount", backwards=True).field_name
+        == "mentorNotes"
+    )
+    assert next_tab_stop(dispositions, "mentorRate", backwards=True).field_name == "mentorNotes"
+    # Forward from the permission-blocked kind (the existing gate only walks
+    # forward from the computed one).
+    assert next_tab_stop(dispositions, "mentorRate").field_name == "mentorName"
+
+
+def test_single_stop_cycle_wraps_to_itself() -> None:
+    one_editable = (
+        {
+            "fieldName": "mentorSessionCount",
+            "fieldLabel": "Sessions held",
+            "visibilityHints": {"computed": True},
+        },
+        {"fieldName": "mentorNotes", "fieldLabel": "Notes", "visibilityHints": None},
+    )
+    dispositions = edit_form_disposition("mentor", one_editable)
+    # One legitimate stop: the wrapping cycle keeps focus on it — Tab never
+    # escapes to Save, a label, or the read-only field, in either direction.
+    assert initial_focus(dispositions).field_name == "mentorNotes"
+    assert next_tab_stop(dispositions, "mentorNotes").field_name == "mentorNotes"
+    assert next_tab_stop(dispositions, "mentorNotes", backwards=True).field_name == "mentorNotes"
+
+
+def test_tab_keys_are_not_the_dispatchers() -> None:
+    # Tab/Shift+Tab resolve through next_tab_stop with the shell's focus
+    # position — form_key deliberately doesn't track focus, so both fall out
+    # as not-the-form's-key rather than a second tab-order home.
+    form = _form()
+    assert form_key(form, TAB_KEY) is None
+    assert form_key(form, SHIFT_TAB_KEY) is None
+
+
+def test_enter_on_a_clean_form_stays_clean() -> None:
+    form = _form()
+    assert isinstance(form_key(form, ENTER_KEY), ActivateFocusedControl)
+    assert not form.is_dirty()
+
+
+def test_ctrl_s_after_retyping_the_original_is_nothing_to_save() -> None:
+    # Dirty is a value comparison, never a touched flag: a field typed back
+    # to its original leaves the keyboard Save a declared no-op, no PATCH.
+    form = _form()
+    form.edit("mentorPhone", "(555) 010-9999")
+    form.edit("mentorPhone", "(555) 010-2000")
+    assert isinstance(form_key(form, SAVE_SHORTCUT), NothingToSave)
+
+
+def test_escape_after_discard_allows_leave() -> None:
+    form = _form()
+    form.edit("mentorName", "Ada L.")
+    assert isinstance(form_key(form, ESCAPE_KEY), DirtyLeaveGuard)
+    # The user confirmed the guard: the same Escape now passes, and the
+    # abandoned edit is gone from the controls.
+    form.discard()
+    assert isinstance(form_key(form, ESCAPE_KEY), LeaveAllowed)
+    assert form.value_of("mentorName") == "Ada"
+
+
+def test_model_declares_the_tab_slots() -> None:
+    assert FORM_KEYBOARD_MODEL.tab == "nextEditableField"
+    assert FORM_KEYBOARD_MODEL.shift_tab == "previousEditableField"
