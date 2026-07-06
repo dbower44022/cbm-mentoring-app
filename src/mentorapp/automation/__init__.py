@@ -11,6 +11,11 @@ concept, layered storage → automation → api:
   reclaims them when ``jobExpiresAt`` passes (WTK-141).
 - ``change_feed`` — idempotent watermark catch-up reads and the push
   transport, both at-least-once against consumers that dedup on entry ID.
+- ``crm_outage`` — the REQ-064 outage processes (WTK-153):
+  crm_outage_degradation (reads say "unavailable since/because" or serve a
+  snapshot labelled stale — never empty, never stale-as-fresh, behind a
+  consecutive-failure breaker) and crm_draft_preservation (in-progress work
+  upserted locally as one draft per author+target while the CRM is down).
 - ``normalization`` — the shared normalization services (match equality,
   phone/name/address parsing, postal lookup, shadow-column values) feeding
   validation and the duplicate match columns.
@@ -37,6 +42,27 @@ from mentorapp.automation.change_feed import (
     read_changes_since,
     sync_change_feed,
     watermark_of,
+)
+from mentorapp.automation.crm_outage import (
+    CrmAvailability,
+    CrmHealthMonitor,
+    CrmReadResult,
+    CrmSnapshot,
+    DraftKey,
+    DraftPreserved,
+    DraftStore,
+    FreshRead,
+    InMemoryDraftStore,
+    PreservedDraft,
+    StaleRead,
+    SubmitAccepted,
+    SubmitOutcome,
+    UnavailableRead,
+    degraded_crm_read,
+    discard_draft,
+    preserve_draft,
+    recoverable_drafts,
+    submit_or_preserve,
 )
 from mentorapp.automation.normalization import (
     ParsedAddress,
@@ -77,9 +103,18 @@ __all__ = [
     "PRINT_RETENTION",
     "RETENTION_TRIM_JOB_TYPE",
     "ArtifactStore",
+    "CrmAvailability",
+    "CrmHealthMonitor",
+    "CrmReadResult",
+    "CrmSnapshot",
+    "DraftKey",
+    "DraftPreserved",
+    "DraftStore",
     "FeedPushTransport",
     "FeedSyncError",
     "FeedWatermark",
+    "FreshRead",
+    "InMemoryDraftStore",
     "JobHandler",
     "JobOutcome",
     "ParsedAddress",
@@ -87,9 +122,16 @@ __all__ = [
     "PermanentJobError",
     "PostalReferenceRow",
     "PostalRefreshResult",
+    "PreservedDraft",
+    "StaleRead",
+    "SubmitAccepted",
+    "SubmitOutcome",
+    "UnavailableRead",
     "artifact_retention_trim_job",
     "claim_next_job",
     "complete_job",
+    "degraded_crm_read",
+    "discard_draft",
     "enqueue_job",
     "export_job_handler",
     "fail_job",
@@ -101,12 +143,15 @@ __all__ = [
     "parse_street_address",
     "postal_lookup",
     "postal_reference_refresh_job",
+    "preserve_draft",
     "print_job_handler",
     "process_next_job",
     "read_changes_since",
+    "recoverable_drafts",
     "refresh_postal_reference",
     "retry_backoff",
     "run_worker_pass",
+    "submit_or_preserve",
     "sync_change_feed",
     "trim_expired_artifacts",
     "watermark_of",
