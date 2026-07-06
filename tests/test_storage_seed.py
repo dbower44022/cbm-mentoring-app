@@ -33,7 +33,11 @@ class Mentee(BaseEntity):
         nullable=False,
         info={"registry": {"searchableFlag": True}},
     )
-    mentee_email: Mapped[str | None] = mapped_column("menteeEmail", String(320))
+    mentee_email: Mapped[str | None] = mapped_column(
+        "menteeEmail",
+        String(320),
+        info={"registry": {"helpText": "Where session summaries are sent."}},
+    )
     # A built-in choice field: the column stores the optionValueID (DB-S7);
     # set and seed values are declared with the column, in the same change-set.
     mentee_status: Mapped[uuid.UUID | None] = mapped_column(
@@ -76,6 +80,13 @@ def test_definitions_derive_from_columns_and_info() -> None:
     assert by_name["menteeEmail"].required_flag is False
     assert by_name["menteeCapacity"].field_type == "number"
     assert by_name["menteeCapacity"].required_flag is False  # defaulted column
+    # REQ-033: a scalar column default IS the form default; a callable key
+    # default (uuid7) is generation logic, not a field setting.
+    assert by_name["menteeCapacity"].default_value == 0
+    assert by_name["menteeID"].default_value is None
+    # REQ-040: help text comes only from the column-site declaration.
+    assert by_name["menteeEmail"].help_text == "Where session summaries are sent."
+    assert by_name["menteeName"].help_text is None
     status = by_name["menteeStatus"]
     assert status.field_type == "choice"  # derived from the optionSet declaration
     assert status.field_label == "Status"
@@ -91,6 +102,23 @@ def test_unknown_info_key_is_rejected() -> None:
     bad = Column("menteeGhost", String(10), info={"registry": {"serchableFlag": True}})
     with pytest.raises(RegistrySeedError, match="serchableFlag"):
         built_in_field_from_column("Mentee", bad)
+
+
+def test_explicit_default_value_overrides_the_column_default() -> None:
+    declared = Column(
+        "menteeNickname",
+        String(50),
+        default="friend",
+        info={"registry": {"defaultValue": "buddy", "helpText": "Shown in greetings."}},
+    )
+    spec = built_in_field_from_column("Mentee", declared)
+    assert spec.default_value == "buddy"
+    assert spec.help_text == "Shown in greetings."
+    # Explicit None is a deliberate "no default", not an omission.
+    cleared = Column(
+        "menteeNickname", String(50), default="friend", info={"registry": {"defaultValue": None}}
+    )
+    assert built_in_field_from_column("Mentee", cleared).default_value is None
 
 
 def test_option_values_require_a_set() -> None:
@@ -118,6 +146,9 @@ def test_seed_inserts_rows_wires_option_sets_and_satisfies_drift_check(
         ("active", "Active"),
         ("inactive", "Inactive"),
     }
+    # The persisted rows carry the field settings (REQ-033/REQ-040).
+    assert rows["menteeCapacity"].default_value == 0
+    assert rows["menteeEmail"].help_text == "Where session summaries are sent."
     # The seeded registry and the actual schema agree — startup would pass.
     assert schema_drift_findings(session) == []
 
@@ -138,6 +169,8 @@ def test_seed_restores_drifted_metadata(session: Session) -> None:
     row = _mentee_rows(session)["menteeName"]
     row.field_label = "Wrong Label"
     row.searchable_flag = False
+    row.default_value = "drifted"
+    row.help_text = "hand-edited help"
     session.commit()
 
     result = seed_built_in_registry(session, [Mentee])
@@ -145,6 +178,8 @@ def test_seed_restores_drifted_metadata(session: Session) -> None:
     refreshed = _mentee_rows(session)["menteeName"]
     assert refreshed.field_label == "Mentee Name"
     assert refreshed.searchable_flag
+    assert refreshed.default_value is None
+    assert refreshed.help_text is None
 
 
 def test_seed_retires_rows_for_removed_columns(session: Session) -> None:

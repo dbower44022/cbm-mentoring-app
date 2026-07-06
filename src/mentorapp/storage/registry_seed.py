@@ -4,7 +4,7 @@ The data-model standard requires built-in fields' registry rows to be seeded
 from source-controlled definitions in the same change-set that adds the
 column, with startup failing on drift (REQ-050, REQ-051). Here the mapped
 column IS the source-controlled definition: per-field registry metadata
-(label, type, flags, option set) is declared at the column site via
+(label, type, flags, default, help text, option set) is declared at the column site via
 ``mapped_column(..., info={"registry": {...}})``, so a column and its registry
 row can never land in different change-sets. ``seed_built_in_registry``
 reconciles the live registry against those definitions at schema-creation/
@@ -57,6 +57,8 @@ _ALLOWED_INFO_KEYS: Final[frozenset[str]] = frozenset(
         "fieldType",
         "fieldLabel",
         "requiredFlag",
+        "defaultValue",
+        "helpText",
         "historyTrackedFlag",
         "searchableFlag",
         "optionSet",
@@ -84,6 +86,8 @@ class BuiltInField:
     option_set_name: str | None
     option_values: tuple[tuple[str, str], ...]
     visibility_hints: dict[str, Any] | None
+    default_value: Any | None = None
+    help_text: str | None = None
     # DB-R2b's sanctioned duplicate: this column is a foreign key carrying the
     # identical name as the primary key it references (e.g. sessionLog's
     # crmEngagementRefID). The one case where a fieldName may appear on more
@@ -138,6 +142,14 @@ def _derived_field_type(column: Column[Any]) -> str:
     )
 
 
+def _derived_default_value(column: Column[Any]) -> Any | None:
+    # Only a scalar constant is a form default (REQ-033); callable defaults
+    # (uuid7, utcnow, dict) are generation logic the registry cannot represent.
+    if column.default is not None and column.default.is_scalar:
+        return column.default.arg
+    return None
+
+
 def built_in_field_from_column(entity_type: str, column: Column[Any]) -> BuiltInField:
     """Derive one column's registry definition, honoring its ``info['registry']``.
 
@@ -179,6 +191,12 @@ def built_in_field_from_column(entity_type: str, column: Column[Any]) -> BuiltIn
         option_set_name=option_set_name,
         option_values=option_values,
         visibility_hints=info.get("visibilityHints"),
+        # An explicit declaration wins even when it is None — "no default" is
+        # a deliberate override of the column's own default.
+        default_value=(
+            info["defaultValue"] if "defaultValue" in info else _derived_default_value(column)
+        ),
+        help_text=str(info["helpText"]) if "helpText" in info else None,
         r2b_reappearance=_r2b_reappearance(column),
     )
 
@@ -252,6 +270,8 @@ def _apply(row: SchemaRegistry, spec: BuiltInField, option_set_id: uuid.UUID | N
         "field_type": spec.field_type,
         "field_label": spec.field_label,
         "required_flag": spec.required_flag,
+        "default_value": spec.default_value,
+        "help_text": spec.help_text,
         "history_tracked_flag": spec.history_tracked_flag,
         "searchable_flag": spec.searchable_flag,
         "option_set_id": option_set_id,
@@ -333,6 +353,8 @@ def seed_built_in_registry(
                     field_type=spec.field_type,
                     field_label=spec.field_label,
                     required_flag=spec.required_flag,
+                    default_value=spec.default_value,
+                    help_text=spec.help_text,
                     history_tracked_flag=spec.history_tracked_flag,
                     searchable_flag=spec.searchable_flag,
                     option_set_id=option_set_id,
