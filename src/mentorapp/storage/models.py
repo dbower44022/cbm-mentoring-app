@@ -129,6 +129,10 @@ class SchemaRegistry(StructuralColumnsMixin, Base):
     exception. ``fieldType`` and ``validationRules`` are typed/validated by
     the API layer against this registry — the database holds no enum of
     types (DB-S7).
+
+    The row IS the field setting (REQ-033, REQ-040): ``requiredFlag``,
+    ``validationRules``, ``defaultValue``, and ``helpText`` are the single
+    authority every form applies — never per-form hand rules.
     """
 
     __tablename__ = "schemaRegistry"
@@ -166,6 +170,16 @@ class SchemaRegistry(StructuralColumnsMixin, Base):
     validation_rules: Mapped[dict[str, Any] | None] = mapped_column(
         "validationRules", JsonValue, default=None
     )
+    # What pre-populates the field on a new record (REQ-033). JSON so every
+    # fieldType's default is representable; typed against fieldType by the
+    # API layer, exactly like validationRules. No mapped default on these two
+    # (unlike their siblings): an explicit default puts the column in every
+    # ORM INSERT, and the registry seed must be able to run mid-migration-
+    # chain against a schemaRegistry table that predates 0008.
+    default_value: Mapped[Any | None] = mapped_column("defaultValue", JsonValue)
+    # Admin-maintained field-level help, surfaced on hover/focus (REQ-040) —
+    # content lives here, never hardcoded in a form.
+    help_text: Mapped[str | None] = mapped_column("helpText", String(2000))
     # Null for non-choice fields; choice fields (built-in or custom) point at their set.
     option_set_id: Mapped[uuid.UUID | None] = mapped_column(
         "optionSetID", ForeignKey("optionSet.optionSetID"), default=None

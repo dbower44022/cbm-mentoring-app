@@ -4,7 +4,7 @@ The data-model standard requires built-in fields' registry rows to be seeded
 from source-controlled definitions in the same change-set that adds the
 column, with startup failing on drift (REQ-050, REQ-051). Here the mapped
 column IS the source-controlled definition: per-field registry metadata
-(label, type, flags, option set) is declared at the column site via
+(label, type, flags, default, help text, option set) is declared at the column site via
 ``mapped_column(..., info={"registry": {...}})``, so a column and its registry
 row can never land in different change-sets. ``seed_built_in_registry``
 reconciles the live registry against those definitions at schema-creation/
@@ -38,10 +38,11 @@ from sqlalchemy import (
     Numeric,
     String,
     Uuid,
+    insert,
     inspect,
     select,
 )
-from sqlalchemy.orm import Mapper, Session
+from sqlalchemy.orm import Mapper, Session, defer
 
 from mentorapp.observability import get_logger
 from mentorapp.storage.base import utcnow
@@ -57,6 +58,8 @@ _ALLOWED_INFO_KEYS: Final[frozenset[str]] = frozenset(
         "fieldType",
         "fieldLabel",
         "requiredFlag",
+        "defaultValue",
+        "helpText",
         "historyTrackedFlag",
         "searchableFlag",
         "optionSet",
@@ -84,6 +87,8 @@ class BuiltInField:
     option_set_name: str | None
     option_values: tuple[tuple[str, str], ...]
     visibility_hints: dict[str, Any] | None
+    default_value: Any | None = None
+    help_text: str | None = None
     # DB-R2b's sanctioned duplicate: this column is a foreign key carrying the
     # identical name as the primary key it references (e.g. sessionLog's
     # crmEngagementRefID). The one case where a fieldName may appear on more
@@ -138,6 +143,14 @@ def _derived_field_type(column: Column[Any]) -> str:
     )
 
 
+def _derived_default_value(column: Column[Any]) -> Any | None:
+    # Only a scalar constant is a form default (REQ-033); callable defaults
+    # (uuid7, utcnow, dict) are generation logic the registry cannot represent.
+    if column.default is not None and column.default.is_scalar:
+        return column.default.arg
+    return None
+
+
 def built_in_field_from_column(entity_type: str, column: Column[Any]) -> BuiltInField:
     """Derive one column's registry definition, honoring its ``info['registry']``.
 
@@ -179,6 +192,12 @@ def built_in_field_from_column(entity_type: str, column: Column[Any]) -> BuiltIn
         option_set_name=option_set_name,
         option_values=option_values,
         visibility_hints=info.get("visibilityHints"),
+        # An explicit declaration wins even when it is None — "no default" is
+        # a deliberate override of the column's own default.
+        default_value=(
+            info["defaultValue"] if "defaultValue" in info else _derived_default_value(column)
+        ),
+        help_text=str(info["helpText"]) if "helpText" in info else None,
         r2b_reappearance=_r2b_reappearance(column),
     )
 
@@ -246,23 +265,49 @@ def _ensure_option_set(session: Session, spec: BuiltInField) -> uuid.UUID:
     return option_set.option_set_id
 
 
-def _apply(row: SchemaRegistry, spec: BuiltInField, option_set_id: uuid.UUID | None) -> bool:
-    wanted: dict[str, Any] = {
+def _row_values(spec: BuiltInField, option_set_id: uuid.UUID | None) -> dict[str, Any]:
+    return {
         "entity_type": spec.entity_type,
         "field_type": spec.field_type,
         "field_label": spec.field_label,
         "required_flag": spec.required_flag,
+        "default_value": spec.default_value,
+        "help_text": spec.help_text,
         "history_tracked_flag": spec.history_tracked_flag,
         "searchable_flag": spec.searchable_flag,
         "option_set_id": option_set_id,
         "visibility_hints": spec.visibility_hints,
     }
+
+
+def _apply(
+    row: SchemaRegistry,
+    spec: BuiltInField,
+    option_set_id: uuid.UUID | None,
+    skip: frozenset[str],
+) -> bool:
     changed = False
-    for attr, value in wanted.items():
-        if getattr(row, attr) != value:
+    for attr, value in _row_values(spec, option_set_id).items():
+        if attr not in skip and getattr(row, attr) != value:
             setattr(row, attr, value)
             changed = True
     return changed
+
+
+def _missing_registry_attrs(session: Session) -> frozenset[str]:
+    # The seed runs inside migrations, where the live ORM can be ahead of the
+    # schemaRegistry table's mid-chain shape (a later migration adds registry
+    # columns — 0008's defaultValue/helpText). Attributes whose column does
+    # not exist yet are deferred and left unwritten; the migration that adds
+    # the column reseeds and reconciles them (REQ-050).
+    actual = {
+        column["name"]
+        for column in inspect(session.get_bind()).get_columns(SchemaRegistry.__tablename__)
+    }
+    mapper: Mapper[SchemaRegistry] = inspect(SchemaRegistry)
+    return frozenset(
+        prop.key for prop in mapper.column_attrs if prop.columns[0].name not in actual
+    )
 
 
 def seed_built_in_registry(
@@ -289,9 +334,13 @@ def seed_built_in_registry(
     if duplicates:
         raise RegistrySeedError(f"built-in field names collide across entities: {duplicates}")
 
-    live_rows = session.scalars(
-        select(SchemaRegistry).where(SchemaRegistry.deleted_at.is_(None))
-    ).all()
+    missing_attrs = _missing_registry_attrs(session)
+    live_stmt = select(SchemaRegistry).where(SchemaRegistry.deleted_at.is_(None))
+    if missing_attrs:
+        live_stmt = live_stmt.options(
+            *(defer(getattr(SchemaRegistry, key)) for key in sorted(missing_attrs))
+        )
+    live_rows = session.scalars(live_stmt).all()
     built_in_rows = {
         (row.entity_type, row.field_name): row for row in live_rows if not row.user_defined_flag
     }
@@ -326,21 +375,18 @@ def seed_built_in_registry(
         )
         row = built_in_rows.get((spec.entity_type, spec.field_name))
         if row is None:
-            session.add(
-                SchemaRegistry(
-                    entity_type=spec.entity_type,
-                    field_name=spec.field_name,
-                    field_type=spec.field_type,
-                    field_label=spec.field_label,
-                    required_flag=spec.required_flag,
-                    history_tracked_flag=spec.history_tracked_flag,
-                    searchable_flag=spec.searchable_flag,
-                    option_set_id=option_set_id,
-                    visibility_hints=spec.visibility_hints,
-                )
-            )
+            values = {
+                attr: value
+                for attr, value in _row_values(spec, option_set_id).items()
+                if attr not in missing_attrs
+            }
+            # insert() rather than session.add(): a flushed instance names
+            # every unset non-JSON column as an explicit NULL, which breaks
+            # against a mid-chain table missing those columns; the statement
+            # renders only the provided values plus column defaults.
+            session.execute(insert(SchemaRegistry).values(field_name=spec.field_name, **values))
             inserted.append(spec.field_name)
-        elif _apply(row, spec, option_set_id):
+        elif _apply(row, spec, option_set_id, missing_attrs):
             updated.append(spec.field_name)
 
     retired: list[str] = []
