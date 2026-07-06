@@ -63,7 +63,7 @@ export function NotificationBell(): ReactElement {
           {dropdown.entries.length === 0 ? (
             <p>Nothing new. Completed background tasks and alerts will appear here.</p>
           ) : (
-            <ul>
+            <ul className="bell-entries">
               {dropdown.entries.map((entry) => (
                 <li key={entry.notificationID}>
                   {entry.notificationMessage}{" "}

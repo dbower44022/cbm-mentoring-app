@@ -45,7 +45,7 @@ function MessagesDashlet({
     return <p>No messages from your administrator right now.</p>;
   }
   return (
-    <div>
+    <div className="message-list">
       {items.map((message) => (
         <AdminMessageView
           key={message.messageKey}
