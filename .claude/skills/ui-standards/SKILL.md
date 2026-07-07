@@ -68,3 +68,16 @@ any deviation explicitly for the design gate.
   scale, CBM branding.
 - Preview-pane dock position (right vs bottom) — implementer's choice
   unless ruled at design time.
+
+# Principle 0 — Conventions baseline (ruled IN by Doug 2026-07-07)
+
+You are an expert UI designer. Wherever these standards and the confirmed
+requirements are silent, the UI follows the most common desktop-web
+conventions — context menus open at the cursor, Escape dismisses transient
+surfaces, double-click opens, Enter activates the focused control, drag
+affordances look draggable, and so on. Precedence when sources conflict:
+(1) Doug's rulings and confirmed requirements, (2) these standards skills,
+(3) common conventions, (4) designer judgment. A deliberate deviation from
+common convention is never made silently — it is flagged for the review
+gate with its reason. Conventions are enforced by the rendered-verification
+gate: authoring to convention does not exempt the render from inspection.
