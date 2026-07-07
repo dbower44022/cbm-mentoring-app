@@ -34,7 +34,7 @@ from sqlalchemy.orm import Session
 
 from mentorapp.observability import get_logger
 from mentorapp.storage.adminsql import AdminSqlSource, execute_admin_sql
-from mentorapp.storage.columns import ColumnSpec
+from mentorapp.storage.columns import ColumnSpec, FormattingRuleSpec
 
 log = get_logger(__name__)
 
@@ -60,6 +60,47 @@ ENGAGEMENT_TRIAGE_COLUMNS: Final[tuple[ColumnSpec, ...]] = (
     ColumnSpec("nextSessionAt", column_format="datetime", label="Next Session"),
     ColumnSpec("totalSessions", column_format="number"),
     ColumnSpec("openActionItems", column_format="number"),
+)
+
+# The triage views' conditional formatting (FND-909 D7, REQ-045): status
+# values render as slot-colored chips, never plain text. Every rule
+# conditions on the decoded status label with a standard operator and paints
+# with one of the FIXED three status slots — the prototype's five chip
+# visuals map honestly onto that structure (no new slots): Pending
+# Acceptance and On Hold both want attention (statusWarning); Assigned and
+# Active are the healthy states (statusPositive); Dormant and Assignment
+# Declined are the gone-quiet/negative outcomes (statusNegative). The
+# per-status tint differences the prototype drew from five ad-hoc variables
+# collapse into the slot's one color — that is REQ-045's deal: effects name
+# status slots, so switching templates recolors every rule coherently.
+#
+# ``effect="accent"`` is the reconciled vocabulary's reading of REQ-045's
+# "small status icon": FORMATTING_EFFECTS carries no chip/statusIcon kind —
+# its row effects repaint whole-row surfaces, and ``accent`` is the one
+# effect that paints a SMALL in-cell visual rather than the row. The client
+# renders it as the prototype's chip (rounded, bordered, slot-colored text
+# over a slot-derived tint) on the condition field's cell, which is the
+# faithful rendering of "small status icon" + the approved prototype's
+# chips without minting a new effect kind.
+#
+# Declared order is evaluation order (first-match-wins); equals-conditions
+# on one field are mutually exclusive, so the order here simply follows the
+# triage rank for readability.
+ENGAGEMENT_TRIAGE_FORMATTING_RULES: Final[tuple[FormattingRuleSpec, ...]] = (
+    FormattingRuleSpec(
+        "engagementStatusLabel", "equals", "Pending Acceptance", "accent", "statusWarning"
+    ),
+    FormattingRuleSpec(
+        "engagementStatusLabel", "equals", "Assigned", "accent", "statusPositive"
+    ),
+    FormattingRuleSpec("engagementStatusLabel", "equals", "Active", "accent", "statusPositive"),
+    FormattingRuleSpec("engagementStatusLabel", "equals", "On Hold", "accent", "statusWarning"),
+    FormattingRuleSpec(
+        "engagementStatusLabel", "equals", "Dormant", "accent", "statusNegative"
+    ),
+    FormattingRuleSpec(
+        "engagementStatusLabel", "equals", "Assignment Declined", "accent", "statusNegative"
+    ),
 )
 
 # Per-engagement session rollup over the live rows the view serves.

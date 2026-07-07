@@ -54,6 +54,12 @@ from mentorapp.storage import (
     seed_built_in_registry,
     utcnow,
 )
+from mentorapp.storage.mentoring import ENGAGEMENT_STATUS_VALUES
+from mentorapp.storage.theming import (
+    CONDITION_OPERATORS,
+    FORMATTING_EFFECTS,
+    STATUS_COLOR_SLOTS,
+)
 from mentorapp.ui.home_panel import STARTUP_PREFERENCE_KEY
 
 _PAST = datetime(2026, 1, 10, 15, 0, tzinfo=UTC)
@@ -202,6 +208,53 @@ def test_engagements_panel_serves_the_landing_view(
     assert formats["lastSessionAt"] == "datetime"
     assert formats["nextSessionAt"] == "datetime"
     assert formats["totalSessions"] == "number"
+
+
+def test_engagements_panel_serves_the_seeded_formatting_rules(
+    app_client: TestClient, seeded: dict[str, uuid.UUID]
+) -> None:
+    """The view's REQ-045 rules ride the panel payload (FND-909 D7).
+
+    Status values must render as slot-colored chips, never plain text, so
+    the grid payload carries the triage views' seeded rules in declared
+    order (= first-match-wins evaluation order), each conditioning on the
+    status label with a standard operator and painting a FIXED status slot,
+    never a literal color (FND-906).
+    """
+    data = app_client.get(
+        "/panels/engagements/grid", headers=_headers(seeded["mentorA"])
+    ).json()["data"]
+    rules = data["formattingRules"]
+    assert [(r["conditionValue"], r["effectSlot"]) for r in rules] == [
+        ("Pending Acceptance", "statusWarning"),
+        ("Assigned", "statusPositive"),
+        ("Active", "statusPositive"),
+        ("On Hold", "statusWarning"),
+        ("Dormant", "statusNegative"),
+        ("Assignment Declined", "statusNegative"),
+    ]
+    # Every seeded status label carries a rule — no engagement status is
+    # left rendering as D7's plain text — and every rule speaks the
+    # persisted vocabularies verbatim (one home: storage.theming).
+    assert {r["conditionValue"] for r in rules} == {
+        label for _, label in ENGAGEMENT_STATUS_VALUES
+    }
+    for rule in rules:
+        assert rule["conditionField"] == "engagementStatusLabel"
+        assert rule["conditionOperator"] in CONDITION_OPERATORS
+        assert rule["effect"] in FORMATTING_EFFECTS
+        assert rule["effectSlot"] in STATUS_COLOR_SLOTS
+    # Leadership's "All Engagements" reads the same triage projection, so
+    # its source declares the SAME rules — the two views cannot drift.
+    lead_data = app_client.get(
+        "/panels/engagements/grid", headers=_headers(seeded["lead"])
+    ).json()["data"]
+    assert lead_data["formattingRules"] == rules
+    # A source with no declared rules serves an empty list, not a missing key.
+    contacts = app_client.get(
+        "/panels/contacts/grid", headers=_headers(seeded["mentorA"])
+    ).json()["data"]
+    assert contacts["formattingRules"] == []
 
 
 def test_leadership_sees_both_engagement_views(
