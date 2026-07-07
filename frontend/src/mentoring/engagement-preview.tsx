@@ -16,14 +16,7 @@
  * reference); this component only measures.
  */
 
-import {
-  type ReactElement,
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-} from "react";
+import { type ReactElement, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { useEnvelope } from "../api/useEnvelope";
@@ -86,18 +79,22 @@ function LoadedPreview({ data }: { data: EngagementRollupPayload }): ReactElemen
 
   // The REQ-088 fill pass: after each render, measure; while free space
   // remains and more rollup exists, grow by one and measure again — the
-  // converged state is "visually full", never a fixed count.
-  const measureAndGrow = useCallback((): void => {
+  // converged state is "visually full", never a fixed count. A SETTLED
+  // measurement schedules no update at all (not even a bailed-out one):
+  // scheduling one every pass kept the commit-phase update counter climbing
+  // and React threw "Maximum update depth exceeded" the first time a rollup
+  // had real entries — the loop must terminate by NOT calling setFill.
+  useLayoutEffect(() => {
     const pane = paneRef.current;
     if (pane === null) {
       return;
     }
     // +2 tolerates sub-pixel rounding, exactly the prototype's fill pass.
     const fits = pane.scrollHeight <= pane.clientHeight + 2;
-    setFill((current) => (fillSettled(current, fits) ? current : grow(current, fits)));
-  }, []);
-
-  useLayoutEffect(measureAndGrow, [measureAndGrow, fill]);
+    if (!fillSettled(fill, fits)) {
+      setFill(grow(fill, fits));
+    }
+  }, [fill]);
 
   // Re-fill on resize (REQ-088): restart from the floor so a SHRUNK pane
   // sheds entries too, then the grow loop re-converges.
