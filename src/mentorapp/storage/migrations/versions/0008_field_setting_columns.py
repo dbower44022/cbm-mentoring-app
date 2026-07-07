@@ -23,8 +23,8 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import Session
 
-from mentorapp.storage.crm_refs import CrmClientRef, CrmEngagementRef, CrmMentorRef
-from mentorapp.storage.mentoring import MeetingNote, NextStep, ProgressGoal, SessionLog
+from mentorapp.storage.crm_refs import CrmCompanyRef, CrmMentorRef
+from mentorapp.storage.mentoring import ProgressGoal
 from mentorapp.storage.registry_seed import seed_built_in_registry
 
 revision = "0008"
@@ -37,14 +37,13 @@ _JSON_OBJECT = sa.JSON().with_variant(postgresql.JSONB(), "postgresql")
 
 # Explicit list, never a Base.registry sweep: under pytest the shared Base
 # also carries throwaway test entities that must not be seeded here.
+# PI-010 note (0014): the list names the classes 0006/0007 now seed — the
+# entities 0014 renamed or retired reconcile their new metadata at 0014's
+# own seed instead.
 _SEEDED_ENTITIES = (
-    CrmClientRef,
-    CrmEngagementRef,
+    CrmCompanyRef,
     CrmMentorRef,
-    MeetingNote,
-    NextStep,
     ProgressGoal,
-    SessionLog,
 )
 
 

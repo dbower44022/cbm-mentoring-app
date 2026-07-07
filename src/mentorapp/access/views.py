@@ -68,6 +68,21 @@ ADMIN_CAPABILITIES: Final[frozenset[str]] = frozenset(
     {CAP_DATA_SOURCE_AUTHOR, CAP_VIEW_PROMOTE, CAP_WORKPROCESS_REGISTER, CAP_HELP_ADMIN}
 )
 
+# REQ-084/REQ-085 (WTK-166/WTK-175): MAINTAINING the resource library and
+# DEFINING events are staff acts, granted per user like the admin
+# capabilities but deliberately outside ADMIN_CAPABILITIES — holding them
+# must not move a staff member toward the admin persona label, and the admin
+# persona must not require them. Reading resources and events stays the
+# REQ-006 data-source boundary; mentors hold neither key, which is what
+# "read-only to mentors" means here.
+CAP_RESOURCE_MANAGE: Final = "resource.manage"
+CAP_EVENT_MANAGE: Final = "event.manage"
+
+STAFF_CAPABILITIES: Final[frozenset[str]] = frozenset({CAP_RESOURCE_MANAGE, CAP_EVENT_MANAGE})
+
+# Every capability a persisted accessGrant row can mean something as.
+GRANTABLE_CAPABILITIES: Final[frozenset[str]] = ADMIN_CAPABILITIES | STAFF_CAPABILITIES
+
 # Intrinsic baseline: what being a signed-in user MEANS (REQ-017/REQ-028).
 # Named so surfaces and tests can speak about them, but never stored — a
 # baseline row could be revoked, and these must not be revocable.
@@ -104,11 +119,11 @@ PERMISSION_REFUSAL: Final = "permission_refusal"
 def effective_capabilities(held_grant_keys: frozenset[str]) -> frozenset[str]:
     """Baseline plus the user's persisted admin grants.
 
-    Intersecting with :data:`ADMIN_CAPABILITIES` means a stray or retired
+    Intersecting with :data:`GRANTABLE_CAPABILITIES` means a stray or retired
     ``accessGrantKey`` in storage grants nothing here — the vocabulary is
     app-validated, so this module, not the row, decides what a key can mean.
     """
-    return USER_BASELINE_CAPABILITIES | (held_grant_keys & ADMIN_CAPABILITIES)
+    return USER_BASELINE_CAPABILITIES | (held_grant_keys & GRANTABLE_CAPABILITIES)
 
 
 def persona_for(held_grant_keys: frozenset[str]) -> str:

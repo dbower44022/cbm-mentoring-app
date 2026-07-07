@@ -12,8 +12,10 @@ prep-surface resize session — restore, drag larger, drag smaller past the
 floors, drag back — consumes the panel's height at every stop and never
 leaves a fixed-height box above idle space.
 
-MeetingNote is the narrative guinea pig as in ``test_storage_mentoring`` —
-the routing is registry-type-driven; nothing here is note-specific.
+The session's notes field is the narrative guinea pig as in
+``test_storage_mentoring`` — the routing is registry-type-driven; nothing
+here is session-specific. (PI-010 reconciled the narrative set onto the
+session/engagement fields; the journeys are unchanged in shape.)
 """
 
 from __future__ import annotations
@@ -29,10 +31,9 @@ from mentorapp.api.deps import get_session
 from mentorapp.api.field_edit import CommitSingleField, FieldEditors
 from mentorapp.main import create_app
 from mentorapp.storage import (
-    MeetingNote,
-    NextStep,
+    Engagement,
+    MentoringSession,
     ProgressGoal,
-    SessionLog,
     seed_built_in_registry,
 )
 from mentorapp.ui.entry_editors import (
@@ -43,12 +44,11 @@ from mentorapp.ui.entry_editors import (
 )
 from mentorapp.ui.field_edit_window import OpenFieldWindow, open_from_double_click
 
-NARRATIVE_ENTITIES = (MeetingNote, NextStep, ProgressGoal, SessionLog)
+NARRATIVE_ENTITIES = (Engagement, MentoringSession, ProgressGoal)
 NARRATIVE_FIELDS = {
-    "meetingNote": "meetingNoteBody",
-    "nextStep": "nextStepDescription",
+    "engagement": "engagementSummary",
+    "session": "sessionNotes",
     "progressGoal": "progressGoalDescription",
-    "sessionLog": "sessionLogSummary",
 }
 
 # What survives a high-fidelity paste from Word/email (REQ-090's acceptance
@@ -90,18 +90,18 @@ def test_pasted_word_content_travels_as_clean_html_from_schema_to_patch(
     # served type to THE rich-text control; the pasted formatting, list, and
     # link pass settings-driven validation and land in the single-field
     # PATCH byte for byte — no step downgrades or strips the markup.
-    spec = _served_field(client, "meetingNote", "meetingNoteBody")
+    spec = _served_field(client, "session", "sessionNotes")
     assert spec["fieldType"] == "richText"
 
     record: dict[str, Any] = {
-        "meetingNoteID": "0197-note-1",
-        "meetingNoteBody": "<p>First draft.</p>",
+        "sessionID": "0197-session-1",
+        "sessionNotes": "<p>First draft.</p>",
         "rowVersion": 3,
         "modifiedAt": "2026-07-05T00:00:03Z",
         "modifiedBy": "someone-else",
     }
     editors = FieldEditors()
-    window = open_from_double_click(editors, "w1", "meetingNote", spec, record)
+    window = open_from_double_click(editors, "w1", "session", spec, record)
     assert isinstance(window, OpenFieldWindow)
     assert window.control is RICH_TEXT_CONTROL
     # The control's paste contract covers the sources the requirement names.
@@ -114,10 +114,10 @@ def test_pasted_word_content_travels_as_clean_html_from_schema_to_patch(
     editors.edit_value("w1", PASTED_FROM_WORD)
     outcome = editors.request_save("w1")
     assert isinstance(outcome, CommitSingleField)
-    assert outcome.payload == {"meetingNoteBody": PASTED_FROM_WORD, "rowVersion": 3}
+    assert outcome.payload == {"sessionNotes": PASTED_FROM_WORD, "rowVersion": 3}
     # Formatting, list, and link survived the whole journey intact.
     for markup in ("<strong>", "<ul>", "<a href="):
-        assert markup in outcome.payload["meetingNoteBody"]
+        assert markup in outcome.payload["sessionNotes"]
 
 
 def test_every_served_rich_text_entry_point_resolves_to_the_one_control(
