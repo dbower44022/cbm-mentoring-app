@@ -347,3 +347,20 @@ content, educate voice). Cluster 1 (D3/D4/D5/D6) fixed screenshot-verified
 same night (42f6673). THE systemic E2E lesson: traceability without
 matched-instrument verification is not governance. Continue via
 prompts/conformance-session.md.
+
+## DONE 2026-07-07 — CONFORMANCE COMPLETE; ALL 11 PIs RESOLVED (DEC-094)
+
+Five-cluster FND-909 sweep fixed + rendered-verified (13 defects); five
+same-day rulings recorded AND built (REQ-106 at-cursor menus, SKL-111
+Principle 0 conventions baseline w/ precedence ladder, REQ-107 column
+sizing integrity + resize-never-sorts, REQ-108 row-only shift selection,
+REQ-109 format/justification defaults — numbers CENTER per Doug).
+Rendered-anatomy gate permanent: 14 Playwright journeys, REQ-cited; it
+caught the vacuous REQ-108 verification (synthetic events don't trigger
+native selection — real-input tests only) and a demo-state reuse mode.
+Cluster 4 rebuilt identity: server-resolved session reference everywhere,
+X-User-ID eliminated (closed client-claimed identity hole), stale session
+-> ended overlay, parallel-boot touch race fixed. Doug tested hands-on;
+PI-005/006/010 + FND-909 resolved (DEC-094). Suites: 1257 py / 145 vitest
+/ 14 e2e. NEXT: REL-003 lane — development entry, QA pass, test pass,
+Doug's ship sign-off.
