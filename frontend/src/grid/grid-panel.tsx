@@ -842,6 +842,7 @@ function LoadedGrid({
                         data-field={column.fieldName}
                         tabIndex={0}
                         style={{
+                          textAlign: column.alignment,
                           minWidth: `${String(minChars(column))}ch`,
                           width:
                             colWidths[column.fieldName] === undefined
@@ -1013,7 +1014,10 @@ function LoadedGrid({
                         );
                         const accent = effects.accentByField[column.fieldName];
                         return (
-                          <td key={column.fieldName}>
+                          <td
+                            key={column.fieldName}
+                            style={{ textAlign: column.alignment }}
+                          >
                             {accent === undefined ? (
                               text
                             ) : (

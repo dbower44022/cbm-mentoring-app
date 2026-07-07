@@ -58,6 +58,7 @@ from mentorapp.api.panel_catalog import (
 # The one role seam, deliberately imported (the mentoring-router stance).
 from mentorapp.api.routers.workprocess import RoleSource, get_role_source
 from mentorapp.observability import get_logger
+from mentorapp.storage.columns import ALIGNMENT_DEFAULTS
 
 log = get_logger(__name__)
 
@@ -270,6 +271,10 @@ def get_panel_grid(
                     "fieldName": spec.field_name,
                     "label": spec.label or column_label(spec.field_name),
                     "format": spec.column_format,
+                    # REQ-109: concrete alignment on the wire — the view's
+                    # override when declared, else the type default.
+                    "alignment": spec.alignment
+                    or ALIGNMENT_DEFAULTS.get(spec.column_format, "left"),
                 }
                 for spec in active.columns
             ],

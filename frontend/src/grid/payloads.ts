@@ -25,6 +25,9 @@ export interface GridColumnPayload {
    * keyed by this — the wire value stays raw, the LOOK is declared here.
    */
   format: ColumnFormat;
+  /** REQ-109: concrete justification from the server — type default
+      (text/date LEFT, number CENTER per Doug's ruling) or view override. */
+  alignment: "left" | "center" | "right";
 }
 
 export interface GridViewPayload {

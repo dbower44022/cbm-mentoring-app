@@ -184,3 +184,10 @@ unnecessary.
   from running together (the gutter is a theme token, not per-view styling).
 - Shift-click extension highlights ROWS ONLY: native browser text selection
   never activates across the range.
+
+## Column format defaults by data type (ruled by Doug 2026-07-07)
+
+- Every column has a FORMAT setting defaulted by data type, overridable in
+  the user's view settings.
+- Default justification: text LEFT, numbers CENTER (explicit ruling — beats
+  the right-align convention), dates LEFT, status LEFT.

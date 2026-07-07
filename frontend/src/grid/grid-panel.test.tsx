@@ -84,9 +84,14 @@ function makePanel(): GridPanelPayload {
     ],
     activeViewKey: "v-all",
     columns: [
-      { fieldName: "name", label: "Name", format: "text" },
-      { fieldName: "stage", label: "Stage", format: "text" },
-      { fieldName: "nextSessionAt", label: "Next Session", format: "datetime" },
+      { fieldName: "name", label: "Name", format: "text", alignment: "left" },
+      { fieldName: "stage", label: "Stage", format: "text", alignment: "left" },
+      {
+        fieldName: "nextSessionAt",
+        label: "Next Session",
+        format: "datetime",
+        alignment: "left",
+      },
     ],
     formattingRules: [],
     actions: [OPEN, REMOVE, EXPORT],

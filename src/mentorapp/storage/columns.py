@@ -33,6 +33,17 @@ from mentorapp.storage.theming import (
 # every kind names one client rendering (text verbatim, date "Jun 23, 2026",
 # datetime "Jul 10, 10:00 AM", number as a plain numeral) — a new kind is a
 # vocabulary change on BOTH sides, never a per-column improvisation.
+# REQ-109 type-default justification; the served payload always carries a
+# concrete alignment so every consumer renders identically. Doug's ruling:
+# text/date/status LEFT, numbers CENTER (beats the right-align convention).
+ALIGNMENT_DEFAULTS = {
+    "text": "left",
+    "date": "left",
+    "datetime": "left",
+    "number": "center",
+}
+COLUMN_ALIGNMENTS = ("left", "center", "right")
+
 COLUMN_FORMATS: Final = frozenset({"text", "date", "datetime", "number"})
 
 
@@ -50,6 +61,10 @@ class ColumnSpec:
     column_format: str = "text"
     label: str | None = None
     displayed: bool = True
+    # REQ-109: justification defaults by data type (text/date/status LEFT,
+    # number CENTER — Doug's explicit ruling over the right-align
+    # convention); a view-level override wins when set.
+    alignment: str | None = None
 
     def __post_init__(self) -> None:
         # Fail at declaration time, not render time: a typo'd format kind is
