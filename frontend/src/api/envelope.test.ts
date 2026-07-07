@@ -7,7 +7,12 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { callApi, EnvelopeError, setReauthHandler } from "./envelope";
+import {
+  callApi,
+  EnvelopeError,
+  setReauthHandler,
+  setSessionEndedHandler,
+} from "./envelope";
 import { clearSession, readSession, type SessionState, writeSession } from "./session";
 
 const SESSION: SessionState = {
@@ -46,8 +51,21 @@ beforeEach(() => {
   vi.stubGlobal("localStorage", memoryStorage());
 });
 
+const UNAUTHENTICATED_REFUSAL = {
+  data: null,
+  meta: {},
+  errors: [
+    {
+      fieldName: null,
+      code: "unauthenticated",
+      message: "A valid session is required; sign in again.",
+    },
+  ],
+};
+
 afterEach(() => {
   setReauthHandler(null);
+  setSessionEndedHandler(null);
   vi.unstubAllGlobals();
 });
 
@@ -100,7 +118,9 @@ describe("callApi", () => {
     expect(error.data).toEqual({ currentRecord: "server copy" });
   });
 
-  it("sends X-User-ID from the stored session, and nothing when signed out", async () => {
+  it("sends the session reference from the store, and nothing when signed out", async () => {
+    // FND-909 D9: the opaque reference is the ONLY identity sent — the
+    // server resolves the user; no client-claimed X-User-ID travels.
     const fetchMock = vi
       .fn()
       .mockImplementation(() =>
@@ -114,8 +134,10 @@ describe("callApi", () => {
 
     const [, anonymousInit] = fetchMock.mock.calls[0] as [string, RequestInit];
     const [, signedInInit] = fetchMock.mock.calls[1] as [string, RequestInit];
-    expect(new Headers(anonymousInit.headers).get("X-User-ID")).toBeNull();
-    expect(new Headers(signedInInit.headers).get("X-User-ID")).toBe("user-1");
+    expect(new Headers(anonymousInit.headers).get("X-Session-Reference")).toBeNull();
+    const signedInHeaders = new Headers(signedInInit.headers);
+    expect(signedInHeaders.get("X-Session-Reference")).toBe("ref-1");
+    expect(signedInHeaders.get("X-User-ID")).toBeNull();
   });
 
   it("holds a reauthRequired request through revival and replays it once", async () => {
@@ -139,6 +161,10 @@ describe("callApi", () => {
     expect(result.data).toEqual({ replayed: true });
     expect(handler).toHaveBeenCalledTimes(1);
     expect(fetchMock).toHaveBeenCalledTimes(2);
+    // The replay reads the store FRESH: it carries the rotated reference,
+    // never the dead one the original attempt was built with.
+    const [, replayInit] = fetchMock.mock.calls[1] as [string, RequestInit];
+    expect(new Headers(replayInit.headers).get("X-Session-Reference")).toBe("ref-2");
   });
 
   it("shares one revival across concurrent stalled requests", async () => {
@@ -199,5 +225,50 @@ describe("callApi", () => {
     const failure = await callApi("/shell").catch((e: unknown) => e);
 
     expect(failure).toBeInstanceOf(EnvelopeError);
+  });
+
+  // FND-909 D9: the two 401 shapes route to DIFFERENT controller flows on
+  // every surface — expired-but-revivable re-auths in place; beyond-revival
+  // (a stale/unknown reference, e.g. over a rebuilt database) signs out.
+  it("routes an unauthenticated refusal to the session-ended flow and still throws", async () => {
+    writeSession(SESSION);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(envelopeResponse(UNAUTHENTICATED_REFUSAL, 401)),
+    );
+    const reauth = vi.fn().mockResolvedValue(true);
+    const ended = vi.fn();
+    setReauthHandler(reauth);
+    setSessionEndedHandler(ended);
+
+    const failure = await callApi("/home").catch((e: unknown) => e);
+
+    expect(failure).toBeInstanceOf(EnvelopeError);
+    expect((failure as EnvelopeError).errors[0]?.code).toBe("unauthenticated");
+    expect(ended).toHaveBeenCalledTimes(1);
+    expect(reauth).not.toHaveBeenCalled();
+  });
+
+  it("routes a reauthRequired refusal to revival, never to the ended flow", async () => {
+    writeSession(SESSION);
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(envelopeResponse(REAUTH_REFUSAL, 401))
+        .mockResolvedValueOnce(
+          envelopeResponse({ data: { ok: true }, meta: {}, errors: null }),
+        ),
+    );
+    const reauth = vi.fn().mockResolvedValue(true);
+    const ended = vi.fn();
+    setReauthHandler(reauth);
+    setSessionEndedHandler(ended);
+
+    const result = await callApi<{ ok: boolean }>("/grids/engagements/rows");
+
+    expect(result.data).toEqual({ ok: true });
+    expect(reauth).toHaveBeenCalledTimes(1);
+    expect(ended).not.toHaveBeenCalled();
   });
 });

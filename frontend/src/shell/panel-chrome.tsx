@@ -16,7 +16,7 @@ import {
   useState,
 } from "react";
 import { callApi, EnvelopeError } from "../api/envelope";
-import { type SessionState, userHeaders } from "../session";
+import type { SessionState } from "../session";
 import type { PreferencePayload } from "./payloads";
 
 const PANEL_CHROME_PREFERENCE_KEY = "panelChrome";
@@ -61,9 +61,7 @@ export function usePanelChrome(session: SessionState | null): {
       // No session, no persistence: defaults render; nothing to load.
       return;
     }
-    void callApi<PreferencePayload>(`/preferences/${PANEL_CHROME_PREFERENCE_KEY}`, {
-      headers: userHeaders(session),
-    })
+    void callApi<PreferencePayload>(`/preferences/${PANEL_CHROME_PREFERENCE_KEY}`)
       .then(({ data }) => {
         const value = data.preferenceValue as Partial<PanelChromeDocument>;
         setDocument({
@@ -91,7 +89,7 @@ export function usePanelChrome(session: SessionState | null): {
     writeTimer.current = setTimeout(() => {
       void callApi<PreferencePayload>(`/preferences/${PANEL_CHROME_PREFERENCE_KEY}`, {
         method: "PUT",
-        headers: { ...userHeaders(session), "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ preferenceValue: documentRef.current }),
       });
     }, WRITE_DEBOUNCE_MS);

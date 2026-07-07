@@ -10,7 +10,9 @@ import type { AuthScreensPayload, EducateMessagePayload } from "./payloads";
 
 export const CODE_INVALID_CREDENTIALS = "invalidCredentials";
 export const CODE_REAUTH_IDENTITY_MISMATCH = "reauthIdentityMismatch";
-export const CODE_UNAUTHENTICATED = "unauthenticated";
+// The beyond-revival code lives with the envelope client (its interception
+// point since FND-909 D9); re-exported so the auth screens keep one import.
+export { CODE_UNAUTHENTICATED } from "../api/envelope";
 
 /** True when the refusal envelope carries the given code. */
 export function hasCode(failure: unknown, code: string): boolean {

@@ -9,7 +9,6 @@
 
 import { type ReactElement, useState } from "react";
 import { callApi, EnvelopeError } from "../api/envelope";
-import { type SessionState, userHeaders } from "../session";
 import type {
   AreaEntryPayload,
   BrokenPinDialogPayload,
@@ -28,7 +27,6 @@ export interface NavigationProps {
    * grant and educates if it was revoked since (never a dead control).
    */
   areas: AreaEntryPayload[];
-  session: SessionState;
   onOpenPanel: (panelKey: string, viewKey: string | null) => void;
   /** A 404 on open is a cross-window race: the pin set changed under us. */
   onNavigationStale: () => void;
@@ -45,7 +43,6 @@ const CHOICE_LABELS: Record<string, string> = {
 export function Navigation({
   navigation,
   areas,
-  session,
   onOpenPanel,
   onNavigationStale,
 }: NavigationProps): ReactElement {
@@ -55,7 +52,7 @@ export function Navigation({
   const activate = (item: NavigationItemPayload): void => {
     void callApi<PinOpenPayload>(
       `/shell/navigation/pins/${encodeURIComponent(item.pinKey)}/open`,
-      { method: "POST", headers: userHeaders(session) },
+      { method: "POST" },
     )
       .then(({ data }) => {
         if (data.opened !== null) {

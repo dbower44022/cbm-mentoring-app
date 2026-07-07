@@ -4,6 +4,33 @@
  */
 
 export interface paths {
+    "/auth/screens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Auth Screens
+         * @description Serve the WTK-005 credential screens and educate messages verbatim.
+         *
+         *     The shell renders these payloads as-is (DEC-080: view-models are served,
+         *     never re-decided client-side), so the auth_flows declarations stay the one
+         *     canonical home for field order, masking, and the educate wording — the
+         *     outage message stays distinct from the rejection message by construction.
+         *     Unauthenticated by design: the login screen renders before any session
+         *     exists, and nothing here is secret. Always succeeds.
+         */
+        get: operations["get_auth_screens_auth_screens_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/login": {
         parameters: {
             query?: never;
@@ -218,7 +245,8 @@ export interface paths {
          *     view), so ``meta.unreadCount`` reports the badge value this open clears —
          *     a repeat open returns 0. Broken dashlets stay in ``data.dashlets`` with
          *     an educate ``notice``; the messages dashlet is always first. Fails 500
-         *     when the catalog/message providers are unwired; 422 without ``X-User-ID``.
+         *     when the catalog/message providers are unwired; 401 without a live
+         *     session reference (FND-909 D9).
          */
         get: operations["get_home_home_get"];
         put?: never;
@@ -277,8 +305,8 @@ export interface paths {
          *     ``postedBy`` is stamped from the acting identity, never taken from the
          *     body — the dashlet's posted-by line must be auditable. Posting rights
          *     ride the admin surface's data-source grant once that catalog is wired
-         *     (REQ-006); today the trusted front end is the caller, as everywhere
-         *     behind ``X-User-ID``.
+         *     (REQ-006); the acting identity is the session's user, resolved
+         *     server-side (FND-909 D9).
          */
         post: operations["post_message_home_messages_post"];
         delete?: never;
@@ -410,11 +438,117 @@ export interface paths {
          *     ``unknownEntityType`` for a name the catalog does not know; 404 for a
          *     record that never existed; 200 with ``data.notice`` for a soft-deleted
          *     one (a pinned pop-out must explain, never blank). Fails 500 when the
-         *     catalog provider is unwired; 422 without ``X-User-ID``.
+         *     catalog provider is unwired; 401 without a live session reference
+         *     (FND-909 D9).
          */
         get: operations["get_record_preview_records__entity_type___record_id__preview_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/grids/{grid_key}/rows": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Grid Rows
+         * @description One keyset page of the view, live search layered on the view's filters.
+         *
+         *     Query: ``view_id`` (required), ``search`` (arms at three characters,
+         *     REQ-020), ``cursor``/``page_size`` (DB-S8). Sorted by the view's primary
+         *     sort spec (the engine's keyset order), the entity key as tiebreak.
+         *     ``meta`` carries ``cursor`` (null at the end), ``searchApplied``, and
+         *     ``recentSearches`` — the recall list AFTER this request, persisted per
+         *     user through the one preference mechanism (FND-017). 404 unknown
+         *     grid/view; 422 per-field on bad filters, unsearchable displayed columns,
+         *     or a foreign cursor.
+         */
+        get: operations["get_grid_rows_grids__grid_key__rows_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/grids/{grid_key}/aggregates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Grid Aggregates
+         * @description Counts and aggregates over the ENTIRE filtered set (REQ-026, DB-S8 rule 2).
+         *
+         *     A separate query the client issues in parallel with the first rows page —
+         *     same filters (view + search), NEVER cursor-bounded. ``data.totalCount``
+         *     and ``data.aggregates`` (the view's declared specs, keyed
+         *     ``function:fieldName``) always answer; ``data.groupRows`` answers when
+         *     the view groups, one entry per group value with its own count and
+         *     aggregates. Failures match the rows read, plus per-field on a bad
+         *     aggregate spec.
+         */
+        get: operations["get_grid_aggregates_grids__grid_key__aggregates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/grids/{grid_key}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Grid Export
+         * @description Enqueue a grid export: CSV/Excel, formatted or raw, view-rendered (REQ-027).
+         *
+         *     Scope is the one rule — the selection when one exists, else the entire
+         *     filtered set. Declared over the ten-second threshold (DB-S11), so the
+         *     answer is always ``data.jobId``, never a file. 422 per-field on an
+         *     unsupported ``exportFormat``, a malformed selection, or an over-deep
+         *     sort; 404 unknown grid/view.
+         */
+        post: operations["post_grid_export_grids__grid_key__export_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/grids/{grid_key}/print": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Grid Print
+         * @description Enqueue a grid print document: same scope rule as export, no format
+         *     choice — the print document renders formatted values by definition
+         *     (REQ-027). Answers ``data.jobId`` exactly as export does (DB-S11).
+         */
+        post: operations["post_grid_print_grids__grid_key__print_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -430,14 +564,19 @@ export interface paths {
         };
         /**
          * Get Shell
-         * @description Compose the shell: both headers plus the user's rendered navigation.
+         * @description Compose the shell: headers, navigation, the Areas, and the startup target.
          *
          *     ``data.mainWindow``/``data.popOut`` carry the one WTK-026 header
          *     declaration for each window kind (pop-outs are record windows, not panel
          *     hosts — REQ-012). ``data.navigation`` renders the stored pin set for its
          *     stored presentation with every pin present and broken ones marked
-         *     (REQ-010/REQ-015). Fails 500 when the catalog provider is unwired; 422
-         *     without ``X-User-ID``.
+         *     (REQ-010/REQ-015). ``data.areas`` is the server-declared area list
+         *     (WTK-233 — membership is the grant boundary's decision, never the
+         *     client's), and ``data.startup`` is where this boot should land: the
+         *     ``shell.startup`` preference resolved against the accessible panels
+         *     (mentors default to the engagements panel per the REQ-072 ruling).
+         *     Fails 500 when the catalog provider is unwired; 401 without a live
+         *     session reference (FND-909 D9).
          */
         get: operations["get_shell_shell_get"];
         put?: never;
@@ -549,6 +688,960 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/outage/drafts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Preserved Drafts
+         * @description The session user's recoverable drafts, most recently touched first.
+         *
+         *     Feeds the recovery list and the notification bell. Every entry carries
+         *     its recovery offer and its honest discard confirmation, so the shell
+         *     renders wording from one home. 401 without a live session reference
+         *     (FND-909 D9); fails loudly
+         *     when the store provider is unwired.
+         */
+        get: operations["list_preserved_drafts_outage_drafts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/outage/drafts/{target_kind}/{target_ref}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Draft Offer
+         * @description The draft to offer when this authoring surface opens, or ``data.draft: None``.
+         *
+         *     A clean surface is the normal case, not an error — the shell opens the
+         *     editor empty on ``None`` and renders the offer otherwise. Reading the
+         *     offer never consumes the draft (the REQ-064 invariant): the preserved
+         *     copy survives until a successful submit or an explicit discard.
+         */
+        get: operations["get_draft_offer_outage_drafts__target_kind___target_ref__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/outage/drafts/{target_kind}/{target_ref}/discard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Discard Preserved Draft
+         * @description The author's explicit, confirmed discard of one preserved draft.
+         *
+         *     Follows the WTK-153 store contract: a double discard (submit raced with
+         *     a manual discard, or two windows) is a no-op, not an error — ``data.
+         *     discarded`` says whether this call removed anything. The confirmation
+         *     wording the shell shows first rides the offer payload.
+         */
+        post: operations["discard_preserved_draft_outage_drafts__target_kind___target_ref__discard_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/theming/templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Templates
+         * @description The whole live picker set: system templates plus the CALLER's own.
+         *
+         *     Deliberately not a DB-S8 grid read (the surface's call): a template
+         *     picker wants all of them. System templates first, then the caller's,
+         *     each name-ordered; every record carries ``rowVersion`` (DB-S4).
+         */
+        get: operations["list_templates_theming_templates_get"];
+        put?: never;
+        /**
+         * Create Template
+         * @description Create a USER template over the one shared scale (REQ-044/046).
+         *
+         *     The full fixed-slot document validates against the surface's structure
+         *     gates plus the caller's-namespace duplicate check — every failure in one
+         *     round trip (DB-S12). ``meta.contrastWarnings`` carries the guardrail's
+         *     one review; warnings never refuse the save (REQ-046).
+         */
+        post: operations["create_template_theming_templates_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/theming/templates/{template_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Template
+         * @description One template with its live rules in evaluation order (DB-S4 read).
+         */
+        get: operations["get_template_theming_templates__template_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Template
+         * @description Soft-delete a USER template AND its rules (DB-S3, declared cascade).
+         *
+         *     A rule is meaningless without its template, so the cascade is this
+         *     relationship's declared behavior. System templates refuse (422).
+         */
+        delete: operations["delete_template_theming_templates__template_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Patch Template
+         * @description Per-field template edit under the write contract (DB-S12, DB-S4).
+         *
+         *     Stale ``rowVersion`` → 409 with the current record; system templates
+         *     refuse (422); present slot documents validate whole against the LINKED
+         *     scale. Every save answers ``meta.contrastWarnings`` for the document as
+         *     it now stands — one guardrail review per save, never a refusal.
+         */
+        patch: operations["patch_template_theming_templates__template_id__patch"];
+        trace?: never;
+    };
+    "/theming/type-scale": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Type Scale
+         * @description The ONE app-wide scale: every step with its px size (REQ-046).
+         *
+         *     ``rowVersion`` included — this read leads to the retune PATCH (DB-S4).
+         *     An absent seed is a broken deployment and surfaces as the opaque 500.
+         */
+        get: operations["get_type_scale_theming_type_scale_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Patch Type Scale
+         * @description Retune step SIZES only (REQ-046): fixed keys, ascending positive px.
+         */
+        patch: operations["patch_type_scale_theming_type_scale_patch"];
+        trace?: never;
+    };
+    "/theming/effective": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Effective Theme
+         * @description The caller's resolved app-wide theme (WTK-230): REQ-044 layers one and two.
+         *
+         *     The org-default template, replaced WHOLESALE by the caller's app-wide
+         *     template choice when one is stored — a template is picked, not merged,
+         *     so the winning template's slots are served exactly as they stand. Layer
+         *     three (the active view's ``gridView.rowTheme``) is per grid and
+         *     deliberately absent: it belongs to the grid render, not the app shell.
+         *
+         *     One boot-time document: every fixed color slot, both font slots, and
+         *     ``typeScale`` exactly as ``GET /theming/type-scale`` serves it.
+         */
+        get: operations["get_effective_theme_theming_effective_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/theming/templates/{template_id}/rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Rules
+         * @description The template's live rules — the order served IS first-match-wins (REQ-045).
+         */
+        get: operations["list_rules_theming_templates__template_id__rules_get"];
+        put?: never;
+        /**
+         * Create Rule
+         * @description Append one rule at the END of the evaluation order (REQ-045).
+         *
+         *     Operators, effects, and the status-slot effect target validate against
+         *     the persisted vocabularies; ``conditionField`` additionally validates
+         *     against the grid entity catalog (REQ-019). System templates refuse.
+         */
+        post: operations["create_rule_theming_templates__template_id__rules_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/theming/rules/{rule_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Rule
+         * @description Soft-delete one rule; survivors keep their relative order — gaps are
+         *     fine, order is relative, never arithmetic (the surface's contract).
+         */
+        delete: operations["delete_rule_theming_rules__rule_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Patch Rule
+         * @description Per-field rule edit; the MERGED document re-validates on every write
+         *     (DB-S12) — an edit can never leave a rule the create gate would refuse.
+         */
+        patch: operations["patch_rule_theming_rules__rule_id__patch"];
+        trace?: never;
+    };
+    "/theming/templates/{template_id}/rules/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Put Rule Order
+         * @description Replace the evaluation order with a full permutation (REQ-045).
+         *
+         *     Whole-list by design (order is a property of the LIST) and deliberately
+         *     last-write-wins with no version round-trip — the preferences PUT
+         *     precedent the surface names. Answers the rules in their new order.
+         */
+        put: operations["put_rule_order_theming_templates__template_id__rules_order_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/workprocesses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Registrations
+         * @description The admin management list: every live registration with its targets.
+         *
+         *     Admin-gated like every registration verb — this is the management
+         *     surface; what a USER sees is the per-source action-list read below.
+         */
+        get: operations["list_registrations_workprocesses_get"];
+        put?: never;
+        /**
+         * Create Registration
+         * @description Register a workprocess (REQ-041) — the Administrator persona's act.
+         *
+         *     Every gate in one round trip (DB-S12): vocabulary membership, the step
+         *     graph's structural problems, target keys that resolve to live data
+         *     sources, and the live-name uniqueness. The registration is data — the
+         *     action appears in the targeted sources' lists with NO framework change.
+         */
+        post: operations["create_registration_workprocesses_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/workprocesses/{registration_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Registration
+         * @description One registration, whole (admin management read).
+         */
+        get: operations["get_registration_workprocesses__registration_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Registration
+         * @description Retire a registration (DB-S3 soft delete) and its target links with it.
+         *
+         *     A target link is meaningless without its registration, so the cascade is
+         *     this relationship's declared behavior (the theming template/rule shape).
+         *     The action disappears from every targeted source's list on the next
+         *     read; run rows are history and stay untouched.
+         */
+        delete: operations["delete_registration_workprocesses__registration_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Patch Registration
+         * @description Per-field registration edit under the write contract (DB-S12, DB-S4).
+         */
+        patch: operations["patch_registration_workprocesses__registration_id__patch"];
+        trace?: never;
+    };
+    "/workprocesses/actions/{data_source_key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Actions
+         * @description One data source's workprocess action-list entries for the caller.
+         *
+         *     The inherited-permission read in its quiet form: covered source → every
+         *     live registration targeting it, in the ``PanelAction`` wire shape the
+         *     grid's menus already speak; uncovered or unknown source → an empty list
+         *     (the caller does not see that action list at all, and the two answers
+         *     are identical so source keys cannot be probed).
+         */
+        get: operations["list_actions_workprocesses_actions__data_source_key__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/workprocesses/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Launch
+         * @description Launch a run from an action list, inheriting the selection (REQ-042).
+         *
+         *     Gates in order: the registration exists (404); the launch is sanctioned
+         *     — targeted source AND the caller's inherited data-source access (the
+         *     not-targeted case answers the SAME 404, so pairings cannot be probed;
+         *     a grant miss is the standard 403); the selection fits the contract
+         *     (422, educate voice). Then the frame opens on the graph's start step.
+         */
+        post: operations["launch_workprocesses_runs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/workprocesses/runs/{run_id}/step": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Step
+         * @description Answer the run's current step; the answer may branch (REQ-042).
+         *
+         *     The answer lands in the run's pending state only — no application data
+         *     moves until commit. The response says where the walk now stands
+         *     (``currentStepKey``; ``completable`` once a terminal step resolved).
+         */
+        post: operations["step_workprocesses_runs__run_id__step_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/workprocesses/runs/{run_id}/commit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Commit
+         * @description Complete the run: apply everything, atomically, and confirm (REQ-042).
+         *
+         *     The engine hands the payload to the registration's own handler and flips
+         *     the run in one transaction — a raising handler aborts both. The
+         *     confirmation names the workprocess; ``meta.affectedDataSourceKeys`` is
+         *     the refresh list for the grids the workprocess targets, and
+         *     ``meta.ranLong`` says whether the ran-long bell entry was written.
+         */
+        post: operations["commit_workprocesses_runs__run_id__commit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/workprocesses/runs/{run_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel
+         * @description Leave = cancel (REQ-042): discard everything; nothing was applied.
+         *
+         *     The only persistence is the run row flipping to ``discarded`` —
+         *     retained as evidence, never deleted — with its pending answers still on
+         *     it. No handler runs; there are no effects to unwind because none were
+         *     ever made.
+         */
+        post: operations["cancel_workprocesses_runs__run_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/workprocesses/runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Run
+         * @description The caller's own run, wherever it stands — resume, review, or evidence.
+         */
+        get: operations["get_run_workprocesses_runs__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/help/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Resolve
+         * @description Where does Help for this surface go? — the ONE resolution read.
+         *
+         *     Walks mapping row → URL pattern → help home (see the module docstring
+         *     for each answer's shape). ``mapped`` means "the URL is page-specific";
+         *     ``notice`` is non-null exactly when the client should explain a generic
+         *     landing; ``url`` is null only when help is entirely unconfigured, in
+         *     which case the notice IS the answer. Unknown ``sourceType`` is the
+         *     caller's mistake (422 educate), not an unmapped page.
+         */
+        get: operations["resolve_help_resolve_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/help/mappings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Mappings
+         * @description The admin management list: every live mapping, surface-ordered.
+         */
+        get: operations["list_mappings_help_mappings_get"];
+        put?: never;
+        /**
+         * Create Mapping
+         * @description Map one surface to one help URL (REQ-043) — the Administrator's act.
+         *
+         *     Every gate in one round trip (DB-S12): vocabulary membership, the
+         *     absolute-URL shape, and the one-live-mapping-per-surface rule.
+         */
+        post: operations["create_mapping_help_mappings_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/help/mappings/{mapping_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Mapping
+         * @description Unmap a surface (DB-S3 soft delete): the very next Help click for that
+         *     page falls through to the pattern/home walk. Retained, never deleted.
+         */
+        delete: operations["delete_mapping_help_mappings__mapping_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Patch Mapping
+         * @description Per-field mapping edit under the write contract (DB-S12, DB-S4).
+         *
+         *     The MERGED surface re-validates: retyping or re-identifying a mapping
+         *     must not land on another mapping's live surface.
+         */
+        patch: operations["patch_mapping_help_mappings__mapping_id__patch"];
+        trace?: never;
+    };
+    "/help/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Settings
+         * @description The ONE help-settings document (REQ-043), with its ``rowVersion`` —
+         *     this read leads to the PATCH (DB-S4). Seeded by migration 0013, so an
+         *     absent row is a broken deployment surfacing as the opaque 500.
+         */
+        get: operations["get_settings_help_settings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Patch Settings
+         * @description Retune the fallback document: help home URL and/or the URL pattern.
+         *
+         *     A non-empty home must be an absolute URL; a non-empty pattern must be an
+         *     absolute URL carrying a placeholder (see :func:`_pattern_errors` for the
+         *     WHY). Clearing either (empty string) is sanctioned — the resolve answer
+         *     explains an unconfigured system instead of refusing.
+         */
+        patch: operations["patch_settings_help_settings_patch"];
+        trace?: never;
+    };
+    "/engagements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Engagements
+         * @description The caller's engagements, name-ordered — the picker/list read.
+         *
+         *     The REQ-019 rule restated over the ORM: a mentor sees the engagements
+         *     paired to them; leadership sees every live engagement (including
+         *     unassigned Pending Acceptance ones). Grid surfaces stay on the seeded
+         *     data sources — this read exists for pickers and flows that address an
+         *     engagement, not to replace the triage grid.
+         */
+        get: operations["list_engagements_engagements_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/engagements/{engagement_id}/rollup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Engagement Rollup
+         * @description Everything the preview and prep surfaces render for one engagement.
+         *
+         *     ``data.rollup`` is REQ-073/074's aggregation: every live session
+         *     carrying notes or action items, NEWEST FIRST, so the mentor never opens
+         *     sessions one by one to find them. ``data.sessions`` is the full live
+         *     session history (same order) for the sessions list and prep navigation.
+         *     ``data.stats`` derives from the live rows exactly as the triage read
+         *     does (time splits past/future; a cancelled session is a soft delete and
+         *     leaves the aggregates immediately). ``data.client`` and
+         *     ``data.contacts`` carry the references the preview offers as
+         *     click-through pop-ups (REQ-074).
+         */
+        get: operations["get_engagement_rollup_engagements__engagement_id__rollup_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/engagements/{engagement_id}/lifecycle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Engagement Lifecycle
+         * @description Apply one REQ-075 transition — accept / decline / hold / dormant.
+         *
+         *     The status flip rides :func:`partial_update` (the one write engine), so
+         *     it is option-validated, history-tracked, fed to the change feed, and
+         *     ``rowVersion``-guarded like every other write. An unknown transition
+         *     name is 422 ``unknownLifecycleTransition``; a transition the current
+         *     status does not allow is 422 ``invalidLifecycleTransition`` in the
+         *     educate voice; a stale ``rowVersion`` is the standard 409 with the
+         *     current record. Success confirms in words and names the engagement
+         *     grids to refresh (``meta.affectedDataSourceKeys``); accepting also
+         *     carries the REQ-076 next steps.
+         */
+        post: operations["post_engagement_lifecycle_engagements__engagement_id__lifecycle_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/engagements/{engagement_id}/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Session Create
+         * @description Schedule one session: org meeting, invite, transcript automation (REQ-078/080).
+         *
+         *     Created ``scheduled``. A pasted ``conferenceLink`` (REQ-079 — the
+         *     universal fallback) is taken verbatim and books nothing; otherwise the
+         *     conferencing seam creates the org-hosted meeting and the session carries
+         *     its link plus ``externalMeetingID``. Scheduling then sends the client the
+         *     meeting invite through the one email seam (``meta.invite`` reports sent
+         *     or the skip reason — never silent), and an app-created meeting enqueues
+         *     the ``transcriptRetrieval`` job to run after the session (REQ-083).
+         *     Rides :func:`create_record` so registry validation, audit stamping, and
+         *     the feed apply exactly as everywhere.
+         */
+        post: operations["post_session_create_engagements__engagement_id__sessions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sessions/{session_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Patch Session
+         * @description The session entry write: notes, action items, link, status (REQ-082/079).
+         *
+         *     Scoped through the session's engagement (the same uniform 404), guarded
+         *     by ``rowVersion``, applied through the one write engine — only the
+         *     fields actually sent travel, and unchanged values never bump the
+         *     version. An unknown status name is 422 ``unknownSessionStatus``.
+         */
+        patch: operations["patch_session_sessions__session_id__patch"];
+        trace?: never;
+    };
+    "/sessions/{session_id}/transcript": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Session Transcript
+         * @description Retrieve the meeting's AI transcript NOW and stage the drafts (REQ-083).
+         *
+         *     The mentor-triggered twin of the ``transcriptRetrieval`` job — same
+         *     seams, same attach rule. Scoped through the session's engagement (the
+         *     uniform 404). 422 ``noAppCreatedMeeting`` when the session's link was
+         *     pasted (nothing to ask the platform for — the paste path is the route);
+         *     422 ``transcriptNotReady`` while the platform has not produced it.
+         *     Success answers the updated session record; the drafts land as PROPOSALS
+         *     on ``draftSummary``/``draftActionItems`` — never on the mentor's notes.
+         */
+        post: operations["post_session_transcript_sessions__session_id__transcript_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/email/templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Email Templates
+         * @description The staff-maintained template list the compose dialog offers (REQ-077).
+         */
+        get: operations["list_email_templates_email_templates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/email/send": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Email Send
+         * @description Compose from a template with engagement merge fields (REQ-076/077).
+         *
+         *     ``confirmed`` false answers the merged preview and sends NOTHING;
+         *     ``confirmed`` true merges identically and hands the message to the
+         *     transport seam. 422 on an unknown template, unfillable merge fields, or
+         *     an engagement without a contact email; the engagement resolves through
+         *     the same scoped 404 as every engagement verb.
+         */
+        post: operations["post_email_send_email_send_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/resources/{resource_id}/share": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Resource Share
+         * @description Share one library resource with an engagement's contact (REQ-084).
+         *
+         *     The templated-email flow with the resource's title and location joined
+         *     into the merge context — the email carries the resource LINK; the
+         *     library holds references, not attachments. Same preview-before-send
+         *     contract as ``/email/send``.
+         */
+        post: operations["post_resource_share_resources__resource_id__share_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/leadership/reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Leadership Reports
+         * @description The leadership dashboard blocks, derived live (WTK-171/184).
+         *
+         *     ``data.engagementsByStatus`` — live engagement counts per status label,
+         *     largest bucket first (a null label is the carried-over "not set yet"
+         *     bucket, reported honestly). ``data.sessionsHeldByMonth`` — sessions held
+         *     per UTC calendar month, oldest first. ``data.mentorActivity`` — per
+         *     paired mentor: engagement count, sessions held, last session held.
+         *     403 through the one grant boundary for callers without the leadership
+         *     engagement span; 401 without a live session reference (FND-909 D9).
+         */
+        get: operations["get_leadership_reports_leadership_reports_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/panels/{panel_key}/grid": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Panel Grid
+         * @description The panel view-model the universal grid boots from (WTK-233).
+         *
+         *     ``data.views`` lists only the views the caller's roles cover, each
+         *     naming its ``dataSourceKey`` (the seeded key — what activates the
+         *     client-side mentoring actions and domain preview). ``data.activeViewKey``
+         *     is the first granted view: for the engagements panel that is REQ-072's
+         *     "My Active Engagements", the mentor landing view. 404 for a panel that
+         *     does not exist; 403 through the one grant boundary when no view is
+         *     granted (opening an area you were not shown is audit-relevant, not a
+         *     404 — panels are product surface, not probeable records).
+         */
+        get: operations["get_panel_grid_panels__panel_key__grid_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/panels/{panel_key}/rows": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Panel Rows
+         * @description One view's rows: the stored source, narrowed by search, client-sorted.
+         *
+         *     Authorization and REQ-019 user scoping happen inside the stored-source
+         *     run — this endpoint never re-derives either. ``rows[].recordId`` and
+         *     ``rows[].title`` come from the view's declared identity columns (falling
+         *     back to the title, then a positional key, for sources whose id column is
+         *     nullable). 404 unknown panel; 422 unknown view or sort field; 403 for an
+         *     ungranted source.
+         */
+        get: operations["get_panel_rows_panels__panel_key__rows_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/panels/{panel_key}/aggregates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Panel Aggregates
+         * @description Whole-set counts for the status bar (REQ-026's parallel read).
+         *
+         *     ``totalCount`` is the filtered set (source + search); ``unnarrowedCount``
+         *     is the same view WITHOUT the search — the client's "N rows hidden"
+         *     honesty gap. ``footer`` carries the view's declared aggregates over the
+         *     SAME filtered set (FND-019 per-view declaration; SKL-112's footer row),
+         *     keyed by displayed column — empty when the view declares none.
+         */
+        get: operations["get_panel_aggregates_panels__panel_key__aggregates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/healthz": {
         parameters: {
             query?: never;
@@ -587,6 +1680,24 @@ export interface components {
             message: string;
         };
         /**
+         * EmailSendBody
+         * @description POST body: which template, for which engagement, preview or send.
+         */
+        EmailSendBody: {
+            /** Templatekey */
+            templateKey: string;
+            /**
+             * Engagementid
+             * Format: uuid
+             */
+            engagementID: string;
+            /**
+             * Confirmed
+             * @default false
+             */
+            confirmed: boolean;
+        };
+        /**
          * Envelope
          * @description The one response shape. Constructed only via ``ok`` and ``fail``.
          */
@@ -614,10 +1725,70 @@ export interface components {
             /** Emailaddress */
             emailAddress: string;
         };
+        /**
+         * GridExportBody
+         * @description Export adds the REQ-027 choices: format, formatted-vs-raw values.
+         */
+        GridExportBody: {
+            /**
+             * Viewid
+             * Format: uuid
+             */
+            viewId: string;
+            /**
+             * Search
+             * @default
+             */
+            search: string;
+            /** Selection */
+            selection?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Exportformat
+             * @default csv
+             */
+            exportFormat: string;
+            /**
+             * Rawvalues
+             * @default false
+             */
+            rawValues: boolean;
+        };
+        /**
+         * GridPrintBody
+         * @description Print POST body: the view, the optional live search, the selection.
+         */
+        GridPrintBody: {
+            /**
+             * Viewid
+             * Format: uuid
+             */
+            viewId: string;
+            /**
+             * Search
+             * @default
+             */
+            search: string;
+            /** Selection */
+            selection?: {
+                [key: string]: unknown;
+            } | null;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /**
+         * LifecycleBody
+         * @description POST body: which transition, guarded by the record's ``rowVersion``.
+         */
+        LifecycleBody: {
+            /** Transition */
+            transition: string;
+            /** Rowversion */
+            rowVersion: number;
         };
         /**
          * LoginBody
@@ -636,6 +1807,32 @@ export interface components {
         LogoutBody: {
             /** Sessionreference */
             sessionReference: string;
+        };
+        /**
+         * MappingCreateBody
+         * @description POST body: the whole mapping fact — which surface opens which URL.
+         */
+        MappingCreateBody: {
+            /** Sourcetype */
+            sourceType: string;
+            /** Sourceidentifier */
+            sourceIdentifier: string;
+            /** Helpurl */
+            helpURL: string;
+        };
+        /**
+         * MappingPatchBody
+         * @description PATCH body: only the changed fields plus the mandatory ``rowVersion``.
+         */
+        MappingPatchBody: {
+            /** Rowversion */
+            rowVersion: number;
+            /** Sourcetype */
+            sourceType?: string | null;
+            /** Sourceidentifier */
+            sourceIdentifier?: string | null;
+            /** Helpurl */
+            helpURL?: string | null;
         };
         /**
          * MessagePatchBody
@@ -708,6 +1905,254 @@ export interface components {
             /** Actiontoken */
             actionToken: string;
         };
+        /**
+         * RegistrationCreateBody
+         * @description POST body: REQ-041's whole declaration in one document.
+         */
+        RegistrationCreateBody: {
+            /** Workprocessname */
+            workprocessName: string;
+            /** Workprocessdescription */
+            workprocessDescription: string;
+            /** Targetdatasourcekeys */
+            targetDataSourceKeys: string[];
+            /** Selectioncontract */
+            selectionContract: string;
+            /** Actionclassification */
+            actionClassification: string;
+            /** Stepgraph */
+            stepGraph: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * RegistrationPatchBody
+         * @description PATCH body: only the changed fields plus the mandatory ``rowVersion``.
+         *
+         *     ``targetDataSourceKeys`` replaces WHOLE (the target list is one fact,
+         *     like a slot document): removed targets soft-delete their association
+         *     rows, added ones insert fresh rows.
+         */
+        RegistrationPatchBody: {
+            /** Rowversion */
+            rowVersion: number;
+            /** Workprocessname */
+            workprocessName?: string | null;
+            /** Workprocessdescription */
+            workprocessDescription?: string | null;
+            /** Targetdatasourcekeys */
+            targetDataSourceKeys?: string[] | null;
+            /** Selectioncontract */
+            selectionContract?: string | null;
+            /** Actionclassification */
+            actionClassification?: string | null;
+            /** Stepgraph */
+            stepGraph?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /**
+         * ResourceShareBody
+         * @description POST body: which engagement receives the resource, preview or send.
+         */
+        ResourceShareBody: {
+            /**
+             * Engagementid
+             * Format: uuid
+             */
+            engagementID: string;
+            /**
+             * Confirmed
+             * @default false
+             */
+            confirmed: boolean;
+        };
+        /**
+         * RuleCreateBody
+         * @description POST body: condition + effect only. ``evaluationOrder`` is deliberately
+         *     absent (extra=forbid enforces it): creates append, reorder is its own verb.
+         */
+        RuleCreateBody: {
+            /** Conditionfield */
+            conditionField: string;
+            /** Conditionoperator */
+            conditionOperator: string;
+            /** Conditionvalue */
+            conditionValue?: unknown;
+            /** Effect */
+            effect: string;
+            /** Effectslot */
+            effectSlot: string;
+        };
+        /**
+         * RuleOrderBody
+         * @description PUT body: the FULL evaluation order — every live rule ID exactly once.
+         */
+        RuleOrderBody: {
+            /** Ruleorder */
+            ruleOrder: string[];
+        };
+        /**
+         * RulePatchBody
+         * @description PATCH body: only the changed rule fields plus the mandatory ``rowVersion``.
+         */
+        RulePatchBody: {
+            /** Rowversion */
+            rowVersion: number;
+            /** Conditionfield */
+            conditionField?: string | null;
+            /** Conditionoperator */
+            conditionOperator?: string | null;
+            /** Conditionvalue */
+            conditionValue?: unknown;
+            /** Effect */
+            effect?: string | null;
+            /** Effectslot */
+            effectSlot?: string | null;
+        };
+        /**
+         * RunLaunchBody
+         * @description POST body: which workprocess, from which action list, over which rows.
+         */
+        RunLaunchBody: {
+            /**
+             * Workprocessregistrationid
+             * Format: uuid
+             */
+            workprocessRegistrationID: string;
+            /** Datasourcekey */
+            dataSourceKey: string;
+            /** Selectedrecordids */
+            selectedRecordIDs?: string[];
+        };
+        /**
+         * RunStepBody
+         * @description POST body: the current step's answer, optionally routing the branch.
+         */
+        RunStepBody: {
+            /** Stepkey */
+            stepKey: string;
+            /** Answer */
+            answer?: unknown;
+            /** Nextstepkey */
+            nextStepKey?: string | null;
+        };
+        /**
+         * SessionCreateBody
+         * @description POST body: when the session is, and optionally how to join it.
+         */
+        SessionCreateBody: {
+            /**
+             * Scheduledat
+             * Format: date-time
+             */
+            scheduledAt: string;
+            /** Conferencelink */
+            conferenceLink?: string | null;
+        };
+        /**
+         * SessionPatchBody
+         * @description PATCH body: the entry fields the prep surface writes (REQ-082/083).
+         *
+         *     ``sessionNotes``/``actionItems`` carry the rich-text control's clean
+         *     HTML; ``sessionStatus`` travels as the option-value NAME (the stable
+         *     identifier) and is resolved to its ``optionValueID`` here.
+         *     ``transcriptText``/``transcriptSource`` are the REQ-083 PASTE path
+         *     (append-only — the automation's rule and the mentor's are the same);
+         *     ``draftSummary``/``draftActionItems`` let the client clear or amend a
+         *     proposal once the mentor has accepted or dismissed it.
+         */
+        SessionPatchBody: {
+            /** Rowversion */
+            rowVersion: number;
+            /** Sessionnotes */
+            sessionNotes?: string | null;
+            /** Actionitems */
+            actionItems?: string | null;
+            /** Conferencelink */
+            conferenceLink?: string | null;
+            /** Sessionstatus */
+            sessionStatus?: string | null;
+            /** Transcripttext */
+            transcriptText?: string | null;
+            /** Transcriptsource */
+            transcriptSource?: string | null;
+            /** Draftsummary */
+            draftSummary?: string | null;
+            /** Draftactionitems */
+            draftActionItems?: string | null;
+        };
+        /**
+         * SettingsPatchBody
+         * @description PATCH body: the changed values plus the mandatory ``rowVersion``.
+         *
+         *     Empty string is a sanctioned VALUE (it unconfigures that fallback), so
+         *     ``None``/absent means "leave alone" and ``""`` means "clear" —
+         *     ``model_fields_set`` distinguishes them.
+         */
+        SettingsPatchBody: {
+            /** Rowversion */
+            rowVersion: number;
+            /** Helphomeurl */
+            helpHomeURL?: string | null;
+            /** Defaulturlpattern */
+            defaultURLPattern?: string | null;
+        };
+        /**
+         * TemplateCreateBody
+         * @description POST body: the full fixed-slot document. ``templateType`` and
+         *     ``launchSetKey`` are server-assigned and deliberately absent.
+         */
+        TemplateCreateBody: {
+            /** Colortemplatename */
+            colorTemplateName: string;
+            /** Colorslots */
+            colorSlots: {
+                [key: string]: unknown;
+            };
+            /** Fontslots */
+            fontSlots: {
+                [key: string]: unknown;
+            };
+            /** Typestepchoice */
+            typeStepChoice: string;
+        };
+        /**
+         * TemplatePatchBody
+         * @description PATCH body: only the changed fields plus the mandatory ``rowVersion``.
+         *
+         *     Slot documents replace WHOLE (slots travel together, REQ-044) — there is
+         *     no per-slot merge, so a present document always re-validates completely.
+         */
+        TemplatePatchBody: {
+            /** Rowversion */
+            rowVersion: number;
+            /** Colortemplatename */
+            colorTemplateName?: string | null;
+            /** Colorslots */
+            colorSlots?: {
+                [key: string]: unknown;
+            } | null;
+            /** Fontslots */
+            fontSlots?: {
+                [key: string]: unknown;
+            } | null;
+            /** Typestepchoice */
+            typeStepChoice?: string | null;
+        };
+        /**
+         * TypeScalePatchBody
+         * @description PATCH body: the whole ``scaleSteps`` document plus ``rowVersion`` —
+         *     exactly the fixed step keys, so a step can never be minted or dropped.
+         */
+        TypeScalePatchBody: {
+            /** Rowversion */
+            rowVersion: number;
+            /** Scalesteps */
+            scaleSteps: {
+                [key: string]: unknown;
+            };
+        };
         /** ValidationError */
         ValidationError: {
             /** Location */
@@ -730,6 +2175,26 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    get_auth_screens_auth_screens_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+        };
+    };
     login_auth_login_post: {
         parameters: {
             query?: never;
@@ -931,8 +2396,8 @@ export interface operations {
     get_preference_preferences__preference_key__get: {
         parameters: {
             query?: never;
-            header: {
-                "X-User-ID": string;
+            header?: {
+                "X-Session-Reference"?: string | null;
             };
             path: {
                 preference_key: string;
@@ -964,8 +2429,8 @@ export interface operations {
     put_preference_preferences__preference_key__put: {
         parameters: {
             query?: never;
-            header: {
-                "X-User-ID": string;
+            header?: {
+                "X-Session-Reference"?: string | null;
             };
             path: {
                 preference_key: string;
@@ -1001,8 +2466,8 @@ export interface operations {
     get_home_home_get: {
         parameters: {
             query?: never;
-            header: {
-                "X-User-ID": string;
+            header?: {
+                "X-Session-Reference"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -1032,8 +2497,8 @@ export interface operations {
     get_banner_home_banner_get: {
         parameters: {
             query?: never;
-            header: {
-                "X-User-ID": string;
+            header?: {
+                "X-Session-Reference"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -1063,8 +2528,8 @@ export interface operations {
     list_messages_home_messages_get: {
         parameters: {
             query?: never;
-            header: {
-                "X-User-ID": string;
+            header?: {
+                "X-Session-Reference"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -1094,8 +2559,8 @@ export interface operations {
     post_message_home_messages_post: {
         parameters: {
             query?: never;
-            header: {
-                "X-User-ID": string;
+            header?: {
+                "X-Session-Reference"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -1129,8 +2594,8 @@ export interface operations {
     delete_message_home_messages__message_key__delete: {
         parameters: {
             query?: never;
-            header: {
-                "X-User-ID": string;
+            header?: {
+                "X-Session-Reference"?: string | null;
             };
             path: {
                 message_key: string;
@@ -1197,8 +2662,8 @@ export interface operations {
     read_message_home_messages__message_key__read_post: {
         parameters: {
             query?: never;
-            header: {
-                "X-User-ID": string;
+            header?: {
+                "X-Session-Reference"?: string | null;
             };
             path: {
                 message_key: string;
@@ -1230,8 +2695,8 @@ export interface operations {
     acknowledge_message_home_messages__message_key__acknowledge_post: {
         parameters: {
             query?: never;
-            header: {
-                "X-User-ID": string;
+            header?: {
+                "X-Session-Reference"?: string | null;
             };
             path: {
                 message_key: string;
@@ -1265,8 +2730,8 @@ export interface operations {
             query?: {
                 userId?: string[] | null;
             };
-            header: {
-                "X-User-ID": string;
+            header?: {
+                "X-Session-Reference"?: string | null;
             };
             path: {
                 message_key: string;
@@ -1298,8 +2763,8 @@ export interface operations {
     get_record_preview_records__entity_type___record_id__preview_get: {
         parameters: {
             query?: never;
-            header: {
-                "X-User-ID": string;
+            header?: {
+                "X-Session-Reference"?: string | null;
             };
             path: {
                 entity_type: string;
@@ -1329,11 +2794,159 @@ export interface operations {
             };
         };
     };
+    get_grid_rows_grids__grid_key__rows_get: {
+        parameters: {
+            query: {
+                view_id: string;
+                search?: string;
+                cursor?: string | null;
+                page_size?: number;
+            };
+            header?: {
+                "X-Session-Reference"?: string | null;
+            };
+            path: {
+                grid_key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_grid_aggregates_grids__grid_key__aggregates_get: {
+        parameters: {
+            query: {
+                view_id: string;
+                search?: string;
+            };
+            header?: {
+                "X-Session-Reference"?: string | null;
+            };
+            path: {
+                grid_key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_grid_export_grids__grid_key__export_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Session-Reference"?: string | null;
+            };
+            path: {
+                grid_key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GridExportBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_grid_print_grids__grid_key__print_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Session-Reference"?: string | null;
+            };
+            path: {
+                grid_key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GridPrintBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_shell_shell_get: {
         parameters: {
             query?: never;
-            header: {
-                "X-User-ID": string;
+            header?: {
+                "X-Session-Reference"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -1365,8 +2978,8 @@ export interface operations {
             query?: {
                 q?: string;
             };
-            header: {
-                "X-User-ID": string;
+            header?: {
+                "X-Session-Reference"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -1396,8 +3009,8 @@ export interface operations {
     open_navigation_pin_shell_navigation_pins__pin_key__open_post: {
         parameters: {
             query?: never;
-            header: {
-                "X-User-ID": string;
+            header?: {
+                "X-Session-Reference"?: string | null;
             };
             path: {
                 pin_key: string;
@@ -1429,8 +3042,8 @@ export interface operations {
     get_bell_shell_bell_get: {
         parameters: {
             query?: never;
-            header: {
-                "X-User-ID": string;
+            header?: {
+                "X-Session-Reference"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -1460,10 +3073,1610 @@ export interface operations {
     mark_bell_read_shell_bell_read_post: {
         parameters: {
             query?: never;
-            header: {
-                "X-User-ID": string;
+            header?: {
+                "X-Session-Reference"?: string | null;
             };
             path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_preserved_drafts_outage_drafts_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Session-Reference"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_draft_offer_outage_drafts__target_kind___target_ref__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Session-Reference"?: string | null;
+            };
+            path: {
+                target_kind: string;
+                target_ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    discard_preserved_draft_outage_drafts__target_kind___target_ref__discard_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Session-Reference"?: string | null;
+            };
+            path: {
+                target_kind: string;
+                target_ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_templates_theming_templates_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Session-Reference"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_template_theming_templates_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Session-Reference"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TemplateCreateBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_template_theming_templates__template_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Session-Reference"?: string | null;
+            };
+            path: {
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_template_theming_templates__template_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Session-Reference"?: string | null;
+            };
+            path: {
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_template_theming_templates__template_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Session-Reference"?: string | null;
+            };
+            path: {
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TemplatePatchBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_type_scale_theming_type_scale_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Session-Reference"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_type_scale_theming_type_scale_patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Session-Reference"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TypeScalePatchBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_effective_theme_theming_effective_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Session-Reference"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_rules_theming_templates__template_id__rules_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Session-Reference"?: string | null;
+            };
+            path: {
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_rule_theming_templates__template_id__rules_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Session-Reference"?: string | null;
+            };
+            path: {
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RuleCreateBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_rule_theming_rules__rule_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Session-Reference"?: string | null;
+            };
+            path: {
+                rule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_rule_theming_rules__rule_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Session-Reference"?: string | null;
+            };
+            path: {
+                rule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RulePatchBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_rule_order_theming_templates__template_id__rules_order_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Session-Reference"?: string | null;
+            };
+            path: {
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RuleOrderBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_registrations_workprocesses_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Session-Reference"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_registration_workprocesses_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Session-Reference"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RegistrationCreateBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_registration_workprocesses__registration_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Session-Reference"?: string | null;
+            };
+            path: {
+                registration_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_registration_workprocesses__registration_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Session-Reference"?: string | null;
+            };
+            path: {
+                registration_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_registration_workprocesses__registration_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Session-Reference"?: string | null;
+            };
+            path: {
+                registration_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RegistrationPatchBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_actions_workprocesses_actions__data_source_key__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Session-Reference"?: string | null;
+            };
+            path: {
+                data_source_key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    launch_workprocesses_runs_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Session-Reference"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunLaunchBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    step_workprocesses_runs__run_id__step_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Session-Reference"?: string | null;
+            };
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunStepBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    commit_workprocesses_runs__run_id__commit_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Session-Reference"?: string | null;
+            };
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_workprocesses_runs__run_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Session-Reference"?: string | null;
+            };
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_run_workprocesses_runs__run_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Session-Reference"?: string | null;
+            };
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resolve_help_resolve_get: {
+        parameters: {
+            query: {
+                sourceType: string;
+                sourceIdentifier: string;
+            };
+            header?: {
+                "X-Session-Reference"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_mappings_help_mappings_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Session-Reference"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_mapping_help_mappings_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Session-Reference"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MappingCreateBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_mapping_help_mappings__mapping_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Session-Reference"?: string | null;
+            };
+            path: {
+                mapping_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_mapping_help_mappings__mapping_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Session-Reference"?: string | null;
+            };
+            path: {
+                mapping_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MappingPatchBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_settings_help_settings_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Session-Reference"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_settings_help_settings_patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Session-Reference"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SettingsPatchBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_engagements_engagements_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Session-Reference"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_engagement_rollup_engagements__engagement_id__rollup_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Session-Reference"?: string | null;
+            };
+            path: {
+                engagement_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_engagement_lifecycle_engagements__engagement_id__lifecycle_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Session-Reference"?: string | null;
+            };
+            path: {
+                engagement_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LifecycleBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_session_create_engagements__engagement_id__sessions_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Session-Reference"?: string | null;
+            };
+            path: {
+                engagement_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SessionCreateBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_session_sessions__session_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Session-Reference"?: string | null;
+            };
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SessionPatchBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_session_transcript_sessions__session_id__transcript_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Session-Reference"?: string | null;
+            };
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_email_templates_email_templates_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Session-Reference"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_email_send_email_send_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Session-Reference"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmailSendBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_resource_share_resources__resource_id__share_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Session-Reference"?: string | null;
+            };
+            path: {
+                resource_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResourceShareBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_leadership_reports_leadership_reports_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Session-Reference"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_panel_grid_panels__panel_key__grid_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Session-Reference"?: string | null;
+            };
+            path: {
+                panel_key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_panel_rows_panels__panel_key__rows_get: {
+        parameters: {
+            query?: {
+                view?: string | null;
+                search?: string;
+                sort?: string;
+                cursor?: string | null;
+            };
+            header?: {
+                "X-Session-Reference"?: string | null;
+            };
+            path: {
+                panel_key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_panel_aggregates_panels__panel_key__aggregates_get: {
+        parameters: {
+            query?: {
+                view?: string | null;
+                search?: string;
+            };
+            header?: {
+                "X-Session-Reference"?: string | null;
+            };
+            path: {
+                panel_key: string;
+            };
             cookie?: never;
         };
         requestBody?: never;

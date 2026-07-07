@@ -15,7 +15,7 @@
  */
 
 import { type ReactElement, type ReactNode, useEffect, useRef, useState } from "react";
-import { callApi, setReauthHandler } from "../api/envelope";
+import { callApi, setReauthHandler, setSessionEndedHandler } from "../api/envelope";
 import {
   broadcastSessionLoggedOut,
   broadcastSessionRevived,
@@ -81,6 +81,22 @@ export function SessionBoundary({
     );
     return () => {
       setReauthHandler(null);
+    };
+  }, []);
+
+  useEffect(() => {
+    // Any surface's `unauthenticated` refusal — a grid read, /home, a write —
+    // means the session is beyond revival (FND-909 D9: typically a stale
+    // reference the server no longer knows, e.g. after a database rebuild).
+    // Land on the ended screen: work stays mounted behind the overlay, and
+    // the user's explicit "Sign in again" leads to the login screen — never
+    // a component-local dead end, never a crash.
+    setSessionEndedHandler(() => {
+      settle(false);
+      setPhase("ended");
+    });
+    return () => {
+      setSessionEndedHandler(null);
     };
   }, []);
 

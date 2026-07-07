@@ -9,22 +9,16 @@
 
 import { type ReactElement, useEffect, useRef, useState } from "react";
 import { callApi } from "../api/envelope";
-import { type SessionState, userHeaders } from "../session";
 import type { QuickOpenEntryPayload, QuickOpenPayload } from "./payloads";
 
 const DEBOUNCE_MS = 150;
 
 export interface QuickOpenProps {
-  session: SessionState;
   onActivate: (panelKey: string, viewKey: string | null) => void;
   onClose: () => void;
 }
 
-export function QuickOpen({
-  session,
-  onActivate,
-  onClose,
-}: QuickOpenProps): ReactElement {
+export function QuickOpen({ onActivate, onClose }: QuickOpenProps): ReactElement {
   const [query, setQuery] = useState("");
   const [entries, setEntries] = useState<QuickOpenEntryPayload[]>([]);
   const [totalCount, setTotalCount] = useState<number | null>(null);
@@ -40,9 +34,6 @@ export function QuickOpen({
     const fetchEntries = (): void => {
       void callApi<QuickOpenPayload>(
         `/shell/quick-open?q=${encodeURIComponent(query)}`,
-        {
-          headers: userHeaders(session),
-        },
       ).then(({ data, meta }) => {
         if (!cancelled) {
           setEntries(data.entries);
@@ -64,7 +55,7 @@ export function QuickOpen({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [query, session]);
+  }, [query]);
 
   const activate = (entry: QuickOpenEntryPayload): void => {
     onActivate(entry.panelKey, entry.viewKey);

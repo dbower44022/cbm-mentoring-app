@@ -137,8 +137,10 @@ test("session expiry → in-place re-auth preserves the dirty input", async ({
 test("urgent banner and admin-message acknowledgment", async ({ page, request }) => {
   // Seed by the app's own admin surface (the real StoredMessageCenter): one
   // urgent message requiring acknowledgment and one normal one (Home only)
-  // that also requires it.
-  const admin = { "X-User-ID": "018f0000-0000-7000-8000-000000000abc" };
+  // that also requires it. Since FND-909 D9 the server resolves the acting
+  // user from the session reference, so the poster is a REAL login (janet,
+  // the seeded Leadership account) — no claimed identity header exists.
+  const admin = { "X-Session-Reference": await sessionReference(request, "janet") };
   await request.post(`${API}/home/messages`, {
     headers: admin,
     data: {
@@ -312,7 +314,7 @@ test("accept assignment: pending engagement flips with next steps offered", asyn
   await expect(page.locator(".grid-table")).not.toContainText("Pending Acceptance");
   const rollup = await request.get(
     `${API}/engagements/${state.riverbendEngagementID}/rollup`,
-    { headers: { "X-User-ID": await frankUserId(request) } },
+    { headers: { "X-Session-Reference": await sessionReference(request, LOGIN) } },
   );
   const body = (await rollup.json()) as {
     data: { engagement: { engagementStatusLabel: string } };
@@ -320,9 +322,14 @@ test("accept assignment: pending engagement flips with next steps offered", asyn
   expect(body.data.engagement.engagementStatusLabel).toBe("Assigned");
 });
 
-async function frankUserId(request: APIRequestContext): Promise<string> {
+/** A real session for API-side asserts: identity is server-resolved (D9). */
+async function sessionReference(
+  request: APIRequestContext,
+  loginName: string,
+): Promise<string> {
   const login = await request.post(`${API}/auth/login`, {
-    data: { loginName: LOGIN, password: PASSWORD },
+    data: { loginName, password: PASSWORD },
   });
-  return ((await login.json()) as { data: { userID: string } }).data.userID;
+  return ((await login.json()) as { data: { sessionReference: string } }).data
+    .sessionReference;
 }

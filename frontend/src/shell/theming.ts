@@ -8,7 +8,6 @@
  */
 
 import { callApi } from "../api/envelope";
-import { type SessionState, userHeaders } from "../session";
 
 /** GET /theming/effective — mirrors the WTK-230 payload. */
 export interface EffectiveThemePayload {
@@ -47,12 +46,12 @@ export function typeStepVariable(stepKey: string): string {
  * scale fills the `--type-step-*` properties (REQ-046: components pick
  * steps, never arbitrary sizes).
  */
-export async function applyEffectiveTheme(session: SessionState): Promise<void> {
+export async function applyEffectiveTheme(): Promise<void> {
+  // WHOSE theme is the session's business: the envelope client sends the
+  // session reference and the server resolves the user (FND-909 D9).
   let payload: EffectiveThemePayload;
   try {
-    ({ data: payload } = await callApi<EffectiveThemePayload>("/theming/effective", {
-      headers: userHeaders(session),
-    }));
+    ({ data: payload } = await callApi<EffectiveThemePayload>("/theming/effective"));
   } catch {
     // Non-2xx or unreachable: keep the stylesheet defaults silently — the
     // shell.css :root values ARE the org-default Standard template's values,

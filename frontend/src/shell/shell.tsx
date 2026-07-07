@@ -20,7 +20,7 @@ import { type ApiError, callApi, EnvelopeError } from "../api/envelope";
 import { GridPanel } from "../grid/grid-panel";
 import { PrepSurface } from "../mentoring/prep-surface";
 import { HomePanel } from "../panels/home";
-import { type SessionState, userHeaders } from "../session";
+import type { SessionState } from "../session";
 import { UrgentBanner } from "./banner";
 import { Header } from "./header";
 import { openHelp } from "./help";
@@ -28,6 +28,7 @@ import { Navigation } from "./navigation";
 import { PanelSplitter, ResizablePanel, usePanelChrome } from "./panel-chrome";
 import type { PreferencePayload, ShellPayload } from "./payloads";
 import { QuickOpen } from "./quick-open";
+import { startupNavigation, windowStartupLatch } from "./startup";
 import { applyEffectiveTheme } from "./theming";
 
 const NAVIGATION_PREFERENCE_KEY = "navigation";
@@ -51,10 +52,6 @@ export function Shell({ session, onLoggedOut }: ShellProps): ReactElement {
   });
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
-  // The server's startup target is honored exactly once per boot (REQ-011;
-  // mentors default to Engagements per REQ-072) — a later shell reload (e.g.
-  // a presentation switch) must not yank the user off their current panel.
-  const [startupApplied, setStartupApplied] = useState(false);
   // Home's render reads its messages (REQ-011 auto-read on view); bumping
   // this token re-fetches the banner so it never banners what was just read.
   const [messagesViewedAt, setMessagesViewedAt] = useState(0);
@@ -67,7 +64,7 @@ export function Shell({ session, onLoggedOut }: ShellProps): ReactElement {
   const location = useLocation();
 
   const loadShell = useCallback((): void => {
-    void callApi<ShellPayload>("/shell", { headers: userHeaders(session) })
+    void callApi<ShellPayload>("/shell")
       .then(({ data }) => {
         setState({ phase: "ready", shell: data, errors: [] });
       })
@@ -89,7 +86,9 @@ export function Shell({ session, onLoggedOut }: ShellProps): ReactElement {
           });
         }
       });
-  }, [session]);
+    // No dependencies: identity rides the envelope client's session header
+    // (FND-909 D9), so the loader closes over nothing per-session.
+  }, []);
 
   useEffect(loadShell, [loadShell]);
 
@@ -98,30 +97,36 @@ export function Shell({ session, onLoggedOut }: ShellProps): ReactElement {
   // defaults stay in force — they are the org-default Standard values — so
   // theming never gates the shell render.
   useEffect(() => {
-    void applyEffectiveTheme(session);
-  }, [session]);
+    void applyEffectiveTheme();
+  }, []);
 
   const shell = state.shell;
 
-  // Apply the startup target when the shell first loads and the window is
-  // still on the boot route — a deep-linked window keeps its own target,
-  // and a startup fallback's educate notice surfaces instead of a silent
-  // redirect (REQ-015).
+  // Apply the startup target ONCE per window boot (FND-909 D8): the module
+  // latch — not component state, which resets on remount and made every
+  // later sign-in re-hijack "/" — claims the boot when the shell first
+  // loads. A deep-linked window keeps its own target, and a startup
+  // fallback's educate notice surfaces instead of a silent redirect
+  // (REQ-015). After the claim, "/" renders Home normally.
   useEffect(() => {
-    if (shell === null || startupApplied) {
+    if (shell === null || !windowStartupLatch()) {
       return;
     }
-    setStartupApplied(true);
     const startup = shell.startup;
     if (startup.notice !== null) {
       setNotice(
         `${startup.notice.whatHappened} ${startup.notice.why} ${startup.notice.whatNext}`,
       );
     }
-    if (startup.panelKey !== shell.homePanelKey && window.location.pathname === "/") {
-      navigate(`/panel/${encodeURIComponent(startup.panelKey)}`);
+    const target = startupNavigation(
+      startup.panelKey,
+      shell.homePanelKey,
+      window.location.pathname,
+    );
+    if (target !== null) {
+      navigate(target);
     }
-  }, [shell, startupApplied, navigate]);
+  }, [shell, navigate]);
 
   // Ctrl+K binds identically on every window kind, from the payload's own
   // declaration (DEC-080 §A) — never a hardcoded key.
@@ -181,9 +186,7 @@ export function Shell({ session, onLoggedOut }: ShellProps): ReactElement {
     // read the resolved document, change only the presentation, write the
     // whole thing back — PUT has no partial merge. No stored row yet means
     // the built-in default (tabs, no pins).
-    void callApi<PreferencePayload>(`/preferences/${NAVIGATION_PREFERENCE_KEY}`, {
-      headers: userHeaders(session),
-    })
+    void callApi<PreferencePayload>(`/preferences/${NAVIGATION_PREFERENCE_KEY}`)
       .then(({ data }) => data.preferenceValue)
       .catch((failure: unknown) => {
         if (failure instanceof EnvelopeError && failure.status === 404) {
@@ -194,7 +197,7 @@ export function Shell({ session, onLoggedOut }: ShellProps): ReactElement {
       .then((document) =>
         callApi<PreferencePayload>(`/preferences/${NAVIGATION_PREFERENCE_KEY}`, {
           method: "PUT",
-          headers: { ...userHeaders(session), "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ preferenceValue: { ...document, presentation } }),
         }),
       )
@@ -246,7 +249,6 @@ export function Shell({ session, onLoggedOut }: ShellProps): ReactElement {
     <Navigation
       navigation={shell.navigation}
       areas={shell.areas}
-      session={session}
       onOpenPanel={openPanel}
       onNavigationStale={loadShell}
     />
@@ -334,7 +336,6 @@ export function Shell({ session, onLoggedOut }: ShellProps): ReactElement {
             </div>
             {paletteOpen && (
               <QuickOpen
-                session={session}
                 onActivate={openPanel}
                 onClose={() => {
                   setPaletteOpen(false);
