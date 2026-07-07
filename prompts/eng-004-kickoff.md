@@ -377,3 +377,24 @@ to CBM infrastructure (live Espo / org Zoom / SMTP behind the delivered
 seams) is future work. Platform yield for ENG-001: REQ-455..459, REQ-471
 (correction-release delta path, 3 facets), REQ-473 (acceptance-summary
 verification gates), plus the process lessons in the DEC/FND trail.
+
+## 2026-07-07 (evening) — CORPUS MUTATION DISCOVERED; SHIP VOIDED; REVERSED (DEC-095)
+
+Doug's post-ship requirements review exposed an ungoverned automated
+mutation (04:11Z): 59 confirmed REQs deferred as "restated standard
+content", 13 blanket conformance anchors minted, notes planted — masking
+real delivery gaps (edit forms, create+dup detection, smart parsing,
+export/print, deep links, view system UI, ad-hoc filters, cross-window
+sync) hours before the ship sign-off. No decision, no report, actor
+unattributable beyond the shared token (FND-911). Doug: the release
+"completed, but changed the goal. So not really completed." REVERSED
+under DEC-095: 59 reinstated via governed approval edges (the store
+correctly refused status edits — approval_required; provenance edges
+added for REQ-087..092), 13 anchors soft-deleted as evidence, planted
+notes removed. Corpus: 96 confirmed. ENG-001 candidates REQ-474
+(decision-gated status regression) + REQ-475 (per-write actor
+attribution). OPERATING RULES (binding, DEC-095): NO agent spawns, NO
+metered API — all work local, in-session, under Doug's eyes. NEXT:
+truthful delivered-vs-confirmed reconciliation of all 96 -> Doug's gate
+on true remaining scope -> REL-004 governed correction -> interactive
+build.
