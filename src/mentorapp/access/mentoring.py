@@ -203,7 +203,9 @@ MENTOR_DATA_SOURCES: Final[tuple[MentorSourceSpec, ...]] = (
     ),
     MentorSourceSpec(
         DS_MENTOR_ENGAGEMENTS,
-        "My Engagements",
+        # REQ-072's own name for the mentor's landing triage view — the PI-010
+        # surfaces ruling: mentors land on Engagements "My Active Engagements".
+        "My Active Engagements",
         engagement_triage_sql(mentor_scoped=True),
         (*ENGAGEMENT_TRIAGE_COLUMNS, "userID"),
         _MENTOR_AND_LEADERSHIP,

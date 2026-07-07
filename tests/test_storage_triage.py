@@ -193,7 +193,45 @@ def test_mentor_scoped_read_confines_rows_to_the_session_user(session: Session) 
 def test_leadership_read_spans_mentors_and_the_unassigned(session: Session) -> None:
     user_a, _user_b = _prepared_store(session)
     rows = engagement_triage_rows(session, current_user_id=user_a.user_id, mentor_scoped=False)
-    assert [r["engagementName"] for r in rows] == ["acme", "newco", "zenith"]
+    # Triage order (the PI-010 surfaces ruling on REQ-072): the pending
+    # acceptance leads, then the imminent next session (acme has a future
+    # one), then no-next-session engagements (zenith).
+    assert [r["engagementName"] for r in rows] == ["newco", "acme", "zenith"]
     by_name = {r["engagementName"]: r for r in rows}
     assert by_name["newco"]["engagementStatusLabel"] == "Pending Acceptance"
     assert by_name["newco"]["totalSessions"] == 0
+
+
+def test_triage_orders_by_the_ruled_priority(session: Session) -> None:
+    # PI-010 surfaces ruling on REQ-072: pending acceptances, then imminent
+    # sessions, then open action items — never plain name order.
+    seed_built_in_registry(
+        session, [Client, CrmCompanyRef, CrmMentorRef, Engagement, MentoringSession]
+    )
+    regenerate_read_views(session)
+    user_a, mentor_a = _mentor(session, "prio")
+    with_items = _engagement(session, "zz-items", mentor_a)
+    _session(session, with_items, _PAST)
+    item_session = session.scalars(
+        select(MentoringSession).where(
+            MentoringSession.engagement_id == with_items.engagement_id
+        )
+    ).one()
+    item_session.action_items = "<ul><li>Open item</li></ul>"
+    quiet = _engagement(session, "aa-quiet", mentor_a)
+    _session(session, quiet, _PAST)
+    imminent = _engagement(session, "mm-imminent", mentor_a)
+    _session(session, imminent, _FUTURE)
+    pending = _engagement(session, "nn-pending", mentor_a, status_name="pendingAcceptance")
+    session.commit()
+
+    rows = engagement_triage_rows(session, current_user_id=user_a.user_id)
+    assert [r["engagementName"] for r in rows] == [
+        pending.engagement_name,
+        imminent.engagement_name,
+        with_items.engagement_name,
+        quiet.engagement_name,
+    ]
+    by_name = {r["engagementName"]: r for r in rows}
+    assert by_name["zz-items"]["openActionItems"] == 1
+    assert by_name["aa-quiet"]["openActionItems"] == 0

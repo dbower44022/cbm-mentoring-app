@@ -38,8 +38,10 @@ from mentorapp.storage.adminsql import AdminSqlSource, execute_admin_sql
 log = get_logger(__name__)
 
 # The REQ-072 triage columns, in requirement order, as the SELECT aliases
-# them. The scoped variant additionally exposes the mentor pairing column
-# (``userID``) the REQ-019 row filter binds.
+# them. ``openActionItems`` joined the set with the PI-010 surfaces ruling —
+# the triage priority ends on open action items, so the read must derive the
+# signal (and a grid may badge it). The scoped variant additionally exposes
+# the mentor pairing column (``userID``) the REQ-019 row filter binds.
 ENGAGEMENT_TRIAGE_COLUMNS: Final[tuple[str, ...]] = (
     "engagementID",
     "engagementName",
@@ -49,6 +51,7 @@ ENGAGEMENT_TRIAGE_COLUMNS: Final[tuple[str, ...]] = (
     "lastSessionAt",
     "nextSessionAt",
     "totalSessions",
+    "openActionItems",
 )
 
 # Per-engagement session rollup over the live rows the view serves.
@@ -61,9 +64,28 @@ _SESSION_ROLLUP: Final = (
     ' THEN s."scheduledAt" END) AS "lastSessionAt",\n'
     '       MIN(CASE WHEN s."scheduledAt" > CURRENT_TIMESTAMP'
     ' THEN s."scheduledAt" END) AS "nextSessionAt",\n'
-    '       COUNT(*) AS "totalSessions"\n'
+    '       COUNT(*) AS "totalSessions",\n'
+    # Open action items are REQ-082 rich text ON sessions (never task
+    # records), so "any live session carries action items" IS the signal.
+    '       MAX(CASE WHEN s."actionItems" IS NOT NULL'
+    ' AND s."actionItems" <> \'\' THEN 1 ELSE 0 END) AS "openActionItems"\n'
     'FROM "vwSession" s\n'
     'GROUP BY s."engagementID"'
+)
+
+# The triage ORDER (PI-010 surfaces ruling on REQ-072): pending acceptances
+# first, then imminent sessions (soonest next session; none sorts last),
+# then engagements with open action items, then name as the stable tail.
+# The status test reads the decoded LABEL because admin-SQL sources may only
+# read views, and the option-value table has no view — the label is the
+# status's one decoded form on vwEngagement.
+_TRIAGE_ORDER: Final = (
+    "\nORDER BY CASE WHEN e.\"engagementStatusLabel\" = 'Pending Acceptance'"
+    " THEN 0 ELSE 1 END,\n"
+    '         CASE WHEN r."nextSessionAt" IS NULL THEN 1 ELSE 0 END,\n'
+    '         r."nextSessionAt",\n'
+    '         COALESCE(r."openActionItems", 0) DESC,\n'
+    '         e."engagementName"'
 )
 
 
@@ -85,6 +107,7 @@ def engagement_triage_sql(*, mentor_scoped: bool) -> str:
         'r."lastSessionAt"',
         'r."nextSessionAt"',
         'COALESCE(r."totalSessions", 0) AS "totalSessions"',
+        'COALESCE(r."openActionItems", 0) AS "openActionItems"',
     ]
     joins = [f'LEFT JOIN ({_SESSION_ROLLUP}) r ON r."engagementID" = e."engagementID"']
     where = ""
@@ -100,7 +123,7 @@ def engagement_triage_sql(*, mentor_scoped: bool) -> str:
         + '\nFROM "vwEngagement" e\n'
         + "\n".join(joins)
         + where
-        + '\nORDER BY e."engagementName"'
+        + _TRIAGE_ORDER
     )
 
 
