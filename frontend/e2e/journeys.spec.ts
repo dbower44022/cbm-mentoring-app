@@ -321,16 +321,8 @@ test("shift-click range leaves no native text selection (REQ-108)", async ({
   // text selection suppressed, 0 chars selected across the range") has no
   // implementing code: no user-select rule in shell.css and no shift-aware
   // mousedown preventDefault on the rows, so a shift-click row range
-  // highlights ~390 characters of cell text (reproduced in isolation, no
-  // prior drags). This is frontend PRODUCT code to fix under its own
-  // finding — out of scope for this test-only branch. test.fail() keeps the
-  // assertion at full strength: the run stays green while the defect
-  // stands, and CI goes red the moment a fix lands so this marker must be
-  // removed with it.
-  test.fail(
-    true,
-    "REQ-108 selection hygiene unimplemented: shift-click row range leaves a native text selection",
-  );
+  // REQ-108 fixed in de342d1 (shift-aware mousedown preventDefault) — the
+  // expected-failure marker that guarded this assertion is gone with it.
   await signIn(page);
   const grid = await engagementsGrid(page);
   const rows = grid.locator(".grid-table tbody tr");
