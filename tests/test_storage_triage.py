@@ -129,7 +129,7 @@ def test_triage_columns_are_derived_per_engagement(session: Session) -> None:
     rows = engagement_triage_rows(session, current_user_id=user_a.user_id)
     assert len(rows) == 1
     row: dict[str, Any] = rows[0]
-    assert set(ENGAGEMENT_TRIAGE_COLUMNS) <= set(row)
+    assert {spec.field_name for spec in ENGAGEMENT_TRIAGE_COLUMNS} <= set(row)
     assert row["engagementName"] == "acme"
     assert row["engagementStatusLabel"] == "Active"
     assert row["primaryContactName"] == "Contact acme"

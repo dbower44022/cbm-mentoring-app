@@ -54,9 +54,11 @@ from mentorapp.access.mentoring import (
 
 # The one role seam (the mentoring-router stance): declared by the
 # workprocess router, bound once — this catalog consumes it, never forks it.
+from mentorapp.api.grid_surface import AggregateSpec
 from mentorapp.api.routers.workprocess import RoleSource
 from mentorapp.observability import get_logger
 from mentorapp.storage import AuthSession, UserPreference, as_utc
+from mentorapp.storage.columns import ColumnSpec, displayed_columns
 from mentorapp.ui.home_panel import STARTUP_PREFERENCE_KEY
 from mentorapp.ui.navigation import HOME_PANEL, Panel, PanelType, ViewRecord
 
@@ -65,15 +67,11 @@ log = get_logger(__name__)
 # The engagements area's stable key — REQ-072's mentor landing panel.
 ENGAGEMENTS_PANEL_KEY: Final = "engagements"
 
-# The seeded source specs by key — the SQL, exposed fields, and scoping
+# The seeded source specs by key — the SQL, column declarations, and scoping
 # declaration all come from the one source-controlled module.
 SOURCE_SPECS: Final[dict[str, MentorSourceSpec]] = {
     spec.data_source_key: spec for spec in MENTOR_DATA_SOURCES
 }
-
-# The mentor pairing column is REQ-019 scoping plumbing, not grid content —
-# every panel projection drops it.
-_USER_FILTER_FIELD: Final = "userID"
 
 
 @dataclass(frozen=True)
@@ -84,6 +82,9 @@ class PanelViewSpec:
     action fold match on it). ``record_id_field``/``title_field`` name which
     exposed columns serve as each row's identity and display title —
     explicit per source because the sources project different shapes.
+    ``aggregates`` is the view's own footer declaration (FND-019 — a footer
+    aggregate is a VIEW property), speaking the one ``AggregateSpec``
+    vocabulary the ``/grids`` surface already validates against.
     """
 
     view_key: str
@@ -91,6 +92,7 @@ class PanelViewSpec:
     criteria: str
     record_id_field: str
     title_field: str
+    aggregates: tuple[AggregateSpec, ...] = ()
 
     @property
     def data_source_key(self) -> str:
@@ -98,10 +100,15 @@ class PanelViewSpec:
         return self.view_key
 
     @property
-    def columns(self) -> tuple[str, ...]:
-        """The displayed fields: the source's exposure minus scoping plumbing."""
-        spec = SOURCE_SPECS[self.data_source_key]
-        return tuple(f for f in spec.exposed_fields if f != _USER_FILTER_FIELD)
+    def columns(self) -> tuple[ColumnSpec, ...]:
+        """The displayed columns, declared order — plumbing (scoping userID,
+        row-identity keys) rides the rows but never renders (FND-909 D2)."""
+        return displayed_columns(SOURCE_SPECS[self.data_source_key].columns)
+
+    @property
+    def column_names(self) -> tuple[str, ...]:
+        """The displayed field names — what search/sort may address (REQ-020)."""
+        return tuple(spec.field_name for spec in self.columns)
 
 
 @dataclass(frozen=True)
@@ -173,6 +180,10 @@ MENTOR_PANELS: Final[tuple[PanelSpec, ...]] = (
                 "your engagements, ordered for triage",
                 record_id_field="engagementID",
                 title_field="engagementName",
+                # SKL-112's footer row needs a served aggregate to exist; the
+                # triage views declare the one honest aggregate a triage set
+                # carries — the engagement count (FND-909 D11).
+                aggregates=(AggregateSpec("count", "engagementName"),),
             ),
             PanelViewSpec(
                 DS_LEADERSHIP_ENGAGEMENTS,
@@ -180,6 +191,7 @@ MENTOR_PANELS: Final[tuple[PanelSpec, ...]] = (
                 "every engagement across mentors, ordered for triage",
                 record_id_field="engagementID",
                 title_field="engagementName",
+                aggregates=(AggregateSpec("count", "engagementName"),),
             ),
         ),
     ),

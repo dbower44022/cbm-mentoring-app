@@ -56,6 +56,7 @@ from mentorapp.access.views import (
 )
 from mentorapp.observability import get_logger
 from mentorapp.storage import DataSource
+from mentorapp.storage.columns import ColumnSpec, exposed_field_names
 from mentorapp.storage.triage import ENGAGEMENT_TRIAGE_COLUMNS, engagement_triage_sql
 
 log = get_logger(__name__)
@@ -90,6 +91,10 @@ MENTOR_AREAS: Final[tuple[AreaDescriptor, ...]] = (
 # The REQ-019 pairing column every scoped source filters on: the mentor
 # anchor's app-user linkage, exposed by vwCrmMentorRef.
 _USER_FILTER_COLUMN: Final = "userID"
+
+# The pairing column as a declared column: scoping plumbing rides the SQL
+# projection but is never grid content, so it is exposed yet not displayed.
+_USER_FILTER_SPEC: Final = ColumnSpec(_USER_FILTER_COLUMN, displayed=False)
 
 # Mentor-scoped SQL bodies. All read the generated views (DB-S9); each
 # scoped body references :currentUserID exactly once, on the pairing column.
@@ -153,16 +158,28 @@ _EVENTS_SQL: Final = (
 
 @dataclass(frozen=True)
 class MentorSourceSpec:
-    """One seeded area source: its stored form plus the roles granted on it."""
+    """One seeded area source: its stored form plus the roles granted on it.
+
+    ``columns`` declares every projected field — format kind, ruled header,
+    and displayed/plumbing split — in the one column vocabulary
+    (:mod:`mentorapp.storage.columns`, FND-909 D1); the panel surface derives
+    its grid columns and the frontend its cell rendering from here, so the
+    source is the single truth for how its values look.
+    """
 
     data_source_key: str
     data_source_name: str
     sql_text: str
-    exposed_fields: tuple[str, ...]
+    columns: tuple[ColumnSpec, ...]
     granted_roles: tuple[str, ...]
     # Non-null = the REQ-019 user-scoped declaration (the view column bound
     # server-side); None = an org-wide read.
     user_row_filter: str | None = None
+
+    @property
+    def exposed_fields(self) -> tuple[str, ...]:
+        """Every projected field name — what ``dataSource.exposedFields`` stores."""
+        return exposed_field_names(self.columns)
 
 
 _MENTOR_AND_LEADERSHIP: Final = (MENTOR_ROLE, LEADERSHIP_ROLE)
@@ -172,7 +189,12 @@ MENTOR_DATA_SOURCES: Final[tuple[MentorSourceSpec, ...]] = (
         DS_MENTOR_CONTACTS,
         "My Contacts",
         _CONTACTS_SQL,
-        ("primaryContactName", "primaryContactEmail", "primaryContactCrmID", "userID"),
+        (
+            ColumnSpec("primaryContactName"),
+            ColumnSpec("primaryContactEmail"),
+            ColumnSpec("primaryContactCrmID"),
+            _USER_FILTER_SPEC,
+        ),
         _MENTOR_AND_LEADERSHIP,
         user_row_filter=_USER_FILTER_COLUMN,
     ),
@@ -180,7 +202,11 @@ MENTOR_DATA_SOURCES: Final[tuple[MentorSourceSpec, ...]] = (
         DS_MENTOR_COMPANIES,
         "My Companies",
         _COMPANIES_SQL,
-        ("crmCompanyRefID", "crmCompanyID", "userID"),
+        (
+            ColumnSpec("crmCompanyRefID"),
+            ColumnSpec("crmCompanyID"),
+            _USER_FILTER_SPEC,
+        ),
         _MENTOR_AND_LEADERSHIP,
         user_row_filter=_USER_FILTER_COLUMN,
     ),
@@ -189,14 +215,14 @@ MENTOR_DATA_SOURCES: Final[tuple[MentorSourceSpec, ...]] = (
         "My Clients",
         _CLIENTS_SQL,
         (
-            "clientID",
-            "crmCompanyRefID",
-            "crmCompanyID",
-            "clientSince",
-            "clientProgram",
-            "clientReferralSource",
-            "clientStage",
-            "userID",
+            ColumnSpec("clientID"),
+            ColumnSpec("crmCompanyRefID"),
+            ColumnSpec("crmCompanyID"),
+            ColumnSpec("clientSince", column_format="date"),
+            ColumnSpec("clientProgram"),
+            ColumnSpec("clientReferralSource"),
+            ColumnSpec("clientStage"),
+            _USER_FILTER_SPEC,
         ),
         _MENTOR_AND_LEADERSHIP,
         user_row_filter=_USER_FILTER_COLUMN,
@@ -207,7 +233,7 @@ MENTOR_DATA_SOURCES: Final[tuple[MentorSourceSpec, ...]] = (
         # surfaces ruling: mentors land on Engagements "My Active Engagements".
         "My Active Engagements",
         engagement_triage_sql(mentor_scoped=True),
-        (*ENGAGEMENT_TRIAGE_COLUMNS, "userID"),
+        (*ENGAGEMENT_TRIAGE_COLUMNS, _USER_FILTER_SPEC),
         _MENTOR_AND_LEADERSHIP,
         user_row_filter=_USER_FILTER_COLUMN,
     ),
@@ -216,15 +242,15 @@ MENTOR_DATA_SOURCES: Final[tuple[MentorSourceSpec, ...]] = (
         "My Sessions",
         _SESSIONS_SQL,
         (
-            "sessionID",
-            "engagementID",
-            "engagementName",
-            "scheduledAt",
-            "sessionStatusLabel",
-            "conferenceLink",
-            "sessionNotes",
-            "actionItems",
-            "userID",
+            ColumnSpec("sessionID"),
+            ColumnSpec("engagementID"),
+            ColumnSpec("engagementName"),
+            ColumnSpec("scheduledAt", column_format="datetime"),
+            ColumnSpec("sessionStatusLabel"),
+            ColumnSpec("conferenceLink"),
+            ColumnSpec("sessionNotes"),
+            ColumnSpec("actionItems"),
+            _USER_FILTER_SPEC,
         ),
         _MENTOR_AND_LEADERSHIP,
         user_row_filter=_USER_FILTER_COLUMN,
@@ -234,11 +260,11 @@ MENTOR_DATA_SOURCES: Final[tuple[MentorSourceSpec, ...]] = (
         "Resources",
         _RESOURCES_SQL,
         (
-            "resourceID",
-            "resourceTitle",
-            "resourceKindLabel",
-            "resourceLocation",
-            "resourceDescription",
+            ColumnSpec("resourceID"),
+            ColumnSpec("resourceTitle"),
+            ColumnSpec("resourceKindLabel"),
+            ColumnSpec("resourceLocation"),
+            ColumnSpec("resourceDescription"),
         ),
         _MENTOR_AND_LEADERSHIP,
     ),
@@ -246,7 +272,13 @@ MENTOR_DATA_SOURCES: Final[tuple[MentorSourceSpec, ...]] = (
         DS_MENTOR_EVENTS,
         "Events",
         _EVENTS_SQL,
-        ("eventID", "eventTitle", "startsAt", "eventLocation", "eventAudience"),
+        (
+            ColumnSpec("eventID"),
+            ColumnSpec("eventTitle"),
+            ColumnSpec("startsAt", column_format="datetime"),
+            ColumnSpec("eventLocation"),
+            ColumnSpec("eventAudience"),
+        ),
         _MENTOR_AND_LEADERSHIP,
     ),
     MentorSourceSpec(

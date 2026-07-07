@@ -34,6 +34,7 @@ from sqlalchemy.orm import Session
 
 from mentorapp.observability import get_logger
 from mentorapp.storage.adminsql import AdminSqlSource, execute_admin_sql
+from mentorapp.storage.columns import ColumnSpec
 
 log = get_logger(__name__)
 
@@ -42,16 +43,23 @@ log = get_logger(__name__)
 # the triage priority ends on open action items, so the read must derive the
 # signal (and a grid may badge it). The scoped variant additionally exposes
 # the mentor pairing column (``userID``) the REQ-019 row filter binds.
-ENGAGEMENT_TRIAGE_COLUMNS: Final[tuple[str, ...]] = (
-    "engagementID",
-    "engagementName",
-    "engagementStatusLabel",
-    "primaryContactName",
-    "primaryContactEmail",
-    "lastSessionAt",
-    "nextSessionAt",
-    "totalSessions",
-    "openActionItems",
+#
+# ``engagementID`` is a row's identity, never a rendered column (FND-909 D2):
+# the panel surface serves it as each row's ``recordId``, and REQ-072's ruled
+# column list starts at the engagement NAME. The session-date columns carry
+# their ruled headers verbatim ("Last Session", never the derived "Last
+# Session At" — FND-909 D11) and their format kinds (FND-909 D1), so every
+# grid over this read titles and renders them identically.
+ENGAGEMENT_TRIAGE_COLUMNS: Final[tuple[ColumnSpec, ...]] = (
+    ColumnSpec("engagementID", displayed=False),
+    ColumnSpec("engagementName"),
+    ColumnSpec("engagementStatusLabel"),
+    ColumnSpec("primaryContactName"),
+    ColumnSpec("primaryContactEmail"),
+    ColumnSpec("lastSessionAt", column_format="datetime", label="Last Session"),
+    ColumnSpec("nextSessionAt", column_format="datetime", label="Next Session"),
+    ColumnSpec("totalSessions", column_format="number"),
+    ColumnSpec("openActionItems", column_format="number"),
 )
 
 # Per-engagement session rollup over the live rows the view serves.
