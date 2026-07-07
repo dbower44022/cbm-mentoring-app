@@ -883,3 +883,11 @@ span.link-row {
 .grid-status-bar > :last-child {
   margin-left: auto;
 }
+
+/* D12: the middle of the status bar is reserved for progress — it takes
+   the flexible width and centers, so the counts (last child) always sit
+   at the right edge, exactly like the prototype's status-mid/status-right. */
+.grid-status-progress {
+  flex: 1 1 0;
+  text-align: center;
+}

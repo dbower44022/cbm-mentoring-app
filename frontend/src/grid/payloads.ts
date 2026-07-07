@@ -6,6 +6,8 @@
  * and the WTK-043 panel design (`ui/grid_panel.py`).
  */
 
+import { type ColumnFormat } from "./format";
+
 /** One action as record_preview.PanelAction serializes it. */
 export interface ActionPayload {
   key: string;
@@ -17,6 +19,12 @@ export interface ActionPayload {
 export interface GridColumnPayload {
   fieldName: string;
   label: string;
+  /**
+   * The column's declared format kind (SKL-112: format is a view property;
+   * FND-909 D1). Cells render through the one formatter (./format.ts)
+   * keyed by this — the wire value stays raw, the LOOK is declared here.
+   */
+  format: ColumnFormat;
 }
 
 export interface GridViewPayload {

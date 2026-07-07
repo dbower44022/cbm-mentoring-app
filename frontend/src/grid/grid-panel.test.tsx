@@ -84,8 +84,9 @@ function makePanel(): GridPanelPayload {
     ],
     activeViewKey: "v-all",
     columns: [
-      { fieldName: "name", label: "Name" },
-      { fieldName: "stage", label: "Stage" },
+      { fieldName: "name", label: "Name", format: "text" },
+      { fieldName: "stage", label: "Stage", format: "text" },
+      { fieldName: "nextSessionAt", label: "Next Session", format: "datetime" },
     ],
     actions: [OPEN, REMOVE, EXPORT],
     commonActionKeys: ["open", "export"],
@@ -99,7 +100,13 @@ function makeRows(from: number, to: number): GridRowPayload[] {
     return {
       recordId: `r${String(n)}`,
       title: `Engagement ${String(n)}`,
-      values: { name: `Engagement ${String(n)}`, stage: "Active" },
+      values: {
+        name: `Engagement ${String(n)}`,
+        stage: "Active",
+        // Raw wire form (str(datetime) with microseconds) — the datetime
+        // column proves cells render through the formatter, never raw (D1).
+        nextSessionAt: n % 2 === 0 ? null : "2026-07-10 10:00:00.000000",
+      },
     };
   });
 }
@@ -216,6 +223,20 @@ describe("anatomy (REQ-016)", () => {
     renderGrid();
     const search = await screen.findByLabelText("Search displayed columns");
     expect(document.activeElement).toBe(search);
+  });
+});
+
+// --- FND-909 D1: cells render through the one formatter, never raw ------------
+
+describe("cell value formatting (FND-909 D1)", () => {
+  it("renders datetime cells in the prototype flavor and absent values as dashes", async () => {
+    renderGrid();
+    await screen.findByText("Engagement 1");
+
+    // Odd rows carry the raw SQL form; it must reach the user formatted.
+    expect(rowFor("Engagement 1").textContent).toContain("Jul 10, 10:00 AM");
+    expect(rowFor("Engagement 2").textContent).toContain("—");
+    expect(document.body.textContent).not.toContain("2026-07-10 10:00:00.000000");
   });
 });
 
