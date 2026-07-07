@@ -185,6 +185,10 @@ function LoadedGrid({
   // (min-width in ch on every header/cell), so neither drags nor auto
   // sizing can squash a column below it.
   const [colWidths, setColWidths] = useState<Record<string, number>>({});
+  // A resize drag must never read as a header click (Doug's REQ-107
+  // clarification): the flag lives through the drag AND the click event
+  // that fires after mouseup, then clears on the next tick.
+  const resizingColumn = useRef(false);
   const [selection, setSelection] = useState<Selection>(EMPTY_SELECTION);
   const [focusedRow, setFocusedRow] = useState(0);
   const [rowsState, setRowsState] = useState<RowsState>({
@@ -857,6 +861,9 @@ function LoadedGrid({
                               : "descending"
                         }
                         onClick={(event) => {
+                          if (resizingColumn.current) {
+                            return;
+                          }
                           sortHeader(column.fieldName, event.shiftKey);
                         }}
                         onKeyDown={(event) => {
@@ -920,9 +927,15 @@ function LoadedGrid({
                                 ),
                               }));
                             };
+                            resizingColumn.current = true;
                             const up = (): void => {
                               document.removeEventListener("mousemove", move);
                               document.removeEventListener("mouseup", up);
+                              // The header's click fires after mouseup —
+                              // clear the flag once that tick has passed.
+                              setTimeout(() => {
+                                resizingColumn.current = false;
+                              }, 0);
                             };
                             document.addEventListener("mousemove", move);
                             document.addEventListener("mouseup", up);

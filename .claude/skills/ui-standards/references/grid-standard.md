@@ -191,3 +191,5 @@ unnecessary.
   the user's view settings.
 - Default justification: text LEFT, numbers CENTER (explicit ruling — beats
   the right-align convention), dates LEFT, status LEFT.
+- Resizing a column NEVER triggers its sort (Doug clarification 2026-07-07):
+  the drag gesture and the sort click are distinct.

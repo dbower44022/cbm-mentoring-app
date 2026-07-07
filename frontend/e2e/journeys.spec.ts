@@ -283,6 +283,10 @@ test("column resize clamps at the character minimum; shift-click selects the row
   expect(grownBox.width).toBeGreaterThan(startBox.width + 100);
   expect(grownBox.width).toBeLessThan(startBox.width + 200);
 
+  // Doug's 2026-07-07 clarification (REQ-107 / SKL-112 v6): a resize drag
+  // must NEVER read as a header click — sorting stays exactly as it was.
+  await expect(th).not.toHaveAttribute("aria-sort", /.+/);
+
   // …and a violent shrink drag clamps at the CHARACTER minimum ("Engagement
   // Name" floors at 17ch), never below 100px — the label always fits.
   const shrinkFrom = await handle.boundingBox();
