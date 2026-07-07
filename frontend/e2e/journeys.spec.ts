@@ -291,8 +291,20 @@ test("accept assignment: pending engagement flips with next steps offered", asyn
 
   // Every mentoring action is always listed (never hidden); the lifecycle
   // transitions live in the actions menu and confirm before anything moves.
-  await page.getByRole("button", { name: "Other Actions" }).click();
-  await page.getByRole("button", { name: "Accept Assignment" }).click();
+  // FND-910: "Accept Assignment" legitimately exists TWICE — as a common
+  // action-bar button (REQ-021's two-most-common rule) and as an entry in
+  // the one full menu — so the click scopes to the container it means: the
+  // bar is the toolbar (.grid-action-bar), the open menu is
+  // menu[aria-label="All actions"]. Product behavior is correct; an
+  // unscoped page-wide selector was the defect.
+  await page
+    .locator(".grid-action-bar")
+    .getByRole("button", { name: "Other Actions" })
+    .click();
+  await page
+    .locator('menu[aria-label="All actions"]')
+    .getByRole("button", { name: "Accept Assignment" })
+    .click();
   const dialog = page.getByRole("dialog", { name: "Accept Assignment" });
   await expect(dialog).toContainText("Riverbend Bakery");
   await expect(dialog).toContainText("Pending Acceptance");
