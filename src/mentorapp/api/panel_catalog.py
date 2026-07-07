@@ -58,7 +58,7 @@ from mentorapp.api.grid_surface import AggregateSpec
 from mentorapp.api.routers.workprocess import RoleSource
 from mentorapp.observability import get_logger
 from mentorapp.storage import AuthSession, UserPreference, as_utc
-from mentorapp.storage.columns import ColumnSpec, displayed_columns
+from mentorapp.storage.columns import ColumnSpec, FormattingRuleSpec, displayed_columns
 from mentorapp.ui.home_panel import STARTUP_PREFERENCE_KEY
 from mentorapp.ui.navigation import HOME_PANEL, Panel, PanelType, ViewRecord
 
@@ -109,6 +109,13 @@ class PanelViewSpec:
     def column_names(self) -> tuple[str, ...]:
         """The displayed field names — what search/sort may address (REQ-020)."""
         return tuple(spec.field_name for spec in self.columns)
+
+    @property
+    def formatting_rules(self) -> tuple[FormattingRuleSpec, ...]:
+        """The source's REQ-045 rules, evaluation order — the same declared
+        path as the columns (FND-909 D7), so a view can never disagree with
+        its source about how status values paint."""
+        return SOURCE_SPECS[self.data_source_key].formatting_rules
 
 
 @dataclass(frozen=True)

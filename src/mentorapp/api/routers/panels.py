@@ -273,6 +273,21 @@ def get_panel_grid(
                 }
                 for spec in active.columns
             ],
+            # The view's REQ-045 conditional formatting (FND-909 D7), served
+            # in evaluation order — the list order IS first-match-wins, the
+            # same contract the theming rules surface speaks. Effects name
+            # status slots, never literal colors (FND-906): the client paints
+            # them through the active template's --slot-status-* variables.
+            "formattingRules": [
+                {
+                    "conditionField": rule.condition_field,
+                    "conditionOperator": rule.condition_operator,
+                    "conditionValue": rule.condition_value,
+                    "effect": rule.effect,
+                    "effectSlot": rule.effect_slot,
+                }
+                for rule in active.formatting_rules
+            ],
             # The mentoring domain actions join CLIENT-side keyed by data
             # source (the pass-2 design); the panel itself declares none.
             "actions": [],

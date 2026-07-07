@@ -56,8 +56,12 @@ from mentorapp.access.views import (
 )
 from mentorapp.observability import get_logger
 from mentorapp.storage import DataSource
-from mentorapp.storage.columns import ColumnSpec, exposed_field_names
-from mentorapp.storage.triage import ENGAGEMENT_TRIAGE_COLUMNS, engagement_triage_sql
+from mentorapp.storage.columns import ColumnSpec, FormattingRuleSpec, exposed_field_names
+from mentorapp.storage.triage import (
+    ENGAGEMENT_TRIAGE_COLUMNS,
+    ENGAGEMENT_TRIAGE_FORMATTING_RULES,
+    engagement_triage_sql,
+)
 
 log = get_logger(__name__)
 
@@ -164,7 +168,10 @@ class MentorSourceSpec:
     and displayed/plumbing split — in the one column vocabulary
     (:mod:`mentorapp.storage.columns`, FND-909 D1); the panel surface derives
     its grid columns and the frontend its cell rendering from here, so the
-    source is the single truth for how its values look.
+    source is the single truth for how its values look. ``formatting_rules``
+    rides the same declaration path (FND-909 D7): the source's REQ-045
+    conditional formatting, in evaluation order, served with the panel
+    payload exactly like the columns are.
     """
 
     data_source_key: str
@@ -175,6 +182,7 @@ class MentorSourceSpec:
     # Non-null = the REQ-019 user-scoped declaration (the view column bound
     # server-side); None = an org-wide read.
     user_row_filter: str | None = None
+    formatting_rules: tuple[FormattingRuleSpec, ...] = ()
 
     @property
     def exposed_fields(self) -> tuple[str, ...]:
@@ -236,6 +244,7 @@ MENTOR_DATA_SOURCES: Final[tuple[MentorSourceSpec, ...]] = (
         (*ENGAGEMENT_TRIAGE_COLUMNS, _USER_FILTER_SPEC),
         _MENTOR_AND_LEADERSHIP,
         user_row_filter=_USER_FILTER_COLUMN,
+        formatting_rules=ENGAGEMENT_TRIAGE_FORMATTING_RULES,
     ),
     MentorSourceSpec(
         DS_MENTOR_SESSIONS,
@@ -287,6 +296,7 @@ MENTOR_DATA_SOURCES: Final[tuple[MentorSourceSpec, ...]] = (
         engagement_triage_sql(mentor_scoped=False),
         ENGAGEMENT_TRIAGE_COLUMNS,
         (LEADERSHIP_ROLE,),
+        formatting_rules=ENGAGEMENT_TRIAGE_FORMATTING_RULES,
     ),
 )
 

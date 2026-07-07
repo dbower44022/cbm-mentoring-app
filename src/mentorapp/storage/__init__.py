@@ -140,6 +140,7 @@ from mentorapp.storage.theming import (
 )
 from mentorapp.storage.triage import (
     ENGAGEMENT_TRIAGE_COLUMNS,
+    ENGAGEMENT_TRIAGE_FORMATTING_RULES,
     engagement_triage_rows,
     engagement_triage_sql,
 )
@@ -170,6 +171,7 @@ __all__ = [
     "ENGAGEMENT_STATUS_OPTION_SET",
     "ENGAGEMENT_STATUS_VALUES",
     "ENGAGEMENT_TRIAGE_COLUMNS",
+    "ENGAGEMENT_TRIAGE_FORMATTING_RULES",
     "FONT_SLOTS",
     "FORMATTING_EFFECTS",
     "HELP_SOURCE_TYPES",

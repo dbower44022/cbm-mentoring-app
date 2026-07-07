@@ -11,11 +11,17 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
+import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from mentorapp.storage import (
+    CONDITION_OPERATORS,
+    ENGAGEMENT_STATUS_VALUES,
     ENGAGEMENT_TRIAGE_COLUMNS,
+    ENGAGEMENT_TRIAGE_FORMATTING_RULES,
+    FORMATTING_EFFECTS,
+    STATUS_COLOR_SLOTS,
     AdminSqlSource,
     AppUser,
     Client,
@@ -30,6 +36,7 @@ from mentorapp.storage import (
     seed_built_in_registry,
     validate_admin_sql,
 )
+from mentorapp.storage.columns import FormattingRuleSpec
 
 _PAST = datetime(2026, 1, 10, 15, 0, tzinfo=UTC)
 _LATER_PAST = datetime(2026, 3, 2, 15, 0, tzinfo=UTC)
@@ -120,6 +127,39 @@ def test_triage_sql_is_a_valid_admin_source_in_both_forms() -> None:
             user_scoped_flag=False,
         )
     )
+
+
+def test_formatting_rules_cover_every_status_with_status_slots_only() -> None:
+    """The seeded D7 rules speak the persisted vocabulary and miss no status.
+
+    REQ-045: a rule's effect names one of the FIXED three status slots —
+    never a literal color — and the triage chip rules must cover the whole
+    seeded engagement-status vocabulary so no label falls back to plain text.
+    """
+    covered = {rule.condition_value for rule in ENGAGEMENT_TRIAGE_FORMATTING_RULES}
+    assert covered == {label for _, label in ENGAGEMENT_STATUS_VALUES}
+    for rule in ENGAGEMENT_TRIAGE_FORMATTING_RULES:
+        assert rule.condition_field == "engagementStatusLabel"
+        assert rule.condition_operator in CONDITION_OPERATORS
+        assert rule.effect in FORMATTING_EFFECTS
+        assert rule.effect_slot in STATUS_COLOR_SLOTS
+
+
+def test_formatting_rule_spec_refuses_off_vocabulary_declarations() -> None:
+    # Declaration-time gate (the ColumnSpec stance): a rule outside the
+    # persisted vocabulary is a source-controlled defect — refuse at import,
+    # matching the API surface's unknownSlot/unknownOperator refusals.
+    with pytest.raises(ValueError, match="not a status color slot"):
+        FormattingRuleSpec("f", "equals", "x", "accent", "#ff0000")
+    with pytest.raises(ValueError, match="not a formatting effect"):
+        FormattingRuleSpec("f", "equals", "x", "chip", "statusWarning")
+    with pytest.raises(ValueError, match="not a condition operator"):
+        FormattingRuleSpec("f", "matches", "x", "accent", "statusWarning")
+    # Presence operators test the field itself; comparisons need a value.
+    with pytest.raises(ValueError, match="conditionValue must be None"):
+        FormattingRuleSpec("f", "isEmpty", "x", "accent", "statusWarning")
+    with pytest.raises(ValueError, match="conditionValue is required"):
+        FormattingRuleSpec("f", "equals", None, "accent", "statusWarning")
 
 
 def test_triage_columns_are_derived_per_engagement(session: Session) -> None:
