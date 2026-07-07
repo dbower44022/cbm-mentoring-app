@@ -53,6 +53,7 @@ from mentorapp.api.envelope import Envelope, field_error, ok
 from mentorapp.api.errors import ApiValidationError, RecordNotFoundError
 from mentorapp.observability import get_logger
 from mentorapp.storage import UserPreference, utcnow, uuid7
+from mentorapp.storage.auth import AppUser
 from mentorapp.ui.home_panel import (
     HOME_DASHLETS_PREFERENCE_KEY,
     HOME_FRAME,
@@ -163,14 +164,39 @@ def _frame_payload() -> dict[str, Any]:
     }
 
 
+def _poster_names(session: Session, messages: Sequence[AdminMessage]) -> dict[str, str]:
+    """posted_by stores the poster's userID (stamped from the acting
+    identity); the UI must show a NAME, never a raw identifier (FND-909
+    D13 — the D2 lesson applied to messages). Unresolvable IDs fall back
+    to the stored string rather than blanking the attribution."""
+    ids = {m.posted_by for m in messages}
+    if not ids:
+        return {}
+    rows = session.query(AppUser).filter(
+        AppUser.user_id.in_([uuid.UUID(i) for i in ids if _is_uuid(i)])
+    )
+    return {str(row.user_id): row.username for row in rows}
+
+
+def _is_uuid(value: str) -> bool:
+    try:
+        uuid.UUID(value)
+    except ValueError:
+        return False
+    return True
+
+
 def _message_payload(
-    center: MessageCenter, message: AdminMessage, user_key: str
+    center: MessageCenter,
+    message: AdminMessage,
+    user_key: str,
+    poster_names: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     return {
         "messageKey": message.key,
         "title": message.title,
         "body": message.body,
-        "postedBy": message.posted_by,
+        "postedBy": (poster_names or {}).get(message.posted_by, message.posted_by),
         "postedAt": message.posted_at,
         "expiresAt": message.expires_at,
         "priority": message.priority.value,
@@ -251,7 +277,10 @@ def get_home(
                 }
                 for d in dashlets
             ],
-            "messages": [_message_payload(center, m, user_key) for m in messages],
+            "messages": [
+                _message_payload(center, m, user_key, _poster_names(session, messages))
+                for m in messages
+            ],
         },
         meta={"unreadCount": unread_count},
     )

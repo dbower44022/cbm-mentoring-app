@@ -12,7 +12,9 @@
  * editors always fill the panel (REQ-089).
  */
 
-import { type ReactElement, useEffect, useReducer, useState } from "react";
+import { PanelSplitter, ResizablePanel, usePanelChrome } from "../shell/panel-chrome";
+import { readSession } from "../session";
+import { useMemo, type ReactElement, useEffect, useReducer, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import { callApi } from "../api/envelope";
@@ -62,6 +64,9 @@ function LoadedPrep({
   const navigate = useNavigate();
   const subject = pickPrepSession(data.sessions, sessionId);
   const engagement = data.engagement;
+
+  const prepSession = useMemo(() => readSession(), []);
+  const panelChrome = usePanelChrome(prepSession);
 
   return (
     <div className="prep-wrap" aria-label="Session prep">
@@ -163,7 +168,22 @@ function LoadedPrep({
         </section>
       </div>
 
-      <div className="prep-side">
+      {/* REQ-087: every inter-panel boundary is a wide grabbable splitter;
+          the entry side's width + both panels' zoom persist per user. */}
+      <PanelSplitter
+        panelKey="prepSide"
+        onResize={panelChrome.saveWidth}
+        resizes="next"
+        minWidth={280}
+        maxWidth={760}
+      />
+      <ResizablePanel
+        panelKey="prepSide"
+        savedWidth={panelChrome.document.widths.prepSide ?? 420}
+        zoom={panelChrome.document.zooms.prepSide ?? 100}
+        onZoom={panelChrome.saveZoom}
+        className="prep-side"
+      >
         {subject === null ? (
           <>
             <EducateNotice
@@ -187,7 +207,7 @@ function LoadedPrep({
             onSaved={onDataChanged}
           />
         )}
-      </div>
+      </ResizablePanel>
     </div>
   );
 }

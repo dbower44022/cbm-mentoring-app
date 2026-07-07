@@ -35,6 +35,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Protocol
 
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.exc import StaleDataError
 
 from mentorapp.access.credentials import CredentialCipher
 from mentorapp.access.identity import VerifiedIdentity
@@ -49,6 +50,14 @@ class SessionState(enum.StrEnum):
     ACTIVE = "active"
     REAUTH_PENDING = "reauthPending"
     ENDED = "ended"
+
+
+#: Parallel requests within this window share one persisted activity stamp.
+_ACTIVITY_TOUCH_GRANULARITY = timedelta(seconds=30)
+
+
+class StaleActivityWriteError(Exception):
+    """A concurrent request persisted the same session's activity first."""
 
 
 class SessionNotFoundError(Exception):
@@ -193,8 +202,22 @@ class SessionManagement:
                 extra={"context": {"sessionID": str(record.session_id)}},
             )
             raise ReauthRequiredError(record.session_id)
-        record.last_seen_at = now
-        self._store.save(record)
+        # The activity touch is bookkeeping, not a guarded business write:
+        # a page boot fires several requests in parallel and each resolves
+        # this same row, so (a) only persist when the stamp is meaningfully
+        # stale — idle-timeout precision doesn't need per-request writes —
+        # and (b) a lost race means a sibling request just stamped the same
+        # activity, which IS success (FND-909 cluster-4 follow-on: the
+        # rowVersion StaleDataError was 500ing parallel boots).
+        if now - record.last_seen_at >= _ACTIVITY_TOUCH_GRANULARITY:
+            record.last_seen_at = now
+            try:
+                self._store.save(record)
+            except StaleActivityWriteError:
+                log.info(
+                    "session activity touch lost a benign race",
+                    extra={"context": {"sessionID": str(record.session_id)}},
+                )
         return record
 
     def reauthenticate(self, session_id: uuid.UUID, identity: VerifiedIdentity) -> str:
@@ -371,4 +394,13 @@ class StoredSessionStore:
             else None
         )
         row.modified_by = record.user_id
-        self._session.commit()
+        try:
+            self._session.commit()
+        except StaleDataError as failure:
+            # rowVersion said another request updated this session between
+            # our read and write. For lifecycle transitions that would be a
+            # real conflict, but concurrent saves here are parallel resolves
+            # stamping activity — surface the typed race so resolve() can
+            # treat it as the benign outcome it is.
+            self._session.rollback()
+            raise StaleActivityWriteError(str(record.session_id)) from failure

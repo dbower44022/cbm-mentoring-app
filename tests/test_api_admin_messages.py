@@ -90,7 +90,8 @@ def test_view_home_reads_persistently_across_requests(
     first = client.get("/home", headers=_headers(mentor_id)).json()
     assert first["meta"]["unreadCount"] == 1
     assert first["data"]["messages"][0]["title"] == "Maintenance window"
-    assert first["data"]["messages"][0]["postedBy"] == str(admin_id)
+    # FND-909 D13: postedBy serves the poster's NAME, never the raw userID.
+    assert first["data"]["messages"][0]["postedBy"] == "admin"
     # Auto-read on view survived the request: the receipt is a row, not memory.
     second = client.get("/home", headers=_headers(mentor_id)).json()
     assert second["meta"]["unreadCount"] == 0
