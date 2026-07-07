@@ -17,6 +17,11 @@ const API_PREFIXES = [
   "/theming",
   "/workprocesses",
   "/help",
+  // The mentor-facing engagement surfaces (PI-010, api/routers/mentoring.py).
+  "/engagements",
+  "/sessions",
+  "/email",
+  "/resources",
   "/openapi.json",
 ];
 

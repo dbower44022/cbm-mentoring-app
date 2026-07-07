@@ -60,6 +60,16 @@ import {
   type GridRowsPayload,
 } from "./payloads";
 import { type EducatePayload } from "../api/payloads";
+import {
+  lifecycleTransitionFor,
+  mentoringPanelActions,
+  SEND_EMAIL_ACTION,
+  SHARE_RESOURCE_ACTION,
+} from "../mentoring/actions";
+import { ComposeEmailDialog } from "../mentoring/compose-email";
+import { LifecycleDialog } from "../mentoring/lifecycle-dialog";
+import { ShareResourceDialog } from "../mentoring/share-resource";
+import { previewRendererFor } from "./preview-seam";
 import { launchSelection, workprocessPanelAction } from "../workprocess/model";
 import { type WorkprocessActionPayload } from "../workprocess/payloads";
 import { WorkprocessRunPanel } from "../workprocess/run-panel";
@@ -173,6 +183,16 @@ function LoadedGrid({
     dataSourceKey: string;
     selectedRecordIds: string[];
   } | null>(null);
+  // The mentoring flows an engagement/resource grid launches (WTK-183/169/
+  // 178): a lifecycle transition held in its confirm dialog, the templated
+  // email compose, the share-a-resource compose.
+  const [lifecycleFlow, setLifecycleFlow] = useState<{
+    action: ActionPayload;
+    transition: string;
+    engagementId: string;
+  } | null>(null);
+  const [composeFor, setComposeFor] = useState<string | null>(null);
+  const [shareFor, setShareFor] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const activeView = panel.views.find((v) => v.viewKey === view.activeViewKey);
   const dataSourceKey = activeView?.dataSourceKey;
@@ -305,11 +325,12 @@ function LoadedGrid({
         ).length
       : 0;
 
-  const menus = actionMenus(
-    panel.actions,
-    panel.commonActionKeys,
-    workprocessEntries.map(workprocessPanelAction),
-  );
+  // Mentoring domain actions join exactly as workprocess entries do — the
+  // one action-menu fold, keyed by the active view's data source (WTK-183).
+  const menus = actionMenus(panel.actions, panel.commonActionKeys, [
+    ...workprocessEntries.map(workprocessPanelAction),
+    ...mentoringPanelActions(dataSourceKey),
+  ]);
 
   const openWorkprocess = (entry: WorkprocessActionPayload): void => {
     if (dataSourceKey === undefined) {
@@ -344,6 +365,25 @@ function LoadedGrid({
     const refusal = invalidInvocation(action, selCount);
     if (refusal !== null) {
       setExplainer(refusal);
+      return;
+    }
+    // The mentoring flows (WTK-183/169/178): all contract "single", already
+    // validated above, so the one selected/focused row is the subject.
+    const [subjectId] = launchSelection(selection, rowsState.rows);
+    const transition = lifecycleTransitionFor(action.key);
+    if (transition !== null && subjectId !== undefined) {
+      // Modifying classification: the transition confirms in its own dialog
+      // before the POST (DEC-071 — decline is a status change, not a
+      // destructive act, so it never takes the destructive path).
+      setLifecycleFlow({ action, transition, engagementId: subjectId });
+      return;
+    }
+    if (action.key === SEND_EMAIL_ACTION.key && subjectId !== undefined) {
+      setComposeFor(subjectId);
+      return;
+    }
+    if (action.key === SHARE_RESOURCE_ACTION.key && subjectId !== undefined) {
+      setShareFor(subjectId);
       return;
     }
     const workprocess = workprocessEntries.find(
@@ -448,6 +488,7 @@ function LoadedGrid({
     selection.kind === "explicit" && selection.recordIds.length === 1
       ? selection.recordIds[0]
       : rowsState.rows[focusedRow]?.recordId;
+  const DomainPreview = previewRendererFor(dataSourceKey);
 
   return (
     <div className="grid-with-preview">
@@ -617,6 +658,40 @@ function LoadedGrid({
               Continue
             </button>
           </dialog>
+        ) : null}
+
+        {lifecycleFlow !== null ? (
+          <LifecycleDialog
+            action={lifecycleFlow.action}
+            transition={lifecycleFlow.transition}
+            engagementId={lifecycleFlow.engagementId}
+            onCompleted={() => {
+              // The status flip is real the moment it lands — rows and
+              // aggregates re-read in place (the workprocess-commit rule).
+              setGeneration((g) => g + 1);
+            }}
+            onClose={() => {
+              setLifecycleFlow(null);
+            }}
+          />
+        ) : null}
+
+        {composeFor !== null ? (
+          <ComposeEmailDialog
+            engagementId={composeFor}
+            onClose={() => {
+              setComposeFor(null);
+            }}
+          />
+        ) : null}
+
+        {shareFor !== null ? (
+          <ShareResourceDialog
+            resourceId={shareFor}
+            onClose={() => {
+              setShareFor(null);
+            }}
+          />
         ) : null}
 
         {activeRun !== null ? (
@@ -811,6 +886,10 @@ function LoadedGrid({
             row. Read-optimized: editing is the Edit action or a field's double-click,
             never this pane.
           </p>
+        ) : DomainPreview !== null ? (
+          // The per-source domain preview (preview-seam): the engagement
+          // sources render the rollup-led REQ-073/088 content here.
+          <DomainPreview recordId={previewRecordId} />
         ) : (
           <RecordPreview entityType="grid" recordId={previewRecordId} />
         )}
