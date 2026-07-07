@@ -15,6 +15,7 @@ import {
   type UIEvent,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -149,7 +150,10 @@ function LoadedGrid({
     selectView(panel.activeViewKey),
   );
   // Preview-pane size + zoom persist per user (REQ-087 via panel chrome).
-  const panelChrome = usePanelChrome(readSession());
+  // Stable identity: readSession() mints a new object per call (see
+  // panel-chrome's sessionKey note).
+  const gridSession = useMemo(() => readSession(), []);
+  const panelChrome = usePanelChrome(gridSession);
   const [searchText, setSearchText] = useState("");
   const [recentSearches, setRecentSearches] = useState(panel.recentSearches);
   const [sortKeys, setSortKeys] = useState<readonly SortKey[]>([]);

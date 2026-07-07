@@ -51,6 +51,11 @@ export function usePanelChrome(session: SessionState | null): {
   documentRef.current = document;
   const writeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Load once per LOGIN, not per render: callers may pass a freshly-read
+  // session object each render, and object-identity deps would refire this
+  // effect and clobber unsaved local widths with the server copy (the
+  // "splitter snaps back" defect, FND-909 follow-on).
+  const sessionKey = session === null ? null : session.sessionReference;
   useEffect(() => {
     if (session === null) {
       // No session, no persistence: defaults render; nothing to load.
@@ -71,7 +76,10 @@ export function usePanelChrome(session: SessionState | null): {
           throw failure;
         }
       });
-  }, [session]);
+    // sessionKey (not the session object) is the deliberate dependency: the
+    // object may be minted fresh per render while the login it names is
+    // unchanged.
+  }, [sessionKey]);
 
   const scheduleWrite = useCallback((): void => {
     if (session === null) {
