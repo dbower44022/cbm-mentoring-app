@@ -962,6 +962,17 @@ function LoadedGrid({
                               color: effects.rowText ?? undefined,
                             }
                       }
+                      onMouseDown={(event) => {
+                        // REQ-108: shift-extension highlights ROWS only —
+                        // preventing mousedown default stops the browser
+                        // text-selecting every cell in the range. (First
+                        // attempt silently no-op'd on a bad patch anchor and
+                        // a vacuous synthetic-event check passed it; the
+                        // Playwright gate caught it — keep real-input tests.)
+                        if (event.shiftKey) {
+                          event.preventDefault();
+                        }
+                      }}
                       onClick={(event) => {
                         setFocusedRow(index);
                         if (event.shiftKey) {
