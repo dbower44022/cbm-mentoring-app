@@ -20,6 +20,14 @@ The read/write API behind the approved prototype's screens:
   create and the REQ-082 entry write (rich-text notes, bulleted action
   items, the REQ-079 conference link), riding the ONE write engine
   (validation, history, feed, ``rowVersion`` — never re-implemented here).
+  Scheduling also runs the REQ-078/080 automation (WTK-170): the org-hosted
+  meeting through the conferencing seam, the client's invite through the one
+  email seam, and the ``transcriptRetrieval`` job for after the call.
+- ``POST /sessions/{id}/transcript`` — the REQ-083 retrieve-now path
+  (WTK-180/181): the platform transcript attaches append-only and the AI
+  drafts land as PROPOSALS the mentor reviews; the PATCH's
+  ``transcriptText`` is the paste path when automation cannot reach the
+  meeting.
 - ``GET /email/templates`` / ``POST /email/send`` /
   ``POST /resources/{id}/share`` — REQ-076/077 templated outbound email and
   the REQ-084 share-a-resource flow. The send POST answers the MERGED
@@ -64,6 +72,11 @@ from mentorapp.api.records import serialize_record
 # session-roles provider into two keys that could disagree.
 from mentorapp.api.routers.workprocess import RoleSource, get_role_source
 from mentorapp.api.write_engine import create_record, partial_update
+from mentorapp.automation.conferencing import (
+    ConferencingProvider,
+    FakeConferencingProvider,
+    MeetingContext,
+)
 from mentorapp.automation.email_outbound import (
     CatalogTemplateSource,
     EmailTemplateSource,
@@ -73,11 +86,24 @@ from mentorapp.automation.email_outbound import (
     OutboundEmail,
     merge_template,
 )
+from mentorapp.automation.transcripts import (
+    TRANSCRIPT_RETRIEVAL_DELAY,
+    TRANSCRIPT_RETRIEVAL_JOB_TYPE,
+    DraftProposal,
+    FakeSummaryDrafter,
+    FakeTranscriptSource,
+    RetrievedTranscript,
+    SummaryDrafter,
+    TranscriptSource,
+    extended_transcript,
+)
+from mentorapp.automation.worker import JobHandler, PermanentJobError, enqueue_job
 from mentorapp.observability import get_logger
 from mentorapp.storage import (
     ENGAGEMENT_STATUS_OPTION_SET,
     SESSION_STATUS_OPTION_SET,
     AppUser,
+    BackgroundJob,
     Engagement,
     MentoringSession,
     OptionSet,
@@ -103,6 +129,9 @@ CODE_UNKNOWN_EMAIL_TEMPLATE = "unknownEmailTemplate"
 CODE_MISSING_MERGE_FIELDS = "missingMergeFields"
 CODE_NO_CONTACT_EMAIL = "noContactEmail"
 CODE_UNKNOWN_SESSION_STATUS = "unknownSessionStatus"
+CODE_TRANSCRIPT_APPEND_ONLY = "transcriptAppendOnly"
+CODE_NO_APP_CREATED_MEETING = "noAppCreatedMeeting"
+CODE_TRANSCRIPT_NOT_READY = "transcriptNotReady"
 
 # The grids a lifecycle flip changes — the client's refresh list, exactly the
 # workprocess commit's meta.affectedDataSourceKeys shape.
@@ -208,18 +237,57 @@ LIFECYCLE_TRANSITIONS: Final[dict[str, LifecycleTransition]] = {
                 "this status calls for."
             ),
         ),
+        # WTK-172 residual: pass 2 shipped the transitions INTO the paused
+        # states with no way back — On Hold and Dormant were terminal by
+        # accident. Resume is the deliberate way out, mentor-owned because
+        # the mentor is who learns the client is back.
+        LifecycleTransition(
+            transition_key="resume",
+            label="Resume Engagement",
+            from_statuses=("onHold", "dormant"),
+            to_status="active",
+            confirmation=(
+                "'{engagementName}' is Active again — sessions and follow-ups "
+                "resume. Schedule the next session to get momentum back."
+            ),
+            refusal_what_next=(
+                "Resume applies to a paused engagement (On Hold or Dormant). "
+                "Pick one of those, or use the action this status calls for."
+            ),
+        ),
     )
 }
+
+# WTK-172 design notes — the two lifecycle gaps DELIBERATELY not built:
+#
+# - Assigned → Active has no mentor transition: an engagement becomes Active
+#   when the work actually starts, and staff own that promotion today (it is
+#   a staff data operation over the same status field). Auto-promoting on
+#   the first held session is the candidate automation; it stays a design
+#   note because REQ-075's confirmed vocabulary assigns no such rule and
+#   inferences require positive support (conduct charter §11.6.b).
+# - Dormant is NOT auto-flagged: a sweep could mark engagements dormant
+#   after N quiet days, but dormancy is a judgment about the CLIENT going
+#   quiet, not about row timestamps — and the triage order (REQ-072) already
+#   surfaces quiet engagements by construction. If stakeholders later
+#   confirm a threshold, the sweep is one background-job handler over the
+#   triage read plus this module's existing "dormant" transition.
 
 
 # --- Provider seams -------------------------------------------------------------------
 
 # Module-level defaults are the sanctioned dev state (see email_outbound):
 # templates come from the source-controlled catalog, sends land in the logged
-# transport. Deployment wiring overrides these dependencies to bind a stored
-# template entity and a real SMTP/provider without touching any endpoint.
+# transport, meetings/transcripts/drafts come from the deterministic fakes.
+# Deployment wiring overrides these dependencies to bind a stored template
+# entity, a real SMTP/provider, the org-hosted Zoom (or Google Workspace)
+# conferencing + transcript platform, and the chosen drafting model — without
+# touching any endpoint, and with NO real external call ever made from here.
 _TEMPLATE_SOURCE = CatalogTemplateSource()
 _DEV_TRANSPORT = LoggedEmailTransport()
+_DEV_CONFERENCING = FakeConferencingProvider()
+_DEV_TRANSCRIPTS = FakeTranscriptSource()
+_DEV_DRAFTER = FakeSummaryDrafter()
 
 
 def get_email_templates() -> EmailTemplateSource:
@@ -232,11 +300,29 @@ def get_email_transport() -> EmailTransport:
     return _DEV_TRANSPORT
 
 
+def get_conferencing_provider() -> ConferencingProvider:
+    """Provide the org-meeting seam (REQ-080) — dev default books deterministic fakes."""
+    return _DEV_CONFERENCING
+
+
+def get_transcript_source() -> TranscriptSource:
+    """Provide the transcript retrieval seam (REQ-083) — dev default is deterministic."""
+    return _DEV_TRANSCRIPTS
+
+
+def get_summary_drafter() -> SummaryDrafter:
+    """Provide the AI drafting seam (REQ-083) — dev default extracts, never calls a model."""
+    return _DEV_DRAFTER
+
+
 _SessionDep = Annotated[Session, Depends(get_session)]
 _UserDep = Annotated[uuid.UUID, Depends(get_current_user_id)]
 _RolesDep = Annotated[RoleSource, Depends(get_role_source)]
 _TemplatesDep = Annotated[EmailTemplateSource, Depends(get_email_templates)]
 _TransportDep = Annotated[EmailTransport, Depends(get_email_transport)]
+_ConferencingDep = Annotated[ConferencingProvider, Depends(get_conferencing_provider)]
+_TranscriptsDep = Annotated[TranscriptSource, Depends(get_transcript_source)]
+_DrafterDep = Annotated[SummaryDrafter, Depends(get_summary_drafter)]
 
 
 # --- Option-set reads (DB-S7: names are stable, labels are admin data) ----------------
@@ -326,6 +412,13 @@ def _session_entry(
         "conferenceLink": record.conference_link,
         "sessionNotes": record.session_notes,
         "actionItems": record.action_items,
+        # The REQ-080/083 automation facts: whether an app-created meeting
+        # exists (drives the retrieve affordance), where the transcript came
+        # from, and the standing draft proposals the mentor reviews.
+        "externalMeetingID": record.external_meeting_id,
+        "transcriptSource": record.transcript_source,
+        "draftSummary": record.draft_summary,
+        "draftActionItems": record.draft_action_items,
         "rowVersion": record.row_version,
     }
 
@@ -596,6 +689,141 @@ class SessionCreateBody(BaseModel):
     conference_link: str | None = Field(default=None, alias="conferenceLink", max_length=2000)
 
 
+def _created_meeting_or_none(
+    provider: ConferencingProvider, engagement: Engagement, scheduled_at: datetime
+) -> tuple[str | None, str | None]:
+    """Book the REQ-080 org meeting: ``(joinUrl, externalMeetingID)`` or ``(None, None)``.
+
+    A provider failure must never fail the SCHEDULING (the REQ-079 paste path
+    is the universal fallback), so it degrades to no-meeting with a logged
+    error — the invite skip reason then tells the mentor to paste a link.
+    """
+    try:
+        created = provider.create_meeting(
+            MeetingContext(
+                engagement_id=engagement.engagement_id,
+                engagement_name=engagement.engagement_name or "",
+                contact_name=engagement.primary_contact_name or "",
+                contact_email=engagement.primary_contact_email or "",
+                scheduled_at=scheduled_at,
+            )
+        )
+    except Exception:
+        log.exception(
+            "conference meeting creation failed; scheduling continues without a link",
+            extra={"context": {"engagementID": str(engagement.engagement_id)}},
+        )
+        return None, None
+    return created.join_url, created.external_meeting_id
+
+
+def _send_session_invite(
+    session: Session,
+    engagement: Engagement,
+    record: MentoringSession,
+    *,
+    templates: EmailTemplateSource,
+    transport: EmailTransport,
+    user_id: uuid.UUID,
+) -> dict[str, Any]:
+    """Send the REQ-078 meeting invite; returns the honest invite outcome.
+
+    The invite rides the ONE email seam (Doug's 2026-07-06 ruling): the
+    ``sessionInvite`` template merged with the session facts and handed to
+    the transport. Every skip is reported, never silent — no contact email,
+    no conference link (automated path unavailable and nothing pasted), or a
+    template list that no longer carries the invite. A skip never unwinds
+    the scheduling: the session exists either way.
+    """
+    if not engagement.primary_contact_email:
+        return {
+            "sent": False,
+            "toAddress": None,
+            "reason": (
+                "No invite was sent: this engagement has no primary contact "
+                "email on record. Ask the program office to complete it, then "
+                "share the link from the session."
+            ),
+        }
+    if not record.conference_link:
+        return {
+            "sent": False,
+            "toAddress": None,
+            "reason": (
+                "No invite was sent: the session has no conference link — the "
+                "automated meeting could not be created. Paste a meeting link "
+                "onto the session and share it with the client."
+            ),
+        }
+    template = templates.template(SESSION_INVITE_TEMPLATE_KEY)
+    if template is None:
+        # The catalog is staff-maintained data behind a seam; a deployment
+        # that removed the invite template is a configuration defect to log
+        # loudly, not a reason to refuse the scheduling.
+        log.error(
+            "session invite template missing from the template source",
+            extra={"context": {"templateKey": SESSION_INVITE_TEMPLATE_KEY}},
+        )
+        return {
+            "sent": False,
+            "toAddress": None,
+            "reason": (
+                "No invite was sent: the session invitation template is "
+                "missing from the staff template list. Tell an administrator; "
+                "meanwhile share the conference link from the session."
+            ),
+        }
+    context = {
+        **_engagement_merge_context(session, engagement, user_id),
+        # UTC, stated explicitly: the store is UTC and the invite must never
+        # imply a local zone it cannot know — client-side presentation of
+        # times is the app's concern, an email states its zone.
+        "sessionTime": f"{as_utc(record.scheduled_at):%Y-%m-%d %H:%M} UTC",
+        "conferenceLink": record.conference_link,
+    }
+    try:
+        subject, body_text = merge_template(template, context)
+    except MergeFieldError as missing:
+        # A carried-over engagement can lack its name/contact fields; a
+        # half-merged invite must never send (the merge module's one rule),
+        # and an unfillable invite must never unwind the scheduling.
+        return {
+            "sent": False,
+            "toAddress": None,
+            "reason": (
+                "No invite was sent: the engagement is missing "
+                f"{', '.join(sorted(missing.missing_fields))}, which the "
+                "invitation needs. Staff completes engagement details; share "
+                "the conference link from the session meanwhile."
+            ),
+        }
+    transport.send(
+        OutboundEmail(
+            to_address=engagement.primary_contact_email,
+            to_name=engagement.primary_contact_name or "",
+            subject=subject,
+            body=body_text,
+            template_key=SESSION_INVITE_TEMPLATE_KEY,
+        )
+    )
+    log.info(
+        "session invite sent",
+        extra={
+            "context": {
+                "userId": str(user_id),
+                "sessionID": str(record.session_id),
+                "toAddress": engagement.primary_contact_email,
+            }
+        },
+    )
+    return {"sent": True, "toAddress": engagement.primary_contact_email, "reason": None}
+
+
+# The scheduling flow's fixed template (the resourceShare precedent): the
+# invite is sent BY the flow, not composed by the mentor.
+SESSION_INVITE_TEMPLATE_KEY: Final = "sessionInvite"
+
+
 @router.post("/engagements/{engagement_id}/sessions")
 def post_session_create(
     engagement_id: uuid.UUID,
@@ -603,16 +831,29 @@ def post_session_create(
     session: _SessionDep,
     user_id: _UserDep,
     roles: _RolesDep,
+    templates: _TemplatesDep,
+    transport: _TransportDep,
+    conferencing: _ConferencingDep,
 ) -> Envelope:
-    """Schedule one session of the caller's engagement (REQ-078's manual core).
+    """Schedule one session: org meeting, invite, transcript automation (REQ-078/080).
 
-    Created ``scheduled`` with an optional pasted conference link (REQ-079;
-    the REQ-080 auto-created org meeting is a later integration — the link
-    column is where it will land). Rides :func:`create_record` so registry
-    validation, audit stamping, and the feed apply exactly as everywhere.
+    Created ``scheduled``. A pasted ``conferenceLink`` (REQ-079 — the
+    universal fallback) is taken verbatim and books nothing; otherwise the
+    conferencing seam creates the org-hosted meeting and the session carries
+    its link plus ``externalMeetingID``. Scheduling then sends the client the
+    meeting invite through the one email seam (``meta.invite`` reports sent
+    or the skip reason — never silent), and an app-created meeting enqueues
+    the ``transcriptRetrieval`` job to run after the session (REQ-083).
+    Rides :func:`create_record` so registry validation, audit stamping, and
+    the feed apply exactly as everywhere.
     """
     engagement = _scoped_engagement(session, engagement_id, user_id, roles)
     _, by_name = _status_vocabulary(session, SESSION_STATUS_OPTION_SET)
+    conference_link, external_meeting_id = (
+        (body.conference_link, None)
+        if body.conference_link is not None
+        else _created_meeting_or_none(conferencing, engagement, body.scheduled_at)
+    )
     record = create_record(
         session,
         MentoringSession,
@@ -621,10 +862,26 @@ def post_session_create(
             "engagementID": engagement.engagement_id,
             "scheduledAt": body.scheduled_at,
             "sessionStatus": by_name["scheduled"].option_value_id,
-            "conferenceLink": body.conference_link,
+            "conferenceLink": conference_link,
+            "externalMeetingID": external_meeting_id,
         },
         acting_user_id=user_id,
     )
+    invite = _send_session_invite(
+        session, engagement, record, templates=templates, transport=transport, user_id=user_id
+    )
+    if external_meeting_id is not None:
+        # The automated half of REQ-083: retrieval waits until the session
+        # has plausibly ended; "not produced yet" retries on the worker's
+        # backoff. Same transaction as the session row — a scheduled session
+        # is never missing its retrieval job.
+        enqueue_job(
+            session,
+            TRANSCRIPT_RETRIEVAL_JOB_TYPE,
+            {"sessionID": str(record.session_id)},
+            run_after=as_utc(body.scheduled_at) + TRANSCRIPT_RETRIEVAL_DELAY,
+            acting_user_id=user_id,
+        )
     session.commit()
     log.info(
         "session scheduled",
@@ -633,21 +890,30 @@ def post_session_create(
                 "userId": str(user_id),
                 "engagementID": str(engagement_id),
                 "sessionID": str(record.session_id),
+                "meetingCreated": external_meeting_id is not None,
+                "inviteSent": invite["sent"],
             }
         },
     )
     return ok(
         data=serialize_record(record),
-        meta={"affectedDataSourceKeys": [DS_MENTOR_SESSIONS, *_ENGAGEMENT_SOURCE_KEYS]},
+        meta={
+            "affectedDataSourceKeys": [DS_MENTOR_SESSIONS, *_ENGAGEMENT_SOURCE_KEYS],
+            "invite": invite,
+        },
     )
 
 
 class SessionPatchBody(BaseModel):
-    """PATCH body: only the entry fields the prep surface writes (REQ-082).
+    """PATCH body: the entry fields the prep surface writes (REQ-082/083).
 
     ``sessionNotes``/``actionItems`` carry the rich-text control's clean
     HTML; ``sessionStatus`` travels as the option-value NAME (the stable
     identifier) and is resolved to its ``optionValueID`` here.
+    ``transcriptText``/``transcriptSource`` are the REQ-083 PASTE path
+    (append-only — the automation's rule and the mentor's are the same);
+    ``draftSummary``/``draftActionItems`` let the client clear or amend a
+    proposal once the mentor has accepted or dismissed it.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -657,6 +923,14 @@ class SessionPatchBody(BaseModel):
     action_items: str | None = Field(default=None, alias="actionItems", max_length=4000)
     conference_link: str | None = Field(default=None, alias="conferenceLink", max_length=2000)
     session_status: str | None = Field(default=None, alias="sessionStatus")
+    transcript_text: str | None = Field(default=None, alias="transcriptText")
+    transcript_source: str | None = Field(
+        default=None, alias="transcriptSource", max_length=200
+    )
+    draft_summary: str | None = Field(default=None, alias="draftSummary", max_length=4000)
+    draft_action_items: str | None = Field(
+        default=None, alias="draftActionItems", max_length=4000
+    )
 
 
 @router.patch("/sessions/{session_id}")
@@ -685,9 +959,34 @@ def patch_session(
         ("session_notes", "sessionNotes"),
         ("action_items", "actionItems"),
         ("conference_link", "conferenceLink"),
+        ("transcript_source", "transcriptSource"),
+        ("draft_summary", "draftSummary"),
+        ("draft_action_items", "draftActionItems"),
     ):
         if attr in sent:
             changes[field_name] = getattr(body, attr)
+    if "transcript_text" in sent:
+        # The WTK-182 rule at the API boundary, refused in words rather than
+        # left to the model guard's exception: a transcript is evidence — it
+        # may be EXTENDED (the new value starts with the stored one), never
+        # rewritten or cleared. The paste path therefore appends.
+        current = record.transcript_text
+        wanted = body.transcript_text
+        if current is not None and (wanted is None or not wanted.startswith(current)):
+            raise ApiValidationError(
+                [
+                    field_error(
+                        "transcriptText",
+                        CODE_TRANSCRIPT_APPEND_ONLY,
+                        "The transcript was not changed. A session's "
+                        "transcript is append-only evidence — paste ADDS to "
+                        "what is stored, never rewrites or clears it. Include "
+                        "the existing transcript at the start, or paste only "
+                        "onto a session without one.",
+                    )
+                ]
+            )
+        changes["transcriptText"] = wanted
     if "session_status" in sent and body.session_status is not None:
         _, by_name = _status_vocabulary(session, SESSION_STATUS_OPTION_SET)
         status = by_name.get(body.session_status)
@@ -722,6 +1021,162 @@ def patch_session(
                 "fields": sorted(changes),
             }
         },
+    )
+    return ok(data=serialize_record(record))
+
+
+# --- Transcript retrieval + draft proposals (WTK-180/181, REQ-083) ----------------------
+
+
+def attach_transcript_and_draft(
+    db_session: Session,
+    record: MentoringSession,
+    retrieved: RetrievedTranscript,
+    drafter: SummaryDrafter,
+    *,
+    acting_user_id: uuid.UUID | None = None,
+) -> DraftProposal:
+    """Attach one retrieved transcript and stage its proposals (REQ-083).
+
+    Lives in the API layer (not :mod:`mentorapp.automation.transcripts`)
+    because it rides :func:`partial_update` — the one write engine — which
+    the automation layer sits below. Applied against the record's CURRENT
+    ``rowVersion``: this is a system write layering new material on, not an
+    edit contest with the mentor, and it touches ONLY the transcript and
+    draft columns. A newer draft REPLACES the previous proposal (a proposal
+    is machine output, not authored content); ``sessionNotes`` and
+    ``actionItems`` are never written here — the mentor stays the author of
+    record. Flushes, does not commit — the caller owns the transaction.
+    """
+    drafts = drafter.draft(retrieved.transcript_text)
+    changes: dict[str, Any] = {
+        "transcriptSource": retrieved.transcript_source,
+        "draftSummary": drafts.draft_summary,
+        "draftActionItems": drafts.draft_action_items,
+    }
+    merged = extended_transcript(record.transcript_text, retrieved.transcript_text)
+    if merged is not None:
+        changes["transcriptText"] = merged
+    partial_update(
+        db_session,
+        record,
+        _SESSION_ENTITY,
+        changes,
+        row_version=record.row_version,
+        acting_user_id=acting_user_id,
+    )
+    log.info(
+        "transcript attached with draft proposals",
+        extra={
+            "context": {
+                "sessionID": str(record.session_id),
+                "transcriptSource": retrieved.transcript_source,
+                "transcriptExtended": merged is not None,
+            }
+        },
+    )
+    return drafts
+
+
+def transcript_retrieval_job(source: TranscriptSource, drafter: SummaryDrafter) -> JobHandler:
+    """The queue handler for ``transcriptRetrieval`` jobs (WTK-181, REQ-083).
+
+    Payload contract (wire names): ``sessionID`` — the session whose
+    app-created meeting to retrieve. A missing/deleted session or one with
+    no ``externalMeetingID`` parks permanently (retrying cannot conjure a
+    meeting); a transcript the platform has not produced yet raises a plain
+    error so the worker retries on its backoff — the crash-safe version of
+    "try again later". Worker wiring closes over the deployment's source and
+    drafter, exactly the artifact-store handler-factory shape.
+    """
+
+    def handle(db_session: Session, job: BackgroundJob) -> None:
+        raw_id = job.job_payload.get("sessionID")
+        try:
+            target_id = uuid.UUID(str(raw_id))
+        except ValueError as exc:
+            raise PermanentJobError(
+                f"transcript payload names no valid session: {raw_id!r}"
+            ) from exc
+        record = db_session.get(MentoringSession, target_id)
+        if record is None or record.deleted_at is not None:
+            raise PermanentJobError(f"session {target_id} no longer exists")
+        if record.external_meeting_id is None:
+            raise PermanentJobError(
+                f"session {target_id} has no app-created meeting; the paste "
+                "path is the only transcript route for it"
+            )
+        retrieved = source.retrieve(record.external_meeting_id)
+        if retrieved is None:
+            # Transient by definition: the platform simply hasn't produced it
+            # yet — the worker retries with backoff and parks after the cap.
+            raise RuntimeError(
+                f"transcript for meeting {record.external_meeting_id} not ready yet"
+            )
+        attach_transcript_and_draft(
+            db_session, record, retrieved, drafter, acting_user_id=job.created_by
+        )
+        return None
+
+    return handle
+
+
+@router.post("/sessions/{session_id}/transcript")
+def post_session_transcript(
+    session_id: uuid.UUID,
+    session: _SessionDep,
+    user_id: _UserDep,
+    roles: _RolesDep,
+    transcripts: _TranscriptsDep,
+    drafter: _DrafterDep,
+) -> Envelope:
+    """Retrieve the meeting's AI transcript NOW and stage the drafts (REQ-083).
+
+    The mentor-triggered twin of the ``transcriptRetrieval`` job — same
+    seams, same attach rule. Scoped through the session's engagement (the
+    uniform 404). 422 ``noAppCreatedMeeting`` when the session's link was
+    pasted (nothing to ask the platform for — the paste path is the route);
+    422 ``transcriptNotReady`` while the platform has not produced it.
+    Success answers the updated session record; the drafts land as PROPOSALS
+    on ``draftSummary``/``draftActionItems`` — never on the mentor's notes.
+    """
+    record = session.get(MentoringSession, session_id)
+    if record is None or record.deleted_at is not None:
+        raise RecordNotFoundError(_SESSION_ENTITY, str(session_id))
+    _scoped_engagement(session, record.engagement_id, user_id, roles)
+    if record.external_meeting_id is None:
+        raise ApiValidationError(
+            [
+                field_error(
+                    "sessionID",
+                    CODE_NO_APP_CREATED_MEETING,
+                    "No transcript was retrieved. This session's conference "
+                    "link was pasted, so no app-created org meeting exists to "
+                    "ask the platform about. Paste the transcript into the "
+                    "session instead — the drafts work the same way.",
+                )
+            ]
+        )
+    retrieved = transcripts.retrieve(record.external_meeting_id)
+    if retrieved is None:
+        raise ApiValidationError(
+            [
+                field_error(
+                    "sessionID",
+                    CODE_TRANSCRIPT_NOT_READY,
+                    "No transcript was retrieved. The conference platform "
+                    "hasn't produced this meeting's transcript yet — it "
+                    "usually appears shortly after the call ends. Try again "
+                    "in a few minutes, or paste the transcript if the "
+                    "platform never produces one.",
+                )
+            ]
+        )
+    attach_transcript_and_draft(session, record, retrieved, drafter, acting_user_id=user_id)
+    session.commit()
+    log.info(
+        "transcript retrieved on demand",
+        extra={"context": {"userId": str(user_id), "sessionID": str(session_id)}},
     )
     return ok(data=serialize_record(record))
 

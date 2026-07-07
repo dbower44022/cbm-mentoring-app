@@ -31,20 +31,34 @@ from mentorapp.api.deps import get_session
 from mentorapp.api.routers.mentoring import (
     CODE_INVALID_LIFECYCLE_TRANSITION,
     CODE_MISSING_MERGE_FIELDS,
+    CODE_NO_APP_CREATED_MEETING,
     CODE_NO_CONTACT_EMAIL,
+    CODE_TRANSCRIPT_APPEND_ONLY,
+    CODE_TRANSCRIPT_NOT_READY,
     CODE_UNKNOWN_EMAIL_TEMPLATE,
     CODE_UNKNOWN_LIFECYCLE_TRANSITION,
     CODE_UNKNOWN_SESSION_STATUS,
+    get_conferencing_provider,
     get_email_transport,
+    get_transcript_source,
+    transcript_retrieval_job,
 )
 from mentorapp.api.routers.workprocess import get_role_source
 from mentorapp.automation.email_outbound import (
     STAFF_EMAIL_TEMPLATES,
     LoggedEmailTransport,
 )
+from mentorapp.automation.transcripts import (
+    TRANSCRIPT_RETRIEVAL_DELAY,
+    TRANSCRIPT_RETRIEVAL_JOB_TYPE,
+    FakeSummaryDrafter,
+    FakeTranscriptSource,
+)
+from mentorapp.automation.worker import enqueue_job, process_next_job
 from mentorapp.main import create_app
 from mentorapp.storage import (
     AppUser,
+    BackgroundJob,
     Client,
     CrmCompanyRef,
     CrmMentorRef,
@@ -55,7 +69,9 @@ from mentorapp.storage import (
     OptionValue,
     Partner,
     Resource,
+    as_utc,
     seed_built_in_registry,
+    utcnow,
 )
 
 _PAST = datetime(2026, 1, 10, 15, 0, tzinfo=UTC)
@@ -745,3 +761,382 @@ def test_record_preview_serves_domain_entities_through_production_wiring(
         f"/records/client/{client_id}/preview", headers=_headers(user_id)
     )
     assert client_preview.status_code == 200
+
+
+# --- Conferencing + invite automation (WTK-170, REQ-078/080) ----------------------------
+
+
+def test_scheduling_books_org_meeting_sends_invite_and_queues_retrieval(
+    app_client: TestClient,
+    session: Session,
+    roles: _StubRoles,
+    transport: LoggedEmailTransport,
+) -> None:
+    user_id, anchor = _mentor(session, roles, "ana")
+    engagement = _engagement(session, "Acme Growth", anchor)
+    session.commit()
+
+    response = app_client.post(
+        f"/engagements/{engagement.engagement_id}/sessions",
+        json={"scheduledAt": "2030-09-01T15:00:00Z"},
+        headers=_headers(user_id),
+    )
+    assert response.status_code == 200
+    body = response.json()
+    # The fake provider's deterministic booking filled the link + identifier.
+    assert body["data"]["conferenceLink"].startswith("https://conference.dev.invalid/m/")
+    assert body["data"]["externalMeetingID"].startswith("dev-meeting-")
+    # The invite rode the one email seam, carrying the conference link.
+    assert body["meta"]["invite"]["sent"] is True
+    assert body["meta"]["invite"]["toAddress"] == "sam@acme.example"
+    (invite,) = transport.sent
+    assert invite.template_key == "sessionInvite"
+    assert body["data"]["conferenceLink"] in invite.body
+    assert "2030-09-01 15:00 UTC" in invite.body
+    assert "{{" not in invite.body
+    # The transcript retrieval job is queued for AFTER the session.
+    session.expire_all()
+    job = session.scalars(
+        select(BackgroundJob).where(BackgroundJob.job_type == TRANSCRIPT_RETRIEVAL_JOB_TYPE)
+    ).one()
+    assert job.job_payload == {"sessionID": body["data"]["sessionID"]}
+    assert as_utc(job.run_after) == datetime(2030, 9, 1, 15, 0, tzinfo=UTC) + (
+        TRANSCRIPT_RETRIEVAL_DELAY
+    )
+
+
+def test_scheduling_with_pasted_link_books_nothing(
+    app_client: TestClient,
+    session: Session,
+    roles: _StubRoles,
+    transport: LoggedEmailTransport,
+) -> None:
+    user_id, anchor = _mentor(session, roles, "bea")
+    engagement = _engagement(session, "Acme Growth", anchor)
+    session.commit()
+
+    body = app_client.post(
+        f"/engagements/{engagement.engagement_id}/sessions",
+        json={
+            "scheduledAt": "2030-09-01T15:00:00Z",
+            "conferenceLink": "https://meet.example/9",
+        },
+        headers=_headers(user_id),
+    ).json()
+    # REQ-079's paste path: the link is taken verbatim, no org meeting exists,
+    # so no external identifier and no transcript automation — but the invite
+    # still goes out carrying the pasted link.
+    assert body["data"]["conferenceLink"] == "https://meet.example/9"
+    assert body["data"]["externalMeetingID"] is None
+    assert body["meta"]["invite"]["sent"] is True
+    assert "https://meet.example/9" in transport.sent[0].body
+    assert session.scalars(select(BackgroundJob)).all() == []
+
+
+def test_scheduling_without_contact_email_reports_the_skip(
+    app_client: TestClient,
+    session: Session,
+    roles: _StubRoles,
+    transport: LoggedEmailTransport,
+) -> None:
+    user_id, anchor = _mentor(session, roles, "cal")
+    engagement = _engagement(session, "Acme Growth", anchor, contact_email=None)
+    session.commit()
+
+    body = app_client.post(
+        f"/engagements/{engagement.engagement_id}/sessions",
+        json={"scheduledAt": "2030-09-01T15:00:00Z"},
+        headers=_headers(user_id),
+    ).json()
+    # Scheduling never fails for a missing invite target; the skip is honest.
+    assert body["data"]["sessionID"]
+    assert body["meta"]["invite"]["sent"] is False
+    assert "no primary contact email" in body["meta"]["invite"]["reason"]
+    assert transport.sent == []
+
+
+class _FailingProvider:
+    """A provider whose platform is down — the automated path degrades."""
+
+    def create_meeting(self, context: object) -> object:
+        raise RuntimeError("conference platform unavailable")
+
+
+def test_provider_failure_degrades_to_the_paste_path(
+    app_client: TestClient,
+    session: Session,
+    roles: _StubRoles,
+    transport: LoggedEmailTransport,
+) -> None:
+    app_client.app.dependency_overrides[get_conferencing_provider] = _FailingProvider  # type: ignore[attr-defined]
+    user_id, anchor = _mentor(session, roles, "dot")
+    engagement = _engagement(session, "Acme Growth", anchor)
+    session.commit()
+
+    response = app_client.post(
+        f"/engagements/{engagement.engagement_id}/sessions",
+        json={"scheduledAt": "2030-09-01T15:00:00Z"},
+        headers=_headers(user_id),
+    )
+    # The scheduling itself succeeds (REQ-079 is the universal fallback);
+    # the invite skip explains what to do next.
+    assert response.status_code == 200
+    body = response.json()
+    assert body["data"]["conferenceLink"] is None
+    assert body["data"]["externalMeetingID"] is None
+    assert body["meta"]["invite"]["sent"] is False
+    assert "Paste a meeting link" in body["meta"]["invite"]["reason"]
+    assert transport.sent == []
+
+
+# --- Transcript retrieval + drafts (WTK-180/181, REQ-083) --------------------------------
+
+
+def _app_created_session(
+    session: Session, engagement: Engagement, *, notes: str | None = None
+) -> MentoringSession:
+    row = _session_row(session, engagement, _PAST, notes=notes)
+    row.external_meeting_id = "dev-meeting-test"
+    session.flush()
+    return row
+
+
+def test_transcript_retrieval_attaches_and_drafts_propose(
+    app_client: TestClient, session: Session, roles: _StubRoles
+) -> None:
+    user_id, anchor = _mentor(session, roles, "eve")
+    engagement = _engagement(session, "Acme Growth", anchor)
+    row = _app_created_session(session, engagement, notes="<p>My own notes</p>")
+    session.commit()
+
+    response = app_client.post(
+        f"/sessions/{row.session_id}/transcript", headers=_headers(user_id)
+    )
+    assert response.status_code == 200
+    data = response.json()["data"]
+    # The transcript attached with its provenance; the drafts landed as
+    # PROPOSALS — the mentor's own notes are untouched (REQ-083 authorship).
+    assert "dev transcript for dev-meeting-test" in data["transcriptText"]
+    assert data["transcriptSource"] == "devTranscript"
+    assert data["draftSummary"].startswith("<p>")
+    assert "Q3 hiring plan" in data["draftActionItems"]
+    assert data["sessionNotes"] == "<p>My own notes</p>"
+    assert data["actionItems"] is None
+
+
+def test_transcript_retrieval_refuses_for_pasted_links(
+    app_client: TestClient, session: Session, roles: _StubRoles
+) -> None:
+    user_id, anchor = _mentor(session, roles, "fay")
+    engagement = _engagement(session, "Acme Growth", anchor)
+    row = _session_row(session, engagement, _PAST, link="https://meet.example/5")
+    session.commit()
+
+    response = app_client.post(
+        f"/sessions/{row.session_id}/transcript", headers=_headers(user_id)
+    )
+    assert response.status_code == 422
+    error = response.json()["errors"][0]
+    assert error["code"] == CODE_NO_APP_CREATED_MEETING
+    assert "Paste the transcript" in error["message"]
+
+
+class _NotReadySource:
+    """The platform hasn't produced the transcript yet."""
+
+    def retrieve(self, external_meeting_id: str) -> None:
+        return None
+
+
+def test_transcript_not_ready_educates(
+    app_client: TestClient, session: Session, roles: _StubRoles
+) -> None:
+    app_client.app.dependency_overrides[get_transcript_source] = _NotReadySource  # type: ignore[attr-defined]
+    user_id, anchor = _mentor(session, roles, "gil")
+    engagement = _engagement(session, "Acme Growth", anchor)
+    row = _app_created_session(session, engagement)
+    session.commit()
+
+    response = app_client.post(
+        f"/sessions/{row.session_id}/transcript", headers=_headers(user_id)
+    )
+    assert response.status_code == 422
+    assert response.json()["errors"][0]["code"] == CODE_TRANSCRIPT_NOT_READY
+
+
+def test_transcript_retrieval_is_scoped(
+    app_client: TestClient, session: Session, roles: _StubRoles
+) -> None:
+    _, anchor = _mentor(session, roles, "hal")
+    other_id, _ = _mentor(session, roles, "ida")
+    engagement = _engagement(session, "Not Yours", anchor)
+    row = _app_created_session(session, engagement)
+    session.commit()
+
+    response = app_client.post(
+        f"/sessions/{row.session_id}/transcript", headers=_headers(other_id)
+    )
+    assert response.status_code == 404
+
+
+def test_transcript_paste_path_appends_and_rewrite_refuses(
+    app_client: TestClient, session: Session, roles: _StubRoles
+) -> None:
+    user_id, anchor = _mentor(session, roles, "joy")
+    engagement = _engagement(session, "Acme Growth", anchor)
+    row = _session_row(session, engagement, _PAST, link="https://meet.example/7")
+    session.commit()
+
+    pasted = app_client.patch(
+        f"/sessions/{row.session_id}",
+        json={"rowVersion": 1, "transcriptText": "Line one.", "transcriptSource": "pasted"},
+        headers=_headers(user_id),
+    )
+    assert pasted.status_code == 200
+    assert pasted.json()["data"]["transcriptText"] == "Line one."
+    assert pasted.json()["data"]["transcriptSource"] == "pasted"
+
+    extended = app_client.patch(
+        f"/sessions/{row.session_id}",
+        json={"rowVersion": 2, "transcriptText": "Line one.\nLine two."},
+        headers=_headers(user_id),
+    )
+    assert extended.status_code == 200
+
+    rewrite = app_client.patch(
+        f"/sessions/{row.session_id}",
+        json={"rowVersion": 3, "transcriptText": "Something else entirely."},
+        headers=_headers(user_id),
+    )
+    assert rewrite.status_code == 422
+    error = rewrite.json()["errors"][0]
+    assert error["code"] == CODE_TRANSCRIPT_APPEND_ONLY
+    assert "append-only" in error["message"]
+
+
+def test_draft_acceptance_rides_the_normal_patch(
+    app_client: TestClient, session: Session, roles: _StubRoles
+) -> None:
+    user_id, anchor = _mentor(session, roles, "kim")
+    engagement = _engagement(session, "Acme Growth", anchor)
+    row = _app_created_session(session, engagement)
+    session.commit()
+    app_client.post(f"/sessions/{row.session_id}/transcript", headers=_headers(user_id))
+
+    session.expire_all()
+    drafted = session.get(MentoringSession, row.session_id)
+    assert drafted is not None and drafted.draft_summary is not None
+    draft_summary, draft_items = drafted.draft_summary, drafted.draft_action_items
+    # The mentor accepts: the client copies the draft into the entry fields
+    # and clears the proposal — one normal PATCH, mentor as author of record.
+    accepted = app_client.patch(
+        f"/sessions/{row.session_id}",
+        json={
+            "rowVersion": drafted.row_version,
+            "sessionNotes": draft_summary,
+            "actionItems": draft_items,
+            "draftSummary": None,
+            "draftActionItems": None,
+        },
+        headers=_headers(user_id),
+    )
+    assert accepted.status_code == 200
+    data = accepted.json()["data"]
+    assert data["sessionNotes"] == draft_summary
+    assert data["draftSummary"] is None
+
+
+def test_transcript_retrieval_job_attaches_and_retries(
+    session: Session, roles: _StubRoles
+) -> None:
+    # The registry seed the app fixture runs is needed for the write engine.
+    seed_built_in_registry(
+        session, [Client, CrmCompanyRef, CrmMentorRef, Engagement, MentoringSession]
+    )
+    _, anchor = _mentor(session, roles, "lyn")
+    engagement = _engagement(session, "Acme Growth", anchor)
+    row = _app_created_session(session, engagement)
+    job = enqueue_job(
+        session, TRANSCRIPT_RETRIEVAL_JOB_TYPE, {"sessionID": str(row.session_id)}
+    )
+    session.commit()
+
+    # Not ready yet → transient failure: the job goes back to pending with
+    # backoff, never parks on the first miss.
+    handlers = {
+        TRANSCRIPT_RETRIEVAL_JOB_TYPE: transcript_retrieval_job(
+            _NotReadySource(), FakeSummaryDrafter()
+        )
+    }
+    assert process_next_job(session, handlers) is True
+    session.commit()
+    assert job.job_status == "pending"
+    assert job.attempt_count == 1
+
+    # Ready → the attach rule runs and the job completes.
+    job.run_after = utcnow()
+    session.commit()
+    handlers = {
+        TRANSCRIPT_RETRIEVAL_JOB_TYPE: transcript_retrieval_job(
+            FakeTranscriptSource(), FakeSummaryDrafter()
+        )
+    }
+    assert process_next_job(session, handlers) is True
+    session.commit()
+    session.expire_all()
+    assert job.job_status == "completed"
+    refreshed = session.get(MentoringSession, row.session_id)
+    assert refreshed is not None
+    assert refreshed.transcript_source == "devTranscript"
+    assert refreshed.draft_summary is not None
+
+
+def test_transcript_retrieval_job_parks_without_a_meeting(
+    session: Session, roles: _StubRoles
+) -> None:
+    seed_built_in_registry(
+        session, [Client, CrmCompanyRef, CrmMentorRef, Engagement, MentoringSession]
+    )
+    _, anchor = _mentor(session, roles, "moe")
+    engagement = _engagement(session, "Acme Growth", anchor)
+    row = _session_row(session, engagement, _PAST, link="https://meet.example/8")
+    job = enqueue_job(
+        session, TRANSCRIPT_RETRIEVAL_JOB_TYPE, {"sessionID": str(row.session_id)}
+    )
+    session.commit()
+
+    handlers = {
+        TRANSCRIPT_RETRIEVAL_JOB_TYPE: transcript_retrieval_job(
+            FakeTranscriptSource(), FakeSummaryDrafter()
+        )
+    }
+    assert process_next_job(session, handlers) is True
+    session.commit()
+    # A pasted-link session can never grow a platform meeting: parked, not retried.
+    assert job.job_status == "needsAttention"
+
+
+# --- The WTK-172 lifecycle residual: resume -----------------------------------------------
+
+
+def test_resume_reactivates_a_paused_engagement(
+    app_client: TestClient, session: Session, roles: _StubRoles
+) -> None:
+    user_id, anchor = _mentor(session, roles, "nia")
+    engagement = _engagement(session, "Acme Growth", anchor, status_name="onHold")
+    session.commit()
+
+    response = _lifecycle(app_client, engagement, user_id, "resume")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["data"]["engagement"]["engagementStatus"] == "active"
+    assert "Active again" in body["data"]["confirmation"]
+
+    # And an Active engagement cannot "resume" — the refusal educates.
+    response = app_client.post(
+        f"/engagements/{engagement.engagement_id}/lifecycle",
+        json={"transition": "resume", "rowVersion": 2},
+        headers=_headers(user_id),
+    )
+    assert response.status_code == 422
+    assert response.json()["errors"][0]["code"] == CODE_INVALID_LIFECYCLE_TRANSITION

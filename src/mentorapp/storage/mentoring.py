@@ -309,6 +309,15 @@ class MentoringSession(BaseEntity):
     # REQ-079: the session carries its conference link; width matches the
     # platform's URL columns (helpMapping.helpURL).
     conference_link: Mapped[str | None] = mapped_column("conferenceLink", String(_URL_LENGTH))
+    # REQ-080 (WTK-170): the conference platform's own identifier for an
+    # APP-CREATED org meeting — what the transcript automation presents back
+    # to the platform (REQ-083). Null = the link was pasted (REQ-079), so no
+    # platform-side meeting exists and no automated transcript is possible.
+    external_meeting_id: Mapped[str | None] = mapped_column(
+        "externalMeetingID",
+        String(_LINE_LENGTH),
+        info={"registry": {"fieldLabel": "External Meeting ID"}},
+    )
     session_notes: Mapped[str | None] = mapped_column(
         "sessionNotes",
         String(_NARRATIVE_LENGTH),
@@ -322,6 +331,21 @@ class MentoringSession(BaseEntity):
     transcript_text: Mapped[str | None] = mapped_column("transcriptText", Text())
     transcript_source: Mapped[str | None] = mapped_column(
         "transcriptSource", String(_LINE_LENGTH)
+    )
+    # REQ-083 proposal columns (WTK-180): the AI-drafted summary and suggested
+    # action items land HERE, never on sessionNotes/actionItems — the mentor
+    # reviews and accepts/edits them into the entry fields through the normal
+    # PATCH, staying the author of record. Rich text so an accepted draft
+    # drops into the one entry control unconverted.
+    draft_summary: Mapped[str | None] = mapped_column(
+        "draftSummary",
+        String(_NARRATIVE_LENGTH),
+        info={"registry": _RICH_TEXT_REGISTRY},
+    )
+    draft_action_items: Mapped[str | None] = mapped_column(
+        "draftActionItems",
+        String(_NARRATIVE_LENGTH),
+        info={"registry": _RICH_TEXT_REGISTRY},
     )
 
     engagement: Mapped[Engagement] = relationship(back_populates="sessions")
