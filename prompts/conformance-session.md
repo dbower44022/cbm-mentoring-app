@@ -32,3 +32,4 @@ candidate REQ-473.
   anatomy (the rendered gate, permanent), THEN batch review PI-005/006/010
   with Doug EYES-ON (demo walkthrough, not digest-only), then REL-003
   QA/test/ship gates.
+- Morning addition: regression test for usePanelChrome identity stability (render probe re-rendering with fresh session objects; assert single load)
