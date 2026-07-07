@@ -18,6 +18,7 @@ import {
 } from "react-router-dom";
 import { type ApiError, callApi, EnvelopeError } from "../api/envelope";
 import { GridPanel } from "../grid/grid-panel";
+import { PrepSurface } from "../mentoring/prep-surface";
 import { HomePanel } from "../panels/home";
 import { type SessionState, userHeaders } from "../session";
 import { UrgentBanner } from "./banner";
@@ -293,6 +294,15 @@ export function Shell({ session, onLoggedOut }: ShellProps): ReactElement {
                       element={<HomePanel onMessagesViewed={onMessagesViewed} />}
                     />
                     <Route path="/panel/:panelKey" element={<RoutedPanel />} />
+                    {/* The session prep surface (WTK-177, REQ-081): a main-
+                        window panel route — reached from the engagement
+                        preview's session links; the optional session id
+                        defaults to the next upcoming session. */}
+                    <Route path="/prep/:engagementId" element={<PrepSurface />} />
+                    <Route
+                      path="/prep/:engagementId/:sessionId"
+                      element={<PrepSurface />}
+                    />
                   </Routes>
                 </main>
               </ResizablePanel>

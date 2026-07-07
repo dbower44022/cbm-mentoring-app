@@ -517,3 +517,266 @@ body,
   font-style: italic;
   padding: 0.5rem;
 }
+
+/* --- Mentoring surfaces (PI-010: WTK-168/177, REQ-073/081/082/088/089) --- */
+
+/* The engagement preview: rollup-led, data-dense, fill-to-space. */
+.engagement-preview {
+  padding: 0.5rem;
+}
+
+.engagement-preview h2 {
+  margin: 0 0 0.15rem;
+  font-size: var(--type-step-lg);
+}
+
+.preview-sub {
+  margin: 0 0 0.5rem;
+  color: #52606d;
+  font-size: var(--type-step-sm);
+}
+
+.status-chip {
+  display: inline-block;
+  padding: 0 0.4rem;
+  border: 1px solid #c3ccd6;
+  border-radius: 8px;
+  font-size: var(--type-step-xs);
+  background: #eef2f6;
+}
+
+.preview-section {
+  margin-bottom: 0.6rem;
+}
+
+.preview-section h3 {
+  margin: 0 0 0.25rem;
+  font-size: var(--type-step-sm);
+  color: #52606d;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.rollup-item {
+  border: 1px solid #e0e5eb;
+  border-left: 3px solid #c3ccd6;
+  border-radius: 3px;
+  padding: 0.3rem 0.4rem;
+  margin-bottom: 0.3rem;
+  font-size: var(--type-step-sm);
+}
+
+.rollup-item.open-ai {
+  border-left-color: #b7791f;
+}
+
+.rollup-item-head {
+  font-weight: 600;
+  margin-bottom: 0.15rem;
+}
+
+.preview-hint {
+  color: #52606d;
+  font-style: italic;
+  font-size: var(--type-step-sm);
+}
+
+.link-row {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: none;
+  padding: 0.2rem 0;
+  cursor: pointer;
+  color: #1d4e89;
+  font-size: var(--type-step-sm);
+}
+
+span.link-row {
+  color: inherit;
+  cursor: default;
+}
+
+.kv {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.15rem 0.6rem;
+  margin: 0;
+  font-size: var(--type-step-sm);
+}
+
+.kv dt {
+  color: #52606d;
+}
+
+.kv dd {
+  margin: 0;
+}
+
+/* The session prep surface (WTK-177): main refresh column + entry side. */
+.prep-wrap {
+  display: flex;
+  flex: 1 1 0;
+  min-height: 0;
+  gap: 0.5rem;
+  padding: 0.5rem;
+}
+
+.prep-main {
+  flex: 3 1 0;
+  min-width: 0;
+  overflow-y: auto;
+}
+
+.prep-side {
+  flex: 2 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.prep-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.prep-header h2 {
+  margin: 0;
+  font-size: var(--type-step-lg);
+}
+
+.prep-back {
+  margin-left: auto;
+}
+
+.prep-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  margin: 0.4rem 0;
+  font-size: var(--type-step-sm);
+  color: #374151;
+}
+
+.conf-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: 1px solid #d4d9e0;
+  border-radius: 3px;
+  padding: 0.35rem 0.5rem;
+  margin-bottom: 0.5rem;
+  background: #f7f9fb;
+}
+
+.conf-join {
+  font-weight: 600;
+  text-decoration: none;
+  color: #1d4e89;
+}
+
+.conf-link {
+  font-size: var(--type-step-sm);
+  color: #52606d;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.prep-card {
+  border: 1px solid #e0e5eb;
+  border-radius: 3px;
+  padding: 0.4rem 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.prep-card h3 {
+  margin: 0 0 0.3rem;
+  font-size: var(--type-step-sm);
+  color: #52606d;
+}
+
+/* The entry region fills its panel (REQ-089): a flex column where the
+   editors take every free pixel by their declared weights (the 3:2 split),
+   floored at 90px (entry_editors.MIN_EDITOR_HEIGHT) before scrolling. */
+.prep-entry {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  min-height: 0;
+  gap: 0.4rem;
+}
+
+.prep-entry h3 {
+  margin: 0;
+  font-size: var(--type-step-md);
+}
+
+.rich-text-entry {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border: 1px solid #c3ccd6;
+  border-radius: 3px;
+}
+
+.editor-toolbar {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.1rem;
+  border-bottom: 1px solid #e0e5eb;
+  padding: 0.15rem;
+  background: #f4f6f8;
+}
+
+.editor-toolbar button {
+  border: none;
+  background: none;
+  cursor: pointer;
+  padding: 0.1rem 0.35rem;
+  font-size: var(--type-step-sm);
+}
+
+.editor-toolbar button:hover {
+  background: #e0e5eb;
+}
+
+.notes-editor {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0.35rem 0.5rem;
+  outline: none;
+  font-size: var(--type-step-md);
+}
+
+.schedule-session {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  border: 1px dashed #c3ccd6;
+  border-radius: 3px;
+  padding: 0.4rem 0.5rem;
+  margin-top: 0.4rem;
+}
+
+/* Compose / share dialogs: the merged message reads as a message. */
+.email-preview .email-body {
+  white-space: pre-wrap;
+  font-family: inherit;
+  border: 1px solid #e0e5eb;
+  border-radius: 3px;
+  padding: 0.4rem 0.5rem;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+
+.next-steps {
+  display: flex;
+  gap: 0.4rem;
+  margin: 0.4rem 0;
+}
