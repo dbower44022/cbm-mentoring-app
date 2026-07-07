@@ -25,7 +25,9 @@ per concept (SKL-122), extended or renamed, never duplicated:
   a foreign-keyed column in place without recreating the table.
 - New app-owned ``resource`` (REQ-084) and ``event`` (REQ-085) tables.
 - Seeds: registry rows for every touched entity in this same change-set
-  (REQ-050) — which also creates the REQ-075/session/resource option sets.
+  (REQ-050) — which also creates the REQ-075/session/resource option sets —
+  and the seven REQ-071 mentor-area data sources with their role grants
+  (``access.mentoring.seed_mentor_access``).
 
 Registry fixups run BEFORE the seed so pre-0014 databases carry their rows
 forward under the new names (fresh chains already seed the new shapes at
@@ -42,6 +44,7 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import Session
 
+from mentorapp.access.mentoring import MENTOR_DATA_SOURCES, seed_mentor_access
 from mentorapp.storage.base import utcnow
 from mentorapp.storage.crm_refs import CrmCompanyRef, CrmMentorRef
 from mentorapp.storage.mentoring import (
@@ -378,7 +381,12 @@ def upgrade() -> None:
         .values(deletedAt=utcnow())
     )
 
-    seed_built_in_registry(Session(bind=op.get_bind()), list(_SEEDED_ENTITIES))
+    session = Session(bind=op.get_bind())
+    seed_built_in_registry(session, list(_SEEDED_ENTITIES))
+    # The seven REQ-071 mentor areas + the leadership triage source, with
+    # their role grants — data, seeded in the change-set that makes their
+    # SQL valid (WTK-167/WTK-176).
+    seed_mentor_access(session)
 
 
 def downgrade() -> None:
@@ -386,6 +394,8 @@ def downgrade() -> None:
     # registry-row metadata is restored to the fields that matter to the
     # mid-chain migrations (names, types, required flags) — label fidelity
     # is deliberately out of scope, no 0013-era consumer reads labels.
+    _drop_seeded_data_sources()
+
     # meetingNote / nextStep return as 0007 created them (empty — their
     # concepts lived on the session fields while 0014 was applied).
     op.create_table(
@@ -506,6 +516,23 @@ def downgrade() -> None:
     )
 
     _reverse_registry_fixups()
+
+
+def _drop_seeded_data_sources() -> None:
+    # Downgrade removes what the upgrade seeded (the 0006/0007 delete
+    # precedent): the grants first, then the sources they reference.
+    data_source = sa.table(
+        "dataSource",
+        sa.column("dataSourceID", sa.Uuid()),
+        sa.column("dataSourceKey", sa.String),
+    )
+    grant = sa.table("dataSourceRoleGrant", sa.column("dataSourceID", sa.Uuid()))
+    seeded_keys = [spec.data_source_key for spec in MENTOR_DATA_SOURCES]
+    seeded_ids = sa.select(data_source.c.dataSourceID).where(
+        data_source.c.dataSourceKey.in_(seeded_keys)
+    )
+    op.execute(sa.delete(grant).where(grant.c.dataSourceID.in_(seeded_ids)))
+    op.execute(sa.delete(data_source).where(data_source.c.dataSourceKey.in_(seeded_keys)))
 
 
 def _reverse_registry_fixups() -> None:
