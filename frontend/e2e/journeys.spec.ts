@@ -1,19 +1,23 @@
 /**
  * The WTK-200 smoke journeys over the rendered shell, in the testing
  * standard's spirit: user journeys against the real backend harness
- * (tests/e2e_harness.py — seeded data, stubbed CRM), asserting the served
+ * (tests/e2e_harness.py — the production app factory over a migrated,
+ * SEEDED database with the CRM's HTTP edge faked), asserting the served
  * educate voice verbatim rather than re-mocking any of it. The file runs
  * serially on one worker (playwright.config.ts): the journeys share one
- * seeded server whose read/acknowledgment receipts are per-user state, so
- * their order is part of the fixture (messages seed in the banner journey
- * and are read by its end).
+ * seeded server whose read/acknowledgment receipts and engagement statuses
+ * are per-user server state, so their order is part of the fixture (the
+ * first journey reads the seeded urgent banner; the last journey accepts
+ * the seeded pending engagement).
  */
 
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 
 const API = "http://127.0.0.1:8000";
-const LOGIN = "mentor@cbm.org";
-const PASSWORD = "correct-horse";
+// The seeded mentor (Frank Delgado). The harness CRM fake verifies the login
+// NAME only — any password signs in — but the form still needs one typed.
+const LOGIN = "frank";
+const PASSWORD = "mentor-demo";
 
 async function signIn(page: Page): Promise<void> {
   await page.goto("/");
@@ -23,49 +27,64 @@ async function signIn(page: Page): Promise<void> {
   await expect(page.locator(".shell-header")).toBeVisible();
 }
 
-async function seededRecordId(request: APIRequestContext): Promise<string> {
+async function seededState(
+  request: APIRequestContext,
+): Promise<{ summitEngagementID: string; riverbendEngagementID: string }> {
   const response = await request.get(`${API}/e2e/state`);
-  const body = (await response.json()) as { data: { recordId: string } };
-  return body.data.recordId;
+  const body = (await response.json()) as {
+    data: { summitEngagementID: string; riverbendEngagementID: string };
+  };
+  return body.data;
 }
 
-test("login → home → navigate → preview → pop-out → logout", async ({
+test("login → engagements triage → docked rollup preview → prep → logout", async ({
   page,
-  request,
 }) => {
   await signIn(page);
 
-  // Home: the messages dashlet is always first; nothing is seeded yet.
-  await expect(
-    page.getByText("No messages from your administrator right now."),
-  ).toBeVisible();
+  // REQ-072: the org-default startup lands the mentor on the Engagements
+  // panel — "My Active Engagements", not Home.
+  await expect(page).toHaveURL(/\/panel\/engagements/);
+  const grid = page.locator("section.grid-panel");
+  await expect(grid).toHaveAttribute("aria-label", "Engagements");
 
-  // Navigate: the healthy pin opens its panel (placeholder content today —
-  // grids land with PI-003; the navigation itself is what this asserts).
-  await page.getByRole("button", { name: "Active Mentors" }).click();
-  await expect(page.getByText("Panel “mentors” is open")).toBeVisible();
+  // No banner interaction here: the boot pass mounts Home for one commit
+  // before the startup navigation, and Home's render IS the read act
+  // (REQ-011) — the seeded messages are read server-side by the time the
+  // engagements grid shows. The banner journey below posts its own urgent
+  // message and lands away from "/" to assert the banner mechanics.
 
-  // Preview: the record window route renders the read-optimized preview.
-  const recordId = await seededRecordId(request);
-  await page.goto(`/records/mentor/${recordId}`);
-  const preview = page.getByRole("article", { name: "Record preview" });
-  await expect(preview).toBeVisible();
-  await expect(preview).toContainText("Ada Lovelace");
+  // The triage ruling (REQ-072/PI-010): pending acceptances lead, then the
+  // engagement with the soonest next session.
+  const rows = page.locator(".grid-table tbody tr");
+  await expect(rows.first()).toContainText("Riverbend Bakery");
+  await expect(rows.first()).toContainText("Pending Acceptance");
+  await expect(rows.nth(1)).toContainText("Summit Auto Detail");
 
-  // Pop-out: a REAL browser window named for its record (windows/record.tsx
-  // popOutRecord semantics), sharing the localStorage session.
-  const popupPromise = page.waitForEvent("popup");
-  await page.evaluate((id) => {
-    window.open(`/records/mentor/${id}`, `record:mentor:${id}`, "popup=yes");
-  }, recordId);
-  const popup = await popupPromise;
-  await expect(popup.getByRole("article", { name: "Record preview" })).toContainText(
-    "Ada Lovelace",
+  // Selecting a row docks the engagement preview: the REQ-073/074 rollup
+  // LEADS — notes + open action items across all sessions, newest first.
+  await rows.nth(1).click();
+  const preview = page.locator(".engagement-preview");
+  await expect(preview).toContainText("Summit Auto Detail");
+  await expect(preview).toContainText("Notes & open action items (all sessions)");
+  await expect(preview).toContainText("Van lease vs. buy");
+  await expect(preview).toContainText("Collect two commercial auto insurance quotes");
+
+  // The session links open the /prep surface (WTK-177, REQ-081): the full
+  // rollup plus the REQ-079 Join affordance for the scheduled session.
+  await preview
+    .getByRole("button", { name: /open prep surface/ })
+    .first()
+    .click();
+  await expect(page).toHaveURL(/\/prep\//);
+  const prep = page.locator(".prep-wrap");
+  await expect(prep).toContainText(
+    "All notes & action items across this engagement (newest first)",
   );
-  await popup.close();
+  await expect(prep.getByRole("link", { name: /Join Video Conference/ })).toBeVisible();
+  await expect(prep).toContainText("Sessions held:");
 
   // Logout from the account menu is explicit and total: back to Sign in.
-  await page.goto("/");
   await page.getByRole("button", { name: "Account ▾" }).click();
   await page.getByRole("menuitem", { name: /log out/i }).click();
   await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
@@ -78,34 +97,39 @@ test("session expiry → in-place re-auth preserves the dirty input", async ({
   await signIn(page);
 
   // Dirty a form the overlay must preserve: the quick-open palette's typed
-  // query (the shell's one text input until edit screens land with PI-003).
+  // query (the shell's one always-available text input).
   await page.keyboard.press("Control+k");
   const palette = page.getByRole("dialog", { name: "Quick open" });
   const paletteInput = palette.getByRole("textbox");
-  await paletteInput.fill("Active");
-  await expect(palette.getByRole("button", { name: /Active Mentors/ })).toBeVisible();
+  await paletteInput.fill("Engagem");
+  await expect(
+    palette.getByRole("button", { name: /My Active Engagements/ }),
+  ).toBeVisible();
 
   // Expire the session server-side, then let the next keystroke's query hit
   // the refusal: the envelope client holds it and the overlay appears IN
   // PLACE — no navigation, the palette stays mounted behind it.
   await request.post(`${API}/e2e/session/expire`);
-  await paletteInput.fill("Active M");
+  await paletteInput.fill("Engagement");
   const overlay = page.locator(".auth-overlay");
   await expect(overlay.getByText("Your session has expired.")).toBeVisible();
-  await expect(paletteInput).toHaveValue("Active M");
+  await expect(paletteInput).toHaveValue("Engagement");
 
   // One re-login revives the session; the held request replays and the
   // dirty input is exactly as typed.
   await overlay.getByLabel("Password").fill(PASSWORD);
   await overlay.getByRole("button", { name: "Sign back in" }).click();
   await expect(overlay).toHaveCount(0);
-  await expect(paletteInput).toHaveValue("Active M");
-  await expect(palette.getByRole("button", { name: /Active Mentors/ })).toBeVisible();
+  await expect(paletteInput).toHaveValue("Engagement");
+  await expect(
+    palette.getByRole("button", { name: /My Active Engagements/ }),
+  ).toBeVisible();
 });
 
 test("urgent banner and admin-message acknowledgment", async ({ page, request }) => {
-  // Seed by the app's own admin surface: one urgent message requiring
-  // acknowledgment and one normal one (Home only) that also requires it.
+  // Seed by the app's own admin surface (the real StoredMessageCenter): one
+  // urgent message requiring acknowledgment and one normal one (Home only)
+  // that also requires it.
   const admin = { "X-User-ID": "018f0000-0000-7000-8000-000000000abc" };
   await request.post(`${API}/home/messages`, {
     headers: admin,
@@ -144,8 +168,15 @@ test("urgent banner and admin-message acknowledgment", async ({ page, request })
     },
     { ...session, loginName: LOGIN },
   );
-  await page.goto("/panel/mentors");
-  await expect(page.getByText("Panel “mentors” is open")).toBeVisible();
+  await page.goto("/panel/resources");
+  await expect(page.locator("section.grid-panel")).toHaveAttribute(
+    "aria-label",
+    "Resources",
+  );
+  // The seeded staff-maintained library serves read-only (REQ-084).
+  await expect(page.locator(".grid-table")).toContainText(
+    "One-Page Business Plan Template",
+  );
 
   // The urgent banner banners across panels until read; opening it is the
   // read, and the acknowledgment is its own explicit click.
@@ -165,7 +196,14 @@ test("urgent banner and admin-message acknowledgment", async ({ page, request })
   ).toHaveCount(0);
 
   // Home's dashlet shows the normal message with its own acknowledgment.
-  await page.goto("/");
+  // Reached IN-APP via the quick-open palette: a fresh page load of "/"
+  // would re-run the startup redirect (REQ-072 lands mentors back on
+  // Engagements), while client-side navigation honors it once per boot.
+  await page.keyboard.press("Control+k");
+  await page
+    .getByRole("dialog", { name: "Quick open" })
+    .getByRole("button", { name: "panel Home" })
+    .click();
   const normal = page.getByRole("article", { name: "New mentoring guide" });
   await expect(normal).toContainText("The updated mentoring guide is on the wiki.");
   await normal.getByRole("button", { name: "Acknowledge" }).click();
@@ -175,9 +213,10 @@ test("urgent banner and admin-message acknowledgment", async ({ page, request })
 test("broken pin explains itself and dismisses without change", async ({ page }) => {
   await signIn(page);
 
-  // The tombstoned view's pin is visible, marked, and still clickable —
-  // never hidden, never disabled; activation answers the educate dialog.
-  const brokenPin = page.getByRole("button", { name: /Retired Mentors/ });
+  // The seeded pin whose view no longer exists is visible, marked, and
+  // still clickable — never hidden, never disabled; activation answers the
+  // educate dialog (REQ-015).
+  const brokenPin = page.getByRole("button", { name: /Q2 Pipeline Review/ });
   await expect(brokenPin).toContainText("⚠");
   await brokenPin.click();
 
@@ -195,6 +234,10 @@ test("broken pin explains itself and dismisses without change", async ({ page })
   await dialog.getByRole("button", { name: "Close" }).click();
   await expect(dialog).toHaveCount(0);
   await expect(brokenPin).toBeVisible();
+
+  // The healthy pin resolves and opens its panel — the seeded REQ-072 view.
+  await page.getByRole("button", { name: "My Active Engagements" }).click();
+  await expect(page).toHaveURL(/\/panel\/engagements/);
 });
 
 test("a CRM outage at login never reads as a wrong password", async ({
@@ -222,3 +265,56 @@ test("a CRM outage at login never reads as a wrong password", async ({
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page.locator(".shell-header")).toBeVisible();
 });
+
+test("accept assignment: pending engagement flips with next steps offered", async ({
+  page,
+  request,
+}) => {
+  const state = await seededState(request);
+  await signIn(page);
+
+  // The pending engagement leads the triage grid (journey order matters:
+  // this runs LAST because the flip is real server state).
+  const rows = page.locator(".grid-table tbody tr");
+  await expect(rows.first()).toContainText("Riverbend Bakery");
+  await rows.first().click();
+
+  // Every mentoring action is always listed (never hidden); the lifecycle
+  // transitions live in the actions menu and confirm before anything moves.
+  await page.getByRole("button", { name: "Other Actions" }).click();
+  await page.getByRole("button", { name: "Accept Assignment" }).click();
+  const dialog = page.getByRole("dialog", { name: "Accept Assignment" });
+  await expect(dialog).toContainText("Riverbend Bakery");
+  await expect(dialog).toContainText("Pending Acceptance");
+  await dialog.getByRole("button", { name: "Continue" }).click();
+
+  // The server confirmation names the flip and offers the REQ-076 first
+  // steps in place: the intro email and the first session.
+  await expect(dialog).toContainText("accepted — its status is now Assigned");
+  await expect(
+    dialog.getByRole("button", { name: "Send the introduction email" }),
+  ).toBeVisible();
+  await expect(
+    dialog.getByRole("button", { name: "Schedule the first session" }),
+  ).toBeVisible();
+  await dialog.getByRole("button", { name: "Close" }).click();
+
+  // The grid refreshed in place: nothing is Pending Acceptance any more,
+  // and the rollup read agrees the status is Assigned.
+  await expect(page.locator(".grid-table")).not.toContainText("Pending Acceptance");
+  const rollup = await request.get(
+    `${API}/engagements/${state.riverbendEngagementID}/rollup`,
+    { headers: { "X-User-ID": await frankUserId(request) } },
+  );
+  const body = (await rollup.json()) as {
+    data: { engagement: { engagementStatusLabel: string } };
+  };
+  expect(body.data.engagement.engagementStatusLabel).toBe("Assigned");
+});
+
+async function frankUserId(request: APIRequestContext): Promise<string> {
+  const login = await request.post(`${API}/auth/login`, {
+    data: { loginName: LOGIN, password: PASSWORD },
+  });
+  return ((await login.json()) as { data: { userID: string } }).data.userID;
+}

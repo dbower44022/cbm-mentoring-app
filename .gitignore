@@ -7,3 +7,4 @@ frontend/dist/
 .ruff_cache/
 frontend/test-results/
 frontend/playwright-report/
+tests/.e2e.db*
