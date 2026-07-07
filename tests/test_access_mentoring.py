@@ -203,7 +203,7 @@ def test_mentor_engagement_rows_are_confined_to_the_signed_in_mentor(
     )
     assert [r["engagementName"] for r in rows_a] == ["acme"]
     assert [r["engagementName"] for r in rows_b] == ["zenith"]
-    assert set(ENGAGEMENT_TRIAGE_COLUMNS) <= set(rows_a[0])
+    assert {spec.field_name for spec in ENGAGEMENT_TRIAGE_COLUMNS} <= set(rows_a[0])
 
 
 def test_the_row_filter_cannot_be_bypassed_by_naming_a_user(

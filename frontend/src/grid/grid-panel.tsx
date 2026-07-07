@@ -61,6 +61,7 @@ import {
   type GridRowsPayload,
 } from "./payloads";
 import { type EducatePayload } from "../api/payloads";
+import { formatCell } from "./format";
 import {
   lifecycleTransitionFor,
   mentoringPanelActions,
@@ -855,7 +856,10 @@ function LoadedGrid({
                       ) : null}
                       {panel.columns.map((column) => (
                         <td key={column.fieldName}>
-                          {row.values[column.fieldName] ?? ""}
+                          {/* Every cell renders through the ONE formatter,
+                              keyed by the column's declared format kind —
+                              raw SQL values never reach the grid (D1). */}
+                          {formatCell(row.values[column.fieldName], column.format)}
                         </td>
                       ))}
                     </tr>
@@ -878,9 +882,13 @@ function LoadedGrid({
           </div>
         )}
 
-        {/* Region 3: the status bar — progress middle, whole-set count right. */}
+        {/* Region 3: the status bar (D12) — the middle is reserved for
+            progress; the whole-set counts sit LAST so the bar's last-child
+            rule pushes them to the right edge, matching the prototype. */}
         <div className="grid-status-bar">
-          <span role="status">{rowsState.loading ? "Loading grid" : ""}</span>
+          <span className="grid-status-progress" role="status">
+            {rowsState.loading ? "Loading grid" : ""}
+          </span>
           <span>{rowCountLabel(totalCount, selCount, hiddenSelected)}</span>
         </div>
       </section>

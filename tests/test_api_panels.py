@@ -173,12 +173,35 @@ def test_engagements_panel_serves_the_landing_view(
     # The dataSourceKey is the seeded key VERBATIM — what activates the
     # client-side mentoring actions and the engagement preview seam.
     assert view["dataSourceKey"] == DS_MENTOR_ENGAGEMENTS
-    # Triage columns in requirement order, without the scoping column.
+    # The REQ-072 ruled columns in requirement order — the engagement ID is
+    # the row key (rows[].recordId), never a rendered column, and the REQ-019
+    # scoping column stays off-grid too (FND-909 D2).
     names = [c["fieldName"] for c in data["columns"]]
-    assert names[:3] == ["engagementID", "engagementName", "engagementStatusLabel"]
-    assert "userID" not in names
+    assert names == [
+        "engagementName",
+        "engagementStatusLabel",
+        "primaryContactName",
+        "primaryContactEmail",
+        "lastSessionAt",
+        "nextSessionAt",
+        "totalSessions",
+        "openActionItems",
+    ]
+    # Headers speak the ruled wording — "Last Session", never the derived
+    # "Last Session At" (FND-909 D11).
     labels = {c["fieldName"]: c["label"] for c in data["columns"]}
     assert labels["engagementStatusLabel"] == "Engagement Status"
+    assert labels["lastSessionAt"] == "Last Session"
+    assert labels["nextSessionAt"] == "Next Session"
+    assert labels["totalSessions"] == "Total Sessions"
+    assert labels["openActionItems"] == "Open Action Items"
+    # Each column declares its format kind so the client's one formatter can
+    # render the value (FND-909 D1) — dates/datetimes never reach the grid raw.
+    formats = {c["fieldName"]: c["format"] for c in data["columns"]}
+    assert formats["engagementName"] == "text"
+    assert formats["lastSessionAt"] == "datetime"
+    assert formats["nextSessionAt"] == "datetime"
+    assert formats["totalSessions"] == "number"
 
 
 def test_leadership_sees_both_engagement_views(
@@ -227,6 +250,10 @@ def test_rows_are_mentor_isolated_and_leadership_spans(
     ).json()["data"]["rows"]
     assert [row["title"] for row in rows_a] == ["Acme Growth"]
     assert rows_a[0]["values"]["totalSessions"] == 1
+    # The engagement's id serves as the row key for selection/preview, and
+    # ONLY as the row key — it is not projected as a column (FND-909 D2).
+    assert rows_a[0]["recordId"]
+    assert "engagementID" not in rows_a[0]["values"]
 
     # Mentor B's own scope: their engagement only — mentor A's rows are
     # structurally unreachable (the REQ-019 injected filter, WTK-186).
@@ -288,8 +315,14 @@ def test_aggregates_report_the_search_gap(
         headers=_headers(lead),
     ).json()["data"]
     # totalCount is the narrowed set; unnarrowedCount the whole view — the
-    # status bar's "N rows hidden by search" honesty gap (REQ-026).
-    assert data == {"totalCount": 1, "unnarrowedCount": 2, "footer": {}}
+    # status bar's "N rows hidden by search" honesty gap (REQ-026). The
+    # footer carries the view's declared count aggregate over the SAME
+    # narrowed set, keyed by its column (SKL-112 / FND-909 D11).
+    assert data == {
+        "totalCount": 1,
+        "unnarrowedCount": 2,
+        "footer": {"engagementName": "1"},
+    }
 
 
 def test_resources_panel_serves_the_library_readonly_surface(

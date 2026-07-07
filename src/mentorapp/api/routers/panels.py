@@ -16,7 +16,9 @@ What the frontend's universal grid panel consumes for the REQ-071 areas:
   top of the source's own projection.
 - ``GET /panels/{panelKey}/aggregates`` — whole-set counts for the status
   bar: the filtered total plus the un-narrowed total (the "N rows hidden by
-  search" gap), issued by the client in parallel with the rows.
+  search" gap), issued by the client in parallel with the rows; plus the
+  view's declared footer aggregates (SKL-112's in-grid footer row), keyed
+  by displayed column so the client places each value under its column.
 
 Why this is NOT the ``/grids`` surface: that router serves admin-authored
 ``grid``/``gridView`` records over ENTITY-backed sources through the ORM
@@ -104,10 +106,36 @@ def _panel_view(panel: PanelSpec, view_key: str | None) -> PanelViewSpec:
 def _cell(value: Any) -> Any:
     # Admin-SQL rows carry driver types (UUIDs, datetimes); the wire carries
     # JSON scalars. Numbers pass through; everything else becomes its string
-    # form — the same rendering the grid would apply anyway.
+    # form — the client renders every cell through its one formatter keyed
+    # by the column's declared format kind (FND-909 D1), so the wire stays
+    # raw and the LOOK is the format layer's job alone.
     if value is None or isinstance(value, (int, float, str, bool)):
         return value
     return str(value)
+
+
+def _footer_aggregates(view: PanelViewSpec, rows: list[dict[str, Any]]) -> dict[str, str]:
+    """The view's declared footer aggregates over the ENTIRE filtered set.
+
+    Keyed by the aggregated column's field name — the client's footer row
+    places each value under its column (SKL-112). Folded in Python because
+    the area sources narrow in Python (see the module docstring); the specs
+    are source-controlled in the panel catalog, and this surface's views
+    declare counts only — a wider declaration must extend this fold first,
+    so anything else is refused loudly rather than served wrongly.
+    """
+    footer: dict[str, str] = {}
+    for spec in view.aggregates:
+        if spec.function != "count":
+            raise ValueError(
+                f"panel view '{view.view_key}' declares '{spec.function}'; "
+                "the panels surface folds 'count' only."
+            )
+        # SQL COUNT(column) semantics: non-null values, not raw row count.
+        footer[spec.field_name] = str(
+            sum(1 for row in rows if row.get(spec.field_name) is not None)
+        )
+    return footer
 
 
 def _search_narrow(
@@ -234,8 +262,16 @@ def get_panel_grid(
                 for view in views
             ],
             "activeViewKey": active.view_key,
+            # Each column serves its declared format kind (FND-909 D1) and its
+            # ruled header when the source declares one — the derived label is
+            # only the fallback for columns with no ruling to honor (D11).
             "columns": [
-                {"fieldName": name, "label": column_label(name)} for name in active.columns
+                {
+                    "fieldName": spec.field_name,
+                    "label": spec.label or column_label(spec.field_name),
+                    "format": spec.column_format,
+                }
+                for spec in active.columns
             ],
             # The mentoring domain actions join CLIENT-side keyed by data
             # source (the pass-2 design); the panel itself declares none.
@@ -269,16 +305,18 @@ def get_panel_rows(
     panel = _live_panel(panel_key)
     view_spec = _panel_view(panel, view)
     rows = _view_rows(session, user_id, roles, view_spec)
-    narrowed, search_applied = _search_narrow(rows, view_spec.columns, search)
-    ordered = _sorted_rows(narrowed, view_spec.columns, sort)
+    narrowed, search_applied = _search_narrow(rows, view_spec.column_names, search)
+    ordered = _sorted_rows(narrowed, view_spec.column_names, sort)
     payload = []
     for index, row in enumerate(ordered):
         record_id = row.get(view_spec.record_id_field) or row.get(view_spec.title_field)
         payload.append(
             {
+                # The row's identity travels HERE, never as a rendered column
+                # (FND-909 D2): values carries displayed columns only.
                 "recordId": str(record_id) if record_id is not None else f"row-{index}",
                 "title": str(row.get(view_spec.title_field) or ""),
-                "values": {name: _cell(row.get(name)) for name in view_spec.columns},
+                "values": {name: _cell(row.get(name)) for name in view_spec.column_names},
             }
         )
     log.info(
@@ -314,11 +352,18 @@ def get_panel_aggregates(
 
     ``totalCount`` is the filtered set (source + search); ``unnarrowedCount``
     is the same view WITHOUT the search — the client's "N rows hidden"
-    honesty gap. No footer aggregates: the area views declare none (FND-019
-    is a per-view declaration, and none of the seeded sources carries one).
+    honesty gap. ``footer`` carries the view's declared aggregates over the
+    SAME filtered set (FND-019 per-view declaration; SKL-112's footer row),
+    keyed by displayed column — empty when the view declares none.
     """
     panel = _live_panel(panel_key)
     view_spec = _panel_view(panel, view)
     rows = _view_rows(session, user_id, roles, view_spec)
-    narrowed, _ = _search_narrow(rows, view_spec.columns, search)
-    return ok(data={"totalCount": len(narrowed), "unnarrowedCount": len(rows), "footer": {}})
+    narrowed, _ = _search_narrow(rows, view_spec.column_names, search)
+    return ok(
+        data={
+            "totalCount": len(narrowed),
+            "unnarrowedCount": len(rows),
+            "footer": _footer_aggregates(view_spec, narrowed),
+        }
+    )
