@@ -1,14 +1,22 @@
 /**
- * The WTK-200 smoke journeys over the rendered shell, in the testing
- * standard's spirit: user journeys against the real backend harness
- * (tests/e2e_harness.py — the production app factory over a migrated,
- * SEEDED database with the CRM's HTTP edge faked), asserting the served
- * educate voice verbatim rather than re-mocking any of it. The file runs
- * serially on one worker (playwright.config.ts): the journeys share one
- * seeded server whose read/acknowledgment receipts and engagement statuses
- * are per-user server state, so their order is part of the fixture (the
- * first journey reads the seeded urgent banner; the last journey accepts
- * the seeded pending engagement).
+ * THE RENDERED-ANATOMY GATE (WTK-200 journeys + FND-909 conformance).
+ *
+ * Two jobs, one file, per the testing standard's spirit: (1) the smoke
+ * journeys over the rendered shell — user journeys against the real backend
+ * harness (tests/e2e_harness.py — the production app factory over a
+ * migrated, SEEDED database with the CRM's HTTP edge faked), asserting the
+ * served educate voice verbatim rather than re-mocking any of it; and
+ * (2) CI-enforced assertions of the stakeholder-ruled UI ANATOMY — the grid
+ * regions, the at-cursor menu, served formatting, chips, resize/selection,
+ * splitters, session endings, and Home — so FND-909 ("all machine gates
+ * green, rendered product garbage") can never recur silently: if the ruled
+ * anatomy regresses, THIS suite is the gate that goes red.
+ *
+ * The file runs serially on one worker (playwright.config.ts): the journeys
+ * share one seeded server whose read/acknowledgment receipts and engagement
+ * statuses are per-user server state, so their order is part of the fixture
+ * (the anatomy assertions read the seeded pending engagement's chip, so the
+ * accept-assignment journey — which flips it for real — runs LAST).
  */
 
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
@@ -18,6 +26,15 @@ const API = "http://127.0.0.1:8000";
 // NAME only — any password signs in — but the form still needs one typed.
 const LOGIN = "frank";
 const PASSWORD = "mentor-demo";
+
+// FND-909 D2/D13: raw identifiers must never render — headers, cells, and
+// message attributions all speak names. One pattern, used everywhere.
+const UUID_PATTERN = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+
+// FND-909 D1: the raw SQL driver timestamp shape ("... 15:00:00.000000").
+// Every cell renders through the ONE formatter, so this shape reaching the
+// grid DOM means a value bypassed it.
+const RAW_TIMESTAMP_PATTERN = /:\d{2}\.\d{6}/;
 
 async function signIn(page: Page): Promise<void> {
   await page.goto("/");
@@ -35,6 +52,14 @@ async function seededState(
     data: { summitEngagementID: string; riverbendEngagementID: string };
   };
   return body.data;
+}
+
+/** The engagements grid with its rows loaded — the anatomy tests' subject. */
+async function engagementsGrid(page: Page): Promise<ReturnType<Page["locator"]>> {
+  const grid = page.locator("section.grid-panel");
+  await expect(grid).toHaveAttribute("aria-label", "Engagements");
+  await expect(grid.locator(".grid-table tbody tr").first()).toBeVisible();
+  return grid;
 }
 
 test("login → engagements triage → docked rollup preview → prep → logout", async ({
@@ -62,12 +87,15 @@ test("login → engagements triage → docked rollup preview → prep → logout
   await expect(rows.nth(1)).toContainText("Summit Auto Detail");
 
   // FND-909 D7 (REQ-045): the status value renders as a slot-colored chip,
-  // never plain text. The computed color proves the whole chain in a REAL
+  // never plain text. The computed colors prove the whole chain in a REAL
   // browser: served rule → statusWarning slot → --slot-status-warning
-  // (#b45309) painting the chip text.
+  // (#b45309) painting the chip's text AND border — visibly different from
+  // the plain .status-chip default border (#c3ccd6), i.e. the slot really
+  // drove the paint rather than the stylesheet fallback.
   const pendingChip = rows.first().locator(".status-chip.slot-colored");
   await expect(pendingChip).toHaveText("Pending Acceptance");
   await expect(pendingChip).toHaveCSS("color", "rgb(180, 83, 9)");
+  await expect(pendingChip).toHaveCSS("border-top-color", "rgb(180, 83, 9)");
 
   // Selecting a row docks the engagement preview: the REQ-073/074 rollup
   // LEADS — notes + open action items across all sessions, newest first.
@@ -96,6 +124,271 @@ test("login → engagements triage → docked rollup preview → prep → logout
   await page.getByRole("button", { name: "Account ▾" }).click();
   await page.getByRole("menuitem", { name: /log out/i }).click();
   await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
+});
+
+test("grid anatomy: one action bar, centered search, status bar, count footer", async ({
+  page,
+}) => {
+  await signIn(page);
+  const grid = await engagementsGrid(page);
+
+  // REQ-016: the grid is three stacked regions, and region 1 is exactly ONE
+  // action-bar row — view machinery, search, actions; never a second bar.
+  const bar = grid.locator(".grid-action-bar");
+  await expect(bar).toHaveCount(1);
+
+  // The view selector is present and live (REQ-016/025).
+  await expect(bar.getByRole("combobox", { name: "View" })).toBeVisible();
+
+  // REQ-020/021 + the approved prototype: the search box sits in the bar's
+  // CENTER region — the middle span takes the flexible width and centers it.
+  // (Role is combobox, not searchbox: the input carries the recent-searches
+  // datalist, which is REQ-020 anatomy in its own right.)
+  const middle = bar.locator("> span").nth(1);
+  await expect(
+    middle.getByRole("combobox", { name: "Search displayed columns" }),
+  ).toBeVisible();
+  await expect(middle).toHaveCSS("flex-grow", "1");
+  await expect(middle).toHaveCSS("justify-content", "center");
+
+  // REQ-021: the right group is EXACTLY the data set's two common actions
+  // plus "Other Actions" — no hidden actions, no extra buttons (FND-909 D6).
+  // On the engagement source the two common actions are the leading
+  // lifecycle transitions (mentoring/actions.ts).
+  await expect(bar.locator("> span").nth(2).locator("button")).toHaveText([
+    "Accept Assignment",
+    "Decline Assignment",
+    "Other Actions",
+  ]);
+
+  // Region 3 (D12/REQ-023/026): the bottom status bar counts the WHOLE
+  // filtered set — the seeded 7 engagements — sitting at the RIGHT edge.
+  const statusBar = grid.locator(".grid-status-bar");
+  const counts = statusBar.locator("> span").last();
+  await expect(counts).toHaveText("7 rows");
+  const barBox = await statusBar.boundingBox();
+  const countsBox = await counts.boundingBox();
+  if (barBox === null || countsBox === null) {
+    throw new Error("status bar did not render boxes");
+  }
+  expect(barBox.x + barBox.width - (countsBox.x + countsBox.width)).toBeLessThan(20);
+  expect(countsBox.x - barBox.x).toBeGreaterThan(barBox.width / 2);
+
+  // SKL-112 / FND-909 D11: the view's declared count aggregate renders as
+  // the in-grid footer row (tfoot), agreeing with the status bar's count.
+  await expect(grid.locator(".grid-table tfoot")).toBeVisible();
+  await expect(grid.locator(".grid-table tfoot td").first()).toHaveText("7");
+});
+
+test("right-click opens the all-actions menu at the cursor; Help closes it", async ({
+  page,
+}) => {
+  await signIn(page);
+  const grid = await engagementsGrid(page);
+
+  // REQ-106 (SKL-112 v3): the right-click menu opens AT the cursor — zero
+  // mouse travel — so its top-left corner lands within 10px of the click
+  // point (the clamp only engages near the window edges; this click isn't).
+  const row = grid.locator(".grid-table tbody tr").nth(1);
+  const rowBox = await row.boundingBox();
+  if (rowBox === null) {
+    throw new Error("row did not render a box");
+  }
+  const clickX = rowBox.x + 200;
+  const clickY = rowBox.y + rowBox.height / 2;
+  await page.mouse.click(clickX, clickY, { button: "right" });
+
+  const menu = page.locator('menu[aria-label="All actions"]');
+  await expect(menu).toBeVisible();
+  const menuBox = await menu.boundingBox();
+  if (menuBox === null) {
+    throw new Error("menu did not render a box");
+  }
+  expect(Math.abs(menuBox.x - clickX)).toBeLessThanOrEqual(10);
+  expect(Math.abs(menuBox.y - clickY)).toBeLessThanOrEqual(10);
+
+  // REQ-043: every action menu's LAST item is Help — one resolver, never
+  // hidden, always closing the list.
+  await expect(menu.locator("li button").last()).toHaveText("Help");
+});
+
+test("served formatting: ruled headers, no raw values, type-driven alignment", async ({
+  page,
+}) => {
+  await signIn(page);
+  const grid = await engagementsGrid(page);
+
+  // FND-909 D2/D11: the headers are the RULED wording — the engagement ID is
+  // the row key, never a rendered column (no UUID column header), and the
+  // session dates read "Last Session"/"Next Session", never the derived
+  // "...At". Asserting the full list pins the anatomy exactly.
+  await expect(grid.locator(".grid-table thead th")).toHaveText([
+    "Engagement Name",
+    "Engagement Status",
+    "Primary Contact Name",
+    "Primary Contact Email",
+    "Last Session",
+    "Next Session",
+    "Total Sessions",
+    "Open Action Items",
+  ]);
+
+  // FND-909 D1 (SKL-112): every cell renders through the one formatter, so
+  // the raw SQL timestamp shape (":00.000000") and raw UUIDs must not exist
+  // ANYWHERE in the grid DOM.
+  const gridText = await grid.innerText();
+  expect(gridText).not.toMatch(RAW_TIMESTAMP_PATTERN);
+  expect(gridText).not.toMatch(UUID_PATTERN);
+
+  // REQ-109 (SKL-112 v5): alignment rides the wire from the column's data
+  // type — Doug's ruling: numbers CENTER, text/dates LEFT — and the grid
+  // paints the served alignment on header and cells alike.
+  const numberHeader = grid.locator('th[data-field="totalSessions"]');
+  await expect(numberHeader).toHaveCSS("text-align", "center");
+  const firstRow = grid.locator(".grid-table tbody tr").first();
+  await expect(firstRow.locator("td").nth(6)).toHaveCSS("text-align", "center");
+  const dateHeader = grid.locator('th[data-field="lastSessionAt"]');
+  await expect(dateHeader).toHaveCSS("text-align", "left");
+  await expect(firstRow.locator("td").nth(4)).toHaveCSS("text-align", "left");
+});
+
+test("column resize clamps at the character minimum; shift-click selects the row range", async ({
+  page,
+}) => {
+  await signIn(page);
+  const grid = await engagementsGrid(page);
+
+  // REQ-107 (SKL-112 v4): every column is user-resizable by dragging its
+  // header boundary. +150px grows the column by the drag delta…
+  const th = grid.locator('th[data-field="engagementName"]');
+  const startBox = await th.boundingBox();
+  const handle = th.locator(".col-resize-handle");
+  const handleBox = await handle.boundingBox();
+  if (startBox === null || handleBox === null) {
+    throw new Error("header did not render boxes");
+  }
+  // Grab INSIDE the handle's visible strip: the handle overhangs the header
+  // boundary by 4px, and the overhang is clipped by the cell's
+  // overflow:hidden — its box center is exactly on the clip edge.
+  const grabX = handleBox.x + 2;
+  const grabY = handleBox.y + handleBox.height / 2;
+  await page.mouse.move(grabX, grabY);
+  await page.mouse.down();
+  await page.mouse.move(grabX + 150, grabY, { steps: 4 });
+  await page.mouse.up();
+  const grownBox = await th.boundingBox();
+  if (grownBox === null) {
+    throw new Error("header lost its box after the grow drag");
+  }
+  expect(grownBox.width).toBeGreaterThan(startBox.width + 100);
+  expect(grownBox.width).toBeLessThan(startBox.width + 200);
+
+  // …and a violent shrink drag clamps at the CHARACTER minimum ("Engagement
+  // Name" floors at 17ch), never below 100px — the label always fits.
+  const shrinkFrom = await handle.boundingBox();
+  if (shrinkFrom === null) {
+    throw new Error("resize handle lost its box");
+  }
+  const shrinkX = shrinkFrom.x + 2;
+  const shrinkY = shrinkFrom.y + shrinkFrom.height / 2;
+  await page.mouse.move(shrinkX, shrinkY);
+  await page.mouse.down();
+  await page.mouse.move(shrinkX - 900, shrinkY, { steps: 4 });
+  await page.mouse.up();
+  const clampedBox = await th.boundingBox();
+  if (clampedBox === null) {
+    throw new Error("header lost its box after the shrink drag");
+  }
+  expect(clampedBox.width).toBeGreaterThan(100);
+  expect(clampedBox.width).toBeLessThan(startBox.width + 1);
+
+  // REQ-023 (SKL-112 v4): shift-click extends the ROW selection — rows 0→4
+  // select five — and the status bar counts them over the whole set.
+  const rows = grid.locator(".grid-table tbody tr");
+  await rows.first().click();
+  await rows.nth(4).click({ modifiers: ["Shift"] });
+  await expect(grid.locator('tbody input[type="checkbox"]:checked')).toHaveCount(5);
+  await expect(grid.locator(".grid-status-bar > span").last()).toHaveText(
+    "7 rows, 5 Selected",
+  );
+});
+
+test("shift-click range leaves no native text selection (REQ-108)", async ({
+  page,
+}) => {
+  // KNOWN PRODUCT DEFECT — expected failure, NOT a weakened assertion.
+  // REQ-108's ruled selection hygiene (commit e37bb8b's own words: "native
+  // text selection suppressed, 0 chars selected across the range") has no
+  // implementing code: no user-select rule in shell.css and no shift-aware
+  // mousedown preventDefault on the rows, so a shift-click row range
+  // highlights ~390 characters of cell text (reproduced in isolation, no
+  // prior drags). This is frontend PRODUCT code to fix under its own
+  // finding — out of scope for this test-only branch. test.fail() keeps the
+  // assertion at full strength: the run stays green while the defect
+  // stands, and CI goes red the moment a fix lands so this marker must be
+  // removed with it.
+  test.fail(
+    true,
+    "REQ-108 selection hygiene unimplemented: shift-click row range leaves a native text selection",
+  );
+  await signIn(page);
+  const grid = await engagementsGrid(page);
+  const rows = grid.locator(".grid-table tbody tr");
+  await rows.first().click();
+  await rows.nth(4).click({ modifiers: ["Shift"] });
+  await expect(grid.locator('tbody input[type="checkbox"]:checked')).toHaveCount(5);
+  expect(await page.evaluate(() => window.getSelection()?.toString() ?? "")).toBe("");
+});
+
+test("panel splitters hold their dragged width; prep carries splitter + zoom", async ({
+  page,
+}) => {
+  await signIn(page);
+  await engagementsGrid(page);
+
+  // REQ-087: the grid/preview boundary is a wide grabbable splitter, and the
+  // dragged width HOLDS — the "splitter snaps back" regression (the saved
+  // preference re-load clobbering the drag) stays dead. The preview is the
+  // splitter's "next" sibling, so dragging LEFT grows it.
+  const previewPanel = page.locator(".grid-preview-panel");
+  const beforeBox = await previewPanel.boundingBox();
+  const splitter = page.locator(".grid-with-preview > .panel-splitter");
+  const splitterBox = await splitter.boundingBox();
+  if (beforeBox === null || splitterBox === null) {
+    throw new Error("preview/splitter did not render boxes");
+  }
+  const grabX = splitterBox.x + splitterBox.width / 2;
+  const grabY = splitterBox.y + 200;
+  await page.mouse.move(grabX, grabY);
+  await page.mouse.down();
+  await page.mouse.move(grabX - 120, grabY, { steps: 4 });
+  await page.mouse.up();
+  const draggedBox = await previewPanel.boundingBox();
+  if (draggedBox === null) {
+    throw new Error("preview lost its box after the drag");
+  }
+  expect(draggedBox.width).toBeGreaterThan(beforeBox.width + 80);
+  // Outlive the 400ms debounced preference write and any refetch: the width
+  // one second later is the width the drag left.
+  await page.waitForTimeout(1100);
+  const heldBox = await previewPanel.boundingBox();
+  if (heldBox === null) {
+    throw new Error("preview lost its box after the hold");
+  }
+  expect(Math.abs(heldBox.width - draggedBox.width)).toBeLessThanOrEqual(2);
+
+  // The prep surface (REQ-087 over WTK-177, FND-909 D10): reached via the
+  // preview's session link, it carries its own wide splitter and BOTH
+  // panels' zoom controls (the main panel's and the entry side's).
+  await page.locator(".grid-table tbody tr").nth(1).click();
+  await page
+    .locator(".engagement-preview")
+    .getByRole("button", { name: /open prep surface/ })
+    .first()
+    .click();
+  await expect(page).toHaveURL(/\/prep\//);
+  await expect(page.locator(".prep-wrap > .panel-splitter")).toBeVisible();
+  await expect(page.locator(".panel-zoom-control")).toHaveCount(2);
 });
 
 test("session expiry → in-place re-auth preserves the dirty input", async ({
@@ -132,6 +425,40 @@ test("session expiry → in-place re-auth preserves the dirty input", async ({
   await expect(
     palette.getByRole("button", { name: /My Active Engagements/ }),
   ).toBeVisible();
+});
+
+test("a corrupted stored session lands on the ended screen, never an internal error", async ({
+  page,
+}) => {
+  await signIn(page);
+
+  // FND-909 D9: corrupt the persisted session REFERENCE (api/session.ts
+  // stores the whole session under "mentorapp.session"; the reference is the
+  // only identity the client ever sends). The next boot's reads all answer
+  // `unauthenticated` — beyond revival — and the app must land on the
+  // session-ended overlay or the sign-in screen, NEVER a raw internal error.
+  await page.evaluate(() => {
+    const raw = localStorage.getItem("mentorapp.session");
+    const stored = raw === null ? {} : (JSON.parse(raw) as Record<string, unknown>);
+    localStorage.setItem(
+      "mentorapp.session",
+      JSON.stringify({ ...stored, sessionReference: "corrupted-beyond-revival" }),
+    );
+  });
+  await page.reload();
+
+  const overlay = page.locator(".auth-overlay");
+  await expect(overlay.getByText("This session has ended.")).toBeVisible();
+  const bodyText = await page.locator("body").innerText();
+  expect(bodyText).not.toMatch(/internal (server )?error/i);
+
+  // Leaving the ended session is explicit; the same credentials sign back in.
+  await overlay.getByRole("button", { name: "Sign in again" }).click();
+  await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
+  await page.getByLabel("Username").fill(LOGIN);
+  await page.getByLabel("Password").fill(PASSWORD);
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page.locator(".shell-header")).toBeVisible();
 });
 
 test("urgent banner and admin-message acknowledgment", async ({ page, request }) => {
@@ -218,6 +545,42 @@ test("urgent banner and admin-message acknowledgment", async ({ page, request })
   await expect(normal).toContainText("The updated mentoring guide is on the wiki.");
   await normal.getByRole("button", { name: "Acknowledge" }).click();
   await expect(normal.getByText("Acknowledged.")).toBeVisible();
+});
+
+test("Home leads the navigation; its messages dashlet attributes posters by name", async ({
+  page,
+}) => {
+  await signIn(page);
+
+  // FND-909 D8 (REQ-011/REQ-071): Home is a served AREA anchoring the
+  // navigation — the FIRST item, on every presentation.
+  const nav = page.getByRole("navigation", { name: "Navigation" });
+  await expect(nav.locator("button.nav-item").first()).toHaveText("Home");
+
+  // Clicking Home renders the provided, always-first messages dashlet
+  // (REQ-003/REQ-011) — client-side navigation, since the once-per-boot
+  // startup claim already happened (D8).
+  await nav.locator("button.nav-item").first().click();
+  const home = page.locator("main.home-panel");
+  await expect(home).toBeVisible();
+  const dashlet = home.locator("section.dashlet").first();
+  await expect(dashlet).toHaveAttribute(
+    "aria-label",
+    "Messages from your administrator",
+  );
+
+  // FND-909 D13: "Posted by" is followed by a NAME — the server resolves the
+  // poster's stored userID to a login name; a raw UUID rendering here is the
+  // D2 defect recurring on messages.
+  const postedLine = dashlet
+    .locator("article p")
+    .filter({ hasText: "Posted by" })
+    .first();
+  await expect(postedLine).toBeVisible();
+  const line = await postedLine.innerText();
+  const match = /^Posted by (.+?) on /.exec(line);
+  expect(match).not.toBeNull();
+  expect(match?.[1]).not.toMatch(UUID_PATTERN);
 });
 
 test("broken pin explains itself and dismisses without change", async ({ page }) => {
