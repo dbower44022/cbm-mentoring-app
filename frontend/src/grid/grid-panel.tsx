@@ -116,6 +116,26 @@ interface RowsState {
   permissionMissing: string | null;
 }
 
+/** REQ-107: a column's minimum width in characters — the label must always
+    fit, with a floor for narrow labels so data stays legible. */
+function minChars(column: { label: string }): number {
+  return Math.max(6, Math.min(24, column.label.length + 2));
+}
+
+/** One character's width in px, measured in the header's own font — the
+    ch->px conversion the drag clamp needs (min-width:ch is ignored once
+    the table switches to fixed layout for user-resized columns). */
+function chWidthPx(host: HTMLElement): number {
+  const probe = document.createElement("span");
+  probe.textContent = "0";
+  probe.style.visibility = "hidden";
+  probe.style.position = "absolute";
+  host.appendChild(probe);
+  const width = probe.getBoundingClientRect().width;
+  probe.remove();
+  return width > 0 ? width : 8;
+}
+
 export function GridPanel({ panelKey }: { panelKey: string }): ReactElement {
   const { state, reload } = useEnvelope<GridPanelPayload>(
     `/panels/${encodeURIComponent(panelKey)}/grid`,
@@ -160,6 +180,11 @@ function LoadedGrid({
   const [searchText, setSearchText] = useState("");
   const [recentSearches, setRecentSearches] = useState(panel.recentSearches);
   const [sortKeys, setSortKeys] = useState<readonly SortKey[]>([]);
+  // REQ-107: user-resized column widths (px), session-scoped like sort —
+  // a temporary view modification. The CHARACTER minimum is enforced in CSS
+  // (min-width in ch on every header/cell), so neither drags nor auto
+  // sizing can squash a column below it.
+  const [colWidths, setColWidths] = useState<Record<string, number>>({});
   const [selection, setSelection] = useState<Selection>(EMPTY_SELECTION);
   const [focusedRow, setFocusedRow] = useState(0);
   const [rowsState, setRowsState] = useState<RowsState>({
@@ -800,7 +825,12 @@ function LoadedGrid({
               }
             }}
           >
-            <table className="grid-table">
+            <table
+              className="grid-table"
+              style={
+                Object.keys(colWidths).length > 0 ? { tableLayout: "fixed" } : undefined
+              }
+            >
               <thead>
                 <tr>
                   {multiSelectActive(selection) ? <th aria-label="Selected" /> : null}
@@ -809,7 +839,15 @@ function LoadedGrid({
                     return (
                       <th
                         key={column.fieldName}
+                        data-field={column.fieldName}
                         tabIndex={0}
+                        style={{
+                          minWidth: `${String(minChars(column))}ch`,
+                          width:
+                            colWidths[column.fieldName] === undefined
+                              ? undefined
+                              : `${String(colWidths[column.fieldName])}px`,
+                        }}
                         aria-sort={
                           badge === null
                             ? undefined
@@ -828,6 +866,67 @@ function LoadedGrid({
                         }}
                       >
                         {column.label}
+                        {/* REQ-107: drag the header boundary to resize. */}
+                        <span
+                          className="col-resize-handle"
+                          role="separator"
+                          aria-orientation="vertical"
+                          aria-label={`Resize ${column.label}`}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                          }}
+                          onMouseDown={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            const th = event.currentTarget.closest("th");
+                            const headerRow = th?.parentElement;
+                            if (
+                              th === null ||
+                              headerRow === null ||
+                              headerRow === undefined
+                            ) {
+                              return;
+                            }
+                            // First resize: snapshot every column's current
+                            // width so the table can switch to fixed layout
+                            // (auto layout re-distributes and ignores a
+                            // single column's width) without a visual jump.
+                            setColWidths((widths) => {
+                              if (Object.keys(widths).length > 0) {
+                                return widths;
+                              }
+                              const snapshot: Record<string, number> = {};
+                              headerRow
+                                .querySelectorAll("th[data-field]")
+                                .forEach((cell) => {
+                                  const field = cell.getAttribute("data-field");
+                                  if (field !== null) {
+                                    snapshot[field] =
+                                      cell.getBoundingClientRect().width;
+                                  }
+                                });
+                              return snapshot;
+                            });
+                            const startX = event.clientX;
+                            const startW = th.getBoundingClientRect().width;
+                            const minPx = minChars(column) * chWidthPx(th);
+                            const move = (ev: MouseEvent): void => {
+                              setColWidths((widths) => ({
+                                ...widths,
+                                [column.fieldName]: Math.max(
+                                  minPx,
+                                  startW + (ev.clientX - startX),
+                                ),
+                              }));
+                            };
+                            const up = (): void => {
+                              document.removeEventListener("mousemove", move);
+                              document.removeEventListener("mouseup", up);
+                            };
+                            document.addEventListener("mousemove", move);
+                            document.addEventListener("mouseup", up);
+                          }}
+                        />
                         {badge !== null ? (
                           <span className="sort-badge">
                             {badge.direction === "asc" ? "▲" : "▼"}
@@ -864,7 +963,25 @@ function LoadedGrid({
                       }
                       onClick={(event) => {
                         setFocusedRow(index);
-                        if (event.shiftKey || event.ctrlKey) {
+                        if (event.shiftKey) {
+                          // REQ-023: shift EXTENDS — every row between the
+                          // anchor (the focused row) and the click joins the
+                          // selection; ctrl toggles one row.
+                          const from = Math.min(focusedRow, index);
+                          const to = Math.max(focusedRow, index);
+                          const range = rowsState.rows
+                            .slice(from, to + 1)
+                            .map((member) => member.recordId);
+                          setSelection((sel) => ({
+                            kind: "explicit",
+                            recordIds: [
+                              ...new Set([
+                                ...(sel.kind === "explicit" ? sel.recordIds : []),
+                                ...range,
+                              ]),
+                            ],
+                          }));
+                        } else if (event.ctrlKey) {
                           setSelection((sel) => toggleSelected(sel, row.recordId));
                         } else {
                           setSelection({ kind: "explicit", recordIds: [row.recordId] });

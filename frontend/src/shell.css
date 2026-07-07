@@ -908,3 +908,47 @@ span.link-row {
   flex: 1 1 0;
   text-align: center;
 }
+
+/* Column sizing integrity + selection hygiene (REQ-107/108, SKL-112 v4).
+   The gutter is a THEME token — declared beside the slot variables so a
+   template can widen it; the 1px separator + inline padding guarantee two
+   cells' text can never run together at any column width. */
+:root {
+  --grid-cell-gutter: 0.55rem;
+  --grid-gutter-color: #e3e8ee;
+}
+
+.grid-table th,
+.grid-table td {
+  padding-left: var(--grid-cell-gutter);
+  padding-right: var(--grid-cell-gutter);
+  border-right: 1px solid var(--grid-gutter-color);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.grid-table th {
+  position: relative;
+}
+
+.col-resize-handle {
+  position: absolute;
+  top: 0;
+  right: -4px;
+  width: 8px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 5;
+}
+
+.col-resize-handle:hover {
+  background: var(--slot-selected-row-background);
+}
+
+/* Too-small windows scroll the grid region horizontally (REQ-107): the
+   ch minimums give the table a real minimum content width, and the host
+   (overflow:auto since cluster 1) scrolls rather than squashing columns. */
+.grid-table {
+  width: 100%;
+}

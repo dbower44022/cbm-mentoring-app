@@ -172,3 +172,15 @@ unnecessary.
   Other Actions; only the anchor differs (button menus anchor to the
   button). Clamp to the viewport; never anchor a context menu to a fixed
   corner.
+
+## Column sizing integrity + selection hygiene (ruled by Doug 2026-07-07)
+
+- ALL columns are user-resizable (drag the header boundary). Every column
+  carries a MINIMUM width in CHARACTERS that neither smart auto-sizing nor
+  a user drag may violate.
+- When the window is too small to honor every minimum, the grid scrolls
+  HORIZONTALLY inside its region — columns are never squashed below minimum.
+- A minimum, THEME-based cell border/gutter size keeps adjacent cells' text
+  from running together (the gutter is a theme token, not per-view styling).
+- Shift-click extension highlights ROWS ONLY: native browser text selection
+  never activates across the range.
