@@ -780,3 +780,106 @@ span.link-row {
   gap: 0.4rem;
   margin: 0.4rem 0;
 }
+
+/* ============ Grid anatomy conformance (FND-909 cluster 1) ============
+   REQ-016/021/026 + the approved prototype: ONE action-bar row (view
+   selector left, search growing in the middle, actions right); the
+   all-actions menu FLOATS as a dropdown (it rendered as an in-flow
+   bulleted list — D6); the table scrolls INSIDE its host so it can never
+   push the docked preview out of the viewport (D3); the status bar reads
+   as the grid's bottom region with counts on the right. */
+.grid-action-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.6rem;
+  border-bottom: 1px solid #d4d9e0;
+  background: #f7f9fb;
+}
+
+.grid-action-bar > span:first-child {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.grid-action-bar > span:nth-child(2) {
+  flex: 1 1 0;
+  display: flex;
+  justify-content: center;
+}
+
+.grid-action-bar > span:nth-child(2) input {
+  width: min(26rem, 100%);
+}
+
+.grid-action-bar > span:last-child {
+  margin-left: auto;
+  display: flex;
+  gap: 0.4rem;
+}
+
+.grid-panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.grid-panel > menu {
+  position: absolute;
+  top: 2.2rem;
+  right: 0.6rem;
+  z-index: 45;
+  margin: 0;
+  padding: 0.25rem 0;
+  list-style: none;
+  min-width: 15rem;
+  background: #ffffff;
+  border: 1px solid #d4d9e0;
+  border-radius: 4px;
+  box-shadow: 0 6px 20px rgba(15, 30, 50, 0.22);
+}
+
+.grid-panel > menu li > button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: none;
+  padding: 0.35rem 0.9rem;
+  cursor: pointer;
+}
+
+.grid-panel > menu li > button:hover {
+  background: var(--slot-selected-row-background);
+}
+
+.grid-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 44;
+  background: transparent;
+}
+
+.grid-table-host {
+  flex: 1 1 0;
+  min-height: 0;
+  min-width: 0;
+  overflow: auto;
+}
+
+.grid-status-bar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.2rem 0.6rem;
+  border-top: 1px solid #d4d9e0;
+  background: #f7f9fb;
+  font-size: var(--type-step-xs, 11px);
+  color: #52606d;
+}
+
+.grid-status-bar > :last-child {
+  margin-left: auto;
+}

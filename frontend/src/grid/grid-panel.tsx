@@ -578,20 +578,30 @@ function LoadedGrid({
         </div>
 
         {menuOpen !== false ? (
-          <menu aria-label="All actions">
-            {menus.menu.map((action) => (
-              <li key={action.key}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    runAction(action);
-                  }}
-                >
-                  {action.label}
-                </button>
-              </li>
-            ))}
-          </menu>
+          <>
+            {/* Transparent backdrop: outside click closes the menu without
+                stealing the click's meaning from grid rows (REQ-021 menu UX). */}
+            <div
+              className="grid-menu-backdrop"
+              onClick={() => {
+                setMenuOpen(false);
+              }}
+            />
+            <menu aria-label="All actions">
+              {menus.menu.map((action) => (
+                <li key={action.key}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      runAction(action);
+                    }}
+                  >
+                    {action.label}
+                  </button>
+                </li>
+              ))}
+            </menu>
+          </>
         ) : null}
 
         {helpNotice !== null ? (
@@ -892,7 +902,7 @@ function LoadedGrid({
         ) : DomainPreview !== null ? (
           // The per-source domain preview (preview-seam): the engagement
           // sources render the rollup-led REQ-073/088 content here.
-          <DomainPreview recordId={previewRecordId} />
+          <DomainPreview recordId={previewRecordId} refreshToken={generation} />
         ) : (
           <RecordPreview entityType="grid" recordId={previewRecordId} />
         )}

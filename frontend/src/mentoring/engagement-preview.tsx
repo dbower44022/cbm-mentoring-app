@@ -55,9 +55,16 @@ function RollupItem({ entry }: { entry: RollupSessionPayload }): ReactElement {
   );
 }
 
-export function EngagementPreview({ recordId }: { recordId: string }): ReactElement {
+export function EngagementPreview({
+  recordId,
+  refreshToken = null,
+}: {
+  recordId: string;
+  refreshToken?: unknown;
+}): ReactElement {
   const { state } = useEnvelope<EngagementRollupPayload>(
     `/engagements/${recordId}/rollup`,
+    refreshToken,
   );
 
   switch (state.phase) {

@@ -220,11 +220,16 @@ export function actionMenus(
   commonKeys: readonly string[],
   appended: readonly ActionPayload[] = [],
 ): ActionMenus {
-  const buttons = commonKeys
+  const named = commonKeys
     .map((key) => actions.find((action) => action.key === key))
     .filter((action): action is ActionPayload => action !== undefined);
+  // REQ-021: the action bar always carries the data set's two most common
+  // actions. When the payload names none, the first two domain actions
+  // stand in — an empty button row is a hidden-actions smell (FND-909 D6).
+  const buttons = named.length > 0 ? named : appended.slice(0, 2);
   const rest = actions.filter((action) => !commonKeys.includes(action.key));
-  return { buttons, menu: [...buttons, ...rest, ...appended, HELP_ACTION] };
+  const menuAppended = appended.filter((action) => !buttons.includes(action));
+  return { buttons, menu: [...buttons, ...rest, ...menuAppended, HELP_ACTION] };
 }
 
 /** The never-hide explainer: why THIS invocation can't run, or null. */

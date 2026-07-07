@@ -17,6 +17,9 @@ import { EngagementPreview } from "../mentoring/engagement-preview";
 
 export interface PreviewRendererProps {
   recordId: string;
+  /** Bumped by the host grid on data refresh (lifecycle actions, reloads)
+      so the domain preview re-reads instead of showing pre-action state. */
+  refreshToken?: unknown;
 }
 
 const RENDERERS: readonly (readonly [
