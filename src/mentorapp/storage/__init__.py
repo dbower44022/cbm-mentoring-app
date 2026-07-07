@@ -64,6 +64,11 @@ from mentorapp.storage.help import (
     live_help_mapping,
 )
 from mentorapp.storage.ids import uuid7, uuid7_created_at
+from mentorapp.storage.leadership import (
+    engagement_status_counts,
+    mentor_activity,
+    sessions_held_per_period,
+)
 from mentorapp.storage.mentoring import (
     ENGAGEMENT_STATUS_OPTION_SET,
     ENGAGEMENT_STATUS_VALUES,
@@ -247,6 +252,7 @@ __all__ = [
     "as_utc",
     "built_in_field_from_column",
     "built_in_fields",
+    "engagement_status_counts",
     "engagement_triage_rows",
     "engagement_triage_sql",
     "entity_key",
@@ -257,6 +263,7 @@ __all__ = [
     "live_help_mapping",
     "live_index",
     "live_unique",
+    "mentor_activity",
     "partial_index_rule_violations",
     "read_view_name",
     "regenerate_read_views",
@@ -264,6 +271,7 @@ __all__ = [
     "run_schema_drift_startup_check",
     "schema_drift_findings",
     "seed_built_in_registry",
+    "sessions_held_per_period",
     "shared_type_scale",
     "utcnow",
     "uuid7",

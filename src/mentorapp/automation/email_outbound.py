@@ -105,6 +105,26 @@ STAFF_EMAIL_TEMPLATES: Final[tuple[EmailTemplate, ...]] = (
         ),
     ),
     EmailTemplate(
+        # WTK-170 (Doug's 2026-07-06 REQ-078 ruling): scheduling a session
+        # sends the client a meeting invite carrying the conference link —
+        # merged and sent by the scheduling endpoint itself, not composed by
+        # the mentor. sessionTime/conferenceLink join only on that flow.
+        # A true calendar invitation (an ICS attachment the client's calendar
+        # ingests) is a design-time refinement of the SAME send: the transport
+        # seam gains an attachment when a real provider binds; the email body
+        # carrying the link is the confirmed v1 contract.
+        template_key="sessionInvite",
+        template_name="Session invitation (sent on scheduling)",
+        subject="Mentoring session invitation — {{engagementName}}",
+        body=(
+            "Hello {{contactName}},\n\n"
+            "Our next mentoring session for {{engagementName}} is scheduled "
+            "for {{sessionTime}}.\n\n"
+            "Join the video conference here:\n{{conferenceLink}}\n\n"
+            "Best regards,\n{{mentorName}}"
+        ),
+    ),
+    EmailTemplate(
         template_key="reengagementCheckIn",
         template_name="Re-engagement check-in (dormant)",
         subject="Checking in — {{engagementName}}",

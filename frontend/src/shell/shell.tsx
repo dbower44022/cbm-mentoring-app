@@ -51,6 +51,10 @@ export function Shell({ session, onLoggedOut }: ShellProps): ReactElement {
   });
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  // The server's startup target is honored exactly once per boot (REQ-011;
+  // mentors default to Engagements per REQ-072) — a later shell reload (e.g.
+  // a presentation switch) must not yank the user off their current panel.
+  const [startupApplied, setStartupApplied] = useState(false);
   // Home's render reads its messages (REQ-011 auto-read on view); bumping
   // this token re-fetches the banner so it never banners what was just read.
   const [messagesViewedAt, setMessagesViewedAt] = useState(0);
@@ -98,6 +102,26 @@ export function Shell({ session, onLoggedOut }: ShellProps): ReactElement {
   }, [session]);
 
   const shell = state.shell;
+
+  // Apply the startup target when the shell first loads and the window is
+  // still on the boot route — a deep-linked window keeps its own target,
+  // and a startup fallback's educate notice surfaces instead of a silent
+  // redirect (REQ-015).
+  useEffect(() => {
+    if (shell === null || startupApplied) {
+      return;
+    }
+    setStartupApplied(true);
+    const startup = shell.startup;
+    if (startup.notice !== null) {
+      setNotice(
+        `${startup.notice.whatHappened} ${startup.notice.why} ${startup.notice.whatNext}`,
+      );
+    }
+    if (startup.panelKey !== shell.homePanelKey && window.location.pathname === "/") {
+      navigate(`/panel/${encodeURIComponent(startup.panelKey)}`);
+    }
+  }, [shell, startupApplied, navigate]);
 
   // Ctrl+K binds identically on every window kind, from the payload's own
   // declaration (DEC-080 §A) — never a hardcoded key.
@@ -221,6 +245,7 @@ export function Shell({ session, onLoggedOut }: ShellProps): ReactElement {
   const navigation = (
     <Navigation
       navigation={shell.navigation}
+      areas={shell.areas}
       session={session}
       onOpenPanel={openPanel}
       onNavigationStale={loadShell}

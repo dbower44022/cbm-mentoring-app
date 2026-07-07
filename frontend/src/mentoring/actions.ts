@@ -53,6 +53,13 @@ export const LIFECYCLE_ACTIONS: readonly ActionPayload[] = [
     selectionContract: "single",
     classification: "modifying",
   },
+  {
+    // WTK-172: the way back out of the paused states (On Hold/Dormant).
+    key: "resumeEngagement",
+    label: "Resume Engagement",
+    selectionContract: "single",
+    classification: "modifying",
+  },
 ];
 
 /** Action key → the server's lifecycle transition key. */
@@ -61,6 +68,7 @@ const TRANSITIONS: Record<string, string> = {
   declineAssignment: "decline",
   putOnHold: "hold",
   markDormant: "dormant",
+  resumeEngagement: "resume",
 };
 
 /** Compose-from-template (REQ-076/077): opens the dialog; nothing sends

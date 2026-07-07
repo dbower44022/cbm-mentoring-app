@@ -204,7 +204,88 @@ function PrepEntry({
 }): ReactElement {
   const [entry, dispatch] = useReducer(reducePrepEntry, session, loadedEntry);
   const [scheduling, setScheduling] = useState(false);
+  const [pasteOpen, setPasteOpen] = useState(false);
+  const [pastedTranscript, setPastedTranscript] = useState("");
   const dirty = isDirty(entry);
+
+  // A server write outside the save path (retrieve / paste / dismiss): fold
+  // the fresh rowVersion + proposals into the entry state — never the typed
+  // text — and refresh the surrounding rollup.
+  const applyExternal = (record: SessionRecordPayload, notice: string): void => {
+    dispatch({
+      kind: "externalUpdate",
+      rowVersion: record.rowVersion,
+      draftSummary: record.draftSummary,
+      draftActionItems: record.draftActionItems,
+      notice,
+    });
+    onSaved();
+  };
+
+  const retrieveTranscript = (): void => {
+    // The REQ-083 retrieve-now path: only offered for app-created meetings
+    // (externalMeetingID); the server educates when the platform hasn't
+    // produced the transcript yet.
+    void callApi<SessionRecordPayload>(`/sessions/${entry.sessionID}/transcript`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    })
+      .then(({ data }) => {
+        applyExternal(
+          data,
+          "Transcript retrieved — review the drafted summary and action items below.",
+        );
+      })
+      .catch((failure: unknown) => {
+        dispatch({ kind: "saveRefused", errors: refusalErrors(failure) });
+      });
+  };
+
+  const pasteTranscript = (): void => {
+    if (pastedTranscript.trim() === "") {
+      return;
+    }
+    // The REQ-083 paste path — transcripts are append-only evidence, so the
+    // server refuses a rewrite in the educate voice; the drafts propose from
+    // the pasted text exactly as they do from a retrieval.
+    void callApi<SessionRecordPayload>(`/sessions/${entry.sessionID}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        rowVersion: entry.rowVersion,
+        transcriptText: pastedTranscript,
+        transcriptSource: "pastedByMentor",
+      }),
+    })
+      .then(({ data }) => {
+        setPasteOpen(false);
+        setPastedTranscript("");
+        applyExternal(data, "Transcript attached to this session.");
+      })
+      .catch((failure: unknown) => {
+        dispatch({ kind: "saveRefused", errors: refusalErrors(failure) });
+      });
+  };
+
+  const dismissDrafts = (): void => {
+    // Dismissal is an explicit act on the PROPOSAL columns only — the
+    // mentor's entry fields are untouched (REQ-083 authorship).
+    void callApi<SessionRecordPayload>(`/sessions/${entry.sessionID}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        rowVersion: entry.rowVersion,
+        draftSummary: null,
+        draftActionItems: null,
+      }),
+    })
+      .then(({ data }) => {
+        applyExternal(data, "Draft proposals dismissed.");
+      })
+      .catch((failure: unknown) => {
+        dispatch({ kind: "saveRefused", errors: refusalErrors(failure) });
+      });
+  };
 
   // Unsaved notes survive an accidental close only through the browser's
   // own prompt — the one leave path the in-UI guard can't intercept.
@@ -252,12 +333,51 @@ function PrepEntry({
         Entered during the call or shortly after. Formatting, lists, and links are kept;
         action items are a bulleted list, not task records.
       </p>
+      {/* The REQ-083 proposal block: AI drafts land HERE for review — the
+          mentor inserts them into the entry fields (and edits) or dismisses;
+          nothing is ever auto-applied to the notes. */}
+      {entry.draftSummary !== null || entry.draftActionItems !== null ? (
+        <section className="draft-proposals" aria-label="Drafted from the transcript">
+          <h4>Drafted from the transcript — for your review</h4>
+          {entry.draftSummary !== null ? (
+            <div className="draft-proposal">
+              <div dangerouslySetInnerHTML={{ __html: entry.draftSummary }} />
+              <button
+                type="button"
+                onClick={() => {
+                  dispatch({ kind: "draftInserted", field: "notes" });
+                }}
+              >
+                Insert into notes
+              </button>
+            </div>
+          ) : null}
+          {entry.draftActionItems !== null ? (
+            <div className="draft-proposal">
+              <div dangerouslySetInnerHTML={{ __html: entry.draftActionItems }} />
+              <button
+                type="button"
+                onClick={() => {
+                  dispatch({ kind: "draftInserted", field: "actionItems" });
+                }}
+              >
+                Insert into action items
+              </button>
+            </div>
+          ) : null}
+          <button type="button" onClick={dismissDrafts}>
+            Dismiss proposals
+          </button>
+        </section>
+      ) : null}
       {/* The approved 3:2 notes/action-items fill split
-          (entry_editors.PREP_ENTRY_EDITORS) — REQ-089's no-idle-space rule. */}
+          (entry_editors.PREP_ENTRY_EDITORS) — REQ-089's no-idle-space rule.
+          initialHtml re-reads only on a revision bump (a draft insert) —
+          typing is never clobbered. */}
       <RichTextEditor
         label="Session notes"
-        initialHtml={entry.savedNotes}
-        resetToken={entry.sessionID}
+        initialHtml={entry.notes}
+        resetToken={`${entry.sessionID}:${String(entry.notesRevision)}`}
         fillWeight={3}
         onChange={(html) => {
           dispatch({ kind: "edited", field: "notes", value: html });
@@ -265,8 +385,8 @@ function PrepEntry({
       />
       <RichTextEditor
         label="Action items"
-        initialHtml={entry.savedActionItems}
-        resetToken={entry.sessionID}
+        initialHtml={entry.actionItems}
+        resetToken={`${entry.sessionID}:${String(entry.actionItemsRevision)}`}
         fillWeight={2}
         onChange={(html) => {
           dispatch({ kind: "edited", field: "actionItems", value: html });
@@ -286,7 +406,41 @@ function PrepEntry({
         >
           Schedule Next Session
         </button>
+        {/* Retrieval only exists for app-created meetings (REQ-080/083);
+            pasted-link sessions get the paste path below instead. */}
+        {session.externalMeetingID !== null ? (
+          <button type="button" onClick={retrieveTranscript}>
+            Retrieve Transcript &amp; Drafts
+          </button>
+        ) : null}
       </div>
+      <details
+        className="paste-transcript"
+        open={pasteOpen}
+        onToggle={(event) => {
+          setPasteOpen(event.currentTarget.open);
+        }}
+      >
+        <summary>Paste a transcript</summary>
+        <p className="preview-hint">
+          For meetings the automation can't reach. A transcript is append-only evidence:
+          pasting adds to what's stored, never rewrites it.
+        </p>
+        <textarea
+          aria-label="Transcript text"
+          value={pastedTranscript}
+          onChange={(event) => {
+            setPastedTranscript(event.target.value);
+          }}
+        />
+        <button
+          type="button"
+          disabled={pastedTranscript.trim() === ""}
+          onClick={pasteTranscript}
+        >
+          Attach Transcript
+        </button>
+      </details>
       {scheduling ? (
         <ScheduleSessionForm
           engagementId={engagementId}

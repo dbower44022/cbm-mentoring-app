@@ -45,12 +45,18 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
+from mentorapp.access.areas import AreaDescriptor, is_area_accessible
 from mentorapp.access.grants import GrantLookup
 from mentorapp.api.deps import get_current_user_id, get_session
 from mentorapp.api.envelope import Envelope, ok
 from mentorapp.api.errors import RecordNotFoundError
 from mentorapp.observability import get_logger
 from mentorapp.storage import Notification, UserPreference, utcnow
+from mentorapp.ui.home_panel import (
+    STARTUP_PREFERENCE_KEY,
+    StartupChoice,
+    resolve_startup_panel,
+)
 from mentorapp.ui.navigation import (
     HOME_PANEL_KEY,
     NAVIGATION_PREFERENCE_KEY,
@@ -188,16 +194,93 @@ def _rendering_payload(rendering: NavigationRendering) -> dict[str, Any]:
     }
 
 
+def _area_entries(catalog: ShellCatalog, user_id: uuid.UUID) -> list[dict[str, Any]]:
+    """The server-declared Areas (WTK-233, REQ-071): accessible panels, in order.
+
+    Every catalog panel with a data source is an area candidate; visibility
+    is the quiet form of the one grant boundary (WTK-025 — panel permission
+    IS data-source permission). Each entry names the panel's first live view
+    so activating an area opens something concrete; the panel's own grid
+    read re-decides the active view for the caller anyway.
+    """
+    grants = catalog.grants()
+    user_roles = catalog.user_roles(user_id)
+    views = catalog.views()
+    entries: list[dict[str, Any]] = []
+    for panel in catalog.panels():
+        if panel.data_source_key is None:
+            continue  # Home is the rail's fixed anchor, never an area entry.
+        area = AreaDescriptor(panel.panel_key, panel.data_source_key)
+        if not is_area_accessible(area, grants=grants, user_roles=user_roles):
+            continue
+        default_view = next(
+            (v for v in views if v.panel_key == panel.panel_key and v.deleted_at is None),
+            None,
+        )
+        entries.append(
+            {
+                "panelKey": panel.panel_key,
+                "label": panel.title,
+                "viewKey": default_view.view_key if default_view is not None else None,
+            }
+        )
+    return entries
+
+
+def _startup_payload(
+    session: Session, user_id: uuid.UUID, accessible_panel_keys: list[str]
+) -> dict[str, Any]:
+    """Where this window should land (REQ-011/REQ-015, the REQ-072 default).
+
+    The ``shell.startup`` preference document under the REQ-060 pair (own
+    row overrides the org default — the mentor deployment seeds an org
+    default that lands on the engagements panel, Doug's REQ-072 ruling).
+    Parsing degrades, never fails: an unknown choice or panel resolves
+    through :func:`resolve_startup_panel`, landing on Home with the educate
+    notice rather than a blank screen.
+    """
+    rows = session.scalars(
+        select(UserPreference)
+        .where(UserPreference.deleted_at.is_(None))
+        .where(UserPreference.preference_key == STARTUP_PREFERENCE_KEY)
+        .where(or_(UserPreference.user_id == user_id, UserPreference.user_id.is_(None)))
+    ).all()
+    row = next((r for r in rows if r.user_id == user_id), None)
+    row = row or next((r for r in rows if r.user_id is None), None)
+    if row is None:
+        return {"panelKey": HOME_PANEL_KEY, "notice": None}
+    document = row.preference_value or {}
+    try:
+        choice = StartupChoice(document.get("choice"))
+    except ValueError:
+        choice = StartupChoice.HOME
+    last_panel = document.get("lastPanelKey")
+    target = resolve_startup_panel(
+        choice,
+        last_panel if isinstance(last_panel, str) else None,
+        accessible_panel_keys,
+    )
+    return {
+        "panelKey": target.panel_key,
+        "notice": target.notice.as_payload() if target.notice is not None else None,
+    }
+
+
 @router.get("/shell")
 def get_shell(session: _SessionDep, user_id: _UserDep, catalog: _CatalogDep) -> Envelope:
-    """Compose the shell: both headers plus the user's rendered navigation.
+    """Compose the shell: headers, navigation, the Areas, and the startup target.
 
     ``data.mainWindow``/``data.popOut`` carry the one WTK-026 header
     declaration for each window kind (pop-outs are record windows, not panel
     hosts — REQ-012). ``data.navigation`` renders the stored pin set for its
     stored presentation with every pin present and broken ones marked
-    (REQ-010/REQ-015). Fails 500 when the catalog provider is unwired; 422
-    without ``X-User-ID``.
+    (REQ-010/REQ-015). ``data.areas`` is the server-declared area list
+    (WTK-233 — membership is the grant boundary's decision, never the
+    client's), and ``data.startup`` is where this boot should land: the
+    ``shell.startup`` preference resolved against the accessible panels
+    (mentors default to the engagements panel per the REQ-072 ruling).
+    Fails 500 when the catalog provider is unwired; 422 without
+    ``X-User-ID``.
     """
     profile = _navigation_profile(session, user_id)
     resolved = resolve_navigation(
@@ -207,11 +290,15 @@ def get_shell(session: _SessionDep, user_id: _UserDep, catalog: _CatalogDep) -> 
         user_id=user_id,
         user_roles=catalog.user_roles(user_id),
     )
+    areas = _area_entries(catalog, user_id)
+    startup = _startup_payload(session, user_id, [entry["panelKey"] for entry in areas])
     return ok(
         data={
             "mainWindow": _header_payload(header_for_window(is_pop_out=False)),
             "popOut": _header_payload(header_for_window(is_pop_out=True)),
             "homePanelKey": HOME_PANEL_KEY,
+            "areas": areas,
+            "startup": startup,
             "navigation": _rendering_payload(render_navigation(profile.presentation, resolved)),
         }
     )

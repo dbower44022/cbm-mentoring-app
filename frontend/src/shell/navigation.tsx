@@ -11,6 +11,7 @@ import { type ReactElement, useState } from "react";
 import { callApi, EnvelopeError } from "../api/envelope";
 import { type SessionState, userHeaders } from "../session";
 import type {
+  AreaEntryPayload,
   BrokenPinDialogPayload,
   NavigationGroupPayload,
   NavigationItemPayload,
@@ -20,6 +21,13 @@ import type {
 
 export interface NavigationProps {
   navigation: NavigationPayload;
+  /**
+   * The server-declared Areas (WTK-233, REQ-071) rendered ahead of the pin
+   * groups. Areas are already permission-filtered server-side, so an area
+   * click opens its panel directly — the panel's own grid load re-checks the
+   * grant and educates if it was revoked since (never a dead control).
+   */
+  areas: AreaEntryPayload[];
   session: SessionState;
   onOpenPanel: (panelKey: string, viewKey: string | null) => void;
   /** A 404 on open is a cross-window race: the pin set changed under us. */
@@ -36,6 +44,7 @@ const CHOICE_LABELS: Record<string, string> = {
 
 export function Navigation({
   navigation,
+  areas,
   session,
   onOpenPanel,
   onNavigationStale,
@@ -82,10 +91,31 @@ export function Navigation({
     </button>
   );
 
+  // The Areas render ahead of the pin groups in every presentation: the
+  // areas are product surface (server-declared membership), the pins the
+  // user's personal layer on top — same one list, three shapes.
+  const areaButton = (area: AreaEntryPayload): ReactElement => (
+    <button
+      key={area.panelKey}
+      type="button"
+      className="nav-item nav-area"
+      onClick={() => {
+        onOpenPanel(area.panelKey, area.viewKey);
+      }}
+    >
+      {area.label}
+    </button>
+  );
+
   const renderers: Record<string, (groups: NavigationGroupPayload[]) => ReactElement> =
     {
       tabs: (groups) => (
         <nav className="nav-tabs" aria-label="Navigation">
+          {areas.length > 0 && (
+            <span className="nav-tab-group nav-areas" title="Areas">
+              {areas.map(areaButton)}
+            </span>
+          )}
           {groups.map((group) => (
             <span key={group.label} className="nav-tab-group" title={group.label}>
               {group.items.map(item)}
@@ -95,6 +125,12 @@ export function Navigation({
       ),
       sideMenu: (groups) => (
         <nav className="nav-side-menu" aria-label="Navigation">
+          {areas.length > 0 && (
+            <div className="nav-group nav-areas">
+              <div className="nav-group-label">Areas</div>
+              {areas.map(areaButton)}
+            </div>
+          )}
           {groups.map((group) => (
             <div key={group.label} className="nav-group">
               <div className="nav-group-label">{group.label}</div>
@@ -105,6 +141,12 @@ export function Navigation({
       ),
       groupTree: (groups) => (
         <nav className="nav-group-tree" aria-label="Navigation">
+          {areas.length > 0 && (
+            <details className="nav-areas" open>
+              <summary className="nav-group-label">Areas</summary>
+              {areas.map(areaButton)}
+            </details>
+          )}
           {groups.map((group) => (
             <details key={group.label} open>
               <summary className="nav-group-label">{group.label}</summary>
