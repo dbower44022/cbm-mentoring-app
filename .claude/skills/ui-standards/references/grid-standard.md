@@ -164,3 +164,11 @@ error** (plain words + [Retry]; detail available, not dumped),
 **Inline cell editing** — out for v1, revisit later (likely as a view
 setting); the action set + multi-select actions are expected to make it
 unnecessary.
+
+## Context-menu anchoring (ruled by Doug 2026-07-07)
+
+- The grid's RIGHT-CLICK menu opens AT THE CURSOR — the whole point of
+  right-click is zero mouse travel to the action. Same full action list as
+  Other Actions; only the anchor differs (button menus anchor to the
+  button). Clamp to the viewport; never anchor a context menu to a fixed
+  corner.

@@ -168,7 +168,11 @@ function LoadedGrid({
     permissionMissing: null,
   });
   const [aggregates, setAggregates] = useState<GridAggregatesPayload | null>(null);
-  const [menuOpen, setMenuOpen] = useState<false | "dropdown" | "context">(false);
+  // "dropdown" anchors under the Other Actions button; a coordinate pair is
+  // a right-click, anchored AT the cursor (REQ-106: zero mouse travel).
+  const [menuOpen, setMenuOpen] = useState<
+    false | "dropdown" | { x: number; y: number }
+  >(false);
   const [explainer, setExplainer] = useState<EducatePayload | null>(null);
   // The educate notice a generic help landing carries (REQ-043) — the
   // grid's own dismissible surface for the shell resolver's notice sink.
@@ -462,7 +466,8 @@ function LoadedGrid({
     } else if (action === "openFocusedRecord") {
       openRecord(rowsState.rows[focusedRow]);
     } else if (action === "openActionsMenu") {
-      setMenuOpen("context");
+      // Keyboard invocation has no cursor; anchor like the button.
+      setMenuOpen("dropdown");
     } else if (action === "focusSearchBox") {
       searchRef.current?.focus();
     }
@@ -505,7 +510,7 @@ function LoadedGrid({
         aria-label={panel.title}
         onContextMenu={(event) => {
           event.preventDefault();
-          setMenuOpen("context");
+          setMenuOpen({ x: event.clientX, y: event.clientY });
         }}
       >
         {/* Region 1: the action bar — view machinery / search / actions. */}
@@ -592,7 +597,19 @@ function LoadedGrid({
                 setMenuOpen(false);
               }}
             />
-            <menu aria-label="All actions">
+            <menu
+              aria-label="All actions"
+              style={
+                menuOpen === "dropdown"
+                  ? undefined
+                  : {
+                      position: "fixed",
+                      left: Math.min(menuOpen.x, window.innerWidth - 260),
+                      top: Math.min(menuOpen.y, window.innerHeight - 320),
+                      right: "auto",
+                    }
+              }
+            >
               {menus.menu.map((action) => (
                 <li key={action.key}>
                   <button
