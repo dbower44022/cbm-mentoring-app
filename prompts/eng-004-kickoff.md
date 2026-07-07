@@ -333,3 +333,17 @@ RESOLVED (DEC-090). Review queue empty.**
 
 REMAINING: PI-005 workprocess, PI-006 help, PI-010 mentoring domain
 (carries WTK-232) — then REL-003 release-level QA/test/ship gates.
+
+## 2026-07-07 — RENDERED-GATE RECKONING (FND-909)
+
+First human render of the built app failed Doug's inspection outright
+("absolute garbage") despite every machine gate green — raw timestamps,
+overlapping panels, UUID lead column, wrong action-bar anatomy. PI-010
+frozen back to In Progress; blocking finding FND-909; ENG-001 candidate
+REQ-473 (acceptance-summary-driven output verification: experiential
+requirements need RENDERED gates, not code gates). Defect sweep = 12
+defects vs the prototype (conformant: triage ordering, prep-surface
+content, educate voice). Cluster 1 (D3/D4/D5/D6) fixed screenshot-verified
+same night (42f6673). THE systemic E2E lesson: traceability without
+matched-instrument verification is not governance. Continue via
+prompts/conformance-session.md.
