@@ -197,19 +197,31 @@ def _rendering_payload(rendering: NavigationRendering) -> dict[str, Any]:
 def _area_entries(catalog: ShellCatalog, user_id: uuid.UUID) -> list[dict[str, Any]]:
     """The server-declared Areas (WTK-233, REQ-071): accessible panels, in order.
 
-    Every catalog panel with a data source is an area candidate; visibility
-    is the quiet form of the one grant boundary (WTK-025 — panel permission
-    IS data-source permission). Each entry names the panel's first live view
-    so activating an area opens something concrete; the panel's own grid
-    read re-decides the active view for the caller anyway.
+    Home leads the list (FND-909 D8, REQ-011: the Home panel is provided and
+    the prototype's navigation lists it first) — it carries no data source,
+    so it is open to every signed-in user with no grant check, and its
+    ``viewKey`` is ``None`` because activating it opens the home panel
+    itself, not a grid view. Every OTHER catalog panel with a data source is
+    an area candidate; visibility is the quiet form of the one grant boundary
+    (WTK-025 — panel permission IS data-source permission). Each such entry
+    names the panel's first live view so activating an area opens something
+    concrete; the panel's own grid read re-decides the active view for the
+    caller anyway.
     """
     grants = catalog.grants()
     user_roles = catalog.user_roles(user_id)
     views = catalog.views()
-    entries: list[dict[str, Any]] = []
+    home = catalog.panel(HOME_PANEL_KEY)
+    entries: list[dict[str, Any]] = [
+        {
+            "panelKey": HOME_PANEL_KEY,
+            "label": home.title if home is not None else "Home",
+            "viewKey": None,
+        }
+    ]
     for panel in catalog.panels():
         if panel.data_source_key is None:
-            continue  # Home is the rail's fixed anchor, never an area entry.
+            continue  # Home already anchors the list; no other panel is source-less.
         area = AreaDescriptor(panel.panel_key, panel.data_source_key)
         if not is_area_accessible(area, grants=grants, user_roles=user_roles):
             continue
@@ -279,8 +291,8 @@ def get_shell(session: _SessionDep, user_id: _UserDep, catalog: _CatalogDep) -> 
     client's), and ``data.startup`` is where this boot should land: the
     ``shell.startup`` preference resolved against the accessible panels
     (mentors default to the engagements panel per the REQ-072 ruling).
-    Fails 500 when the catalog provider is unwired; 422 without
-    ``X-User-ID``.
+    Fails 500 when the catalog provider is unwired; 401 without a live
+    session reference (FND-909 D9).
     """
     profile = _navigation_profile(session, user_id)
     resolved = resolve_navigation(

@@ -20,8 +20,9 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from identity_stub import header_user_id
 from mentorapp.access import CAP_WORKPROCESS_REGISTER, grant_data_source_role
-from mentorapp.api.deps import get_session
+from mentorapp.api.deps import get_current_user_id, get_session
 from mentorapp.api.errors import CODE_CAPABILITY_REQUIRED, CODE_DATA_SOURCE_ACCESS_DENIED
 from mentorapp.api.routers.workprocess import (
     CODE_DUPLICATE_WORKPROCESS_NAME,
@@ -80,6 +81,9 @@ def app_client(
 ) -> TestClient:
     app = create_app()
     app.dependency_overrides[get_session] = lambda: session
+    # The D9 identity seam resolves sessions in production; these are not
+    # session-lifecycle tests, so the stub names the acting user directly.
+    app.dependency_overrides[get_current_user_id] = header_user_id
     app.dependency_overrides[get_role_source] = lambda: roles
     app.dependency_overrides[get_commit_handlers] = lambda: handlers
     return TestClient(app)
@@ -650,6 +654,9 @@ def test_handler_failure_aborts_the_commit_atomically(
     handlers.bind("Bulk Reassign Mentor", _Refusing())
     app = create_app()
     app.dependency_overrides[get_session] = lambda: session
+    # The D9 identity seam resolves sessions in production; these are not
+    # session-lifecycle tests, so the stub names the acting user directly.
+    app.dependency_overrides[get_current_user_id] = header_user_id
     app.dependency_overrides[get_role_source] = lambda: roles
     app.dependency_overrides[get_commit_handlers] = lambda: handlers
     # raise_server_exceptions=False: the opaque-500 path is the behavior

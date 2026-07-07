@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from identity_stub import header_user_id
 from mentorapp.access import (
     InMemorySessionStore,
     InMemoryTokenActionStore,
@@ -21,7 +22,7 @@ from mentorapp.access import (
     VerifiedIdentity,
 )
 from mentorapp.access.grants import GrantLookup, InMemoryGrantRegistry
-from mentorapp.api.deps import get_session
+from mentorapp.api.deps import get_current_user_id, get_session
 from mentorapp.api.envelope import Envelope, field_error, ok, request_error
 from mentorapp.api.errors import (
     CODE_DUPLICATE_CANDIDATES,
@@ -264,6 +265,10 @@ class _SweepRoleSource:
 def mounted_client(session: Session) -> TestClient:
     app = create_app()
     app.dependency_overrides[get_session] = lambda: session
+    # The D9 identity seam resolves sessions in production; the sweep probes
+    # envelope SHAPE, not session lifecycle (tests/test_api_session_identity.py
+    # covers that), so the stub keeps X-User-ID as a request-validation source.
+    app.dependency_overrides[get_current_user_id] = header_user_id
     # The auth backends are fail-loud until the PI-001 wiring lands (WTK-004);
     # like get_session above, the sweep binds test backends so a bare probe
     # exercises the mounted contract (a 4xx envelope), not the unwired 500.

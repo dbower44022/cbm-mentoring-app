@@ -9,7 +9,9 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
+from identity_stub import header_user_id
 from mentorapp.api.crm_writes import WriteDeferred, WriteRefused
+from mentorapp.api.deps import get_current_user_id
 from mentorapp.api.routers.outage import (
     crm_read_payload,
     draft_excerpt,
@@ -157,6 +159,9 @@ def store() -> InMemoryDraftStore:
 def client(store: InMemoryDraftStore) -> TestClient:
     app = create_app()
     app.dependency_overrides[get_draft_store] = lambda: store
+    # The D9 identity seam resolves sessions in production; these are not
+    # session-lifecycle tests, so the stub names the acting user directly.
+    app.dependency_overrides[get_current_user_id] = header_user_id
     return TestClient(app)
 
 
@@ -242,6 +247,10 @@ def test_missing_user_header_is_the_standard_422(client: TestClient) -> None:
 
 
 def test_unwired_draft_store_fails_loudly(user_id: uuid.UUID) -> None:
-    client = TestClient(create_app())
+    app = create_app()
+    # Identity resolves before the draft store; stub it so the seam under
+    # test (the unwired store) is the one that fails.
+    app.dependency_overrides[get_current_user_id] = header_user_id
+    client = TestClient(app)
     with pytest.raises(RuntimeError, match="draft store provider is not wired"):
         client.get("/outage/drafts", headers=_headers(user_id))

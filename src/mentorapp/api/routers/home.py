@@ -229,7 +229,8 @@ def get_home(
     view), so ``meta.unreadCount`` reports the badge value this open clears —
     a repeat open returns 0. Broken dashlets stay in ``data.dashlets`` with
     an educate ``notice``; the messages dashlet is always first. Fails 500
-    when the catalog/message providers are unwired; 422 without ``X-User-ID``.
+    when the catalog/message providers are unwired; 401 without a live
+    session reference (FND-909 D9).
     """
     now = utcnow()
     user_key = str(user_id)
@@ -294,8 +295,8 @@ def post_message(body: MessagePostBody, user_id: _UserDep, center: _CenterDep) -
     ``postedBy`` is stamped from the acting identity, never taken from the
     body — the dashlet's posted-by line must be auditable. Posting rights
     ride the admin surface's data-source grant once that catalog is wired
-    (REQ-006); today the trusted front end is the caller, as everywhere
-    behind ``X-User-ID``.
+    (REQ-006); the acting identity is the session's user, resolved
+    server-side (FND-909 D9).
     """
     message = AdminMessage(
         key=str(uuid7()),

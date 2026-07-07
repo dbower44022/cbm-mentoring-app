@@ -24,17 +24,15 @@ resources, events, and the seeded admin messages. ``janet`` (any password) is
 the Leadership login and additionally sees "All Engagements" across mentors.
 
 The database is ``tests/.e2e.db``, dropped and rebuilt from the migration
-chain on every boot — seeding is idempotent by reconstruction. Two things are
-still simulated at the edge because the journeys need them and the product
-seams don't expose them yet:
-
-- ``POST /e2e/session/expire`` arms a middleware that answers every
-  non-``/auth`` request with the canonical ``reauthRequired`` refusal until a
-  re-auth succeeds — the read surfaces don't consume the sessionReference yet
-  (the DEC-080 contract gap PI-011 closes), so expiry cannot be provoked
-  through the API itself.
-- ``POST /e2e/crm/outage`` flips the fake CRM transport into answering 503,
-  the WTK-003 outage outcome.
+chain on every boot — seeding is idempotent by reconstruction. One thing is
+still simulated at the edge because the journeys need it and the product
+seams don't expose it: ``POST /e2e/crm/outage`` flips the fake CRM transport
+into answering 503, the WTK-003 outage outcome. Session expiry is NOT
+simulated any more: since FND-909 D9 every read/write resolves the acting
+user from the session reference server-side, so ``POST /e2e/session/expire``
+ages the stored ``authSession`` rows and the very next request rides the
+production expiry path (``REAUTH_PENDING`` → the canonical ``reauthRequired``
+refusal → in-place re-auth).
 """
 
 from __future__ import annotations
@@ -50,22 +48,19 @@ from typing import Any, Final
 
 from alembic import command
 from alembic.config import Config
-from fastapi import Request, Response
-from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy import Engine, create_engine, event, select
 from sqlalchemy.orm import Session
-from starlette.middleware.base import RequestResponseEndpoint
 
 from mentorapp.api.deps import get_session
 from mentorapp.api.envelope import Envelope, ok
-from mentorapp.api.errors import CODE_REAUTH_REQUIRED
 from mentorapp.api.wiring import get_espo_transport
 from mentorapp.crm.espo import EspoResponse
 from mentorapp.main import create_app
 from mentorapp.storage import AdminMessage as AdminMessageRow
 from mentorapp.storage import (
     AppUser,
+    AuthSession,
     Client,
     CrmCompanyRef,
     CrmMentorRef,
@@ -171,13 +166,6 @@ class FakeCrmTransport:
             # Espo's own recovery flow "accepted the request" — nothing sends.
             return EspoResponse(200, {"requested": True})
         return EspoResponse(404, None)
-
-
-@dataclass
-class HarnessState:
-    """Runtime switches the journeys flip through the /e2e endpoints."""
-
-    session_expired: bool = False
 
 
 @dataclass(frozen=True)
@@ -688,10 +676,9 @@ def _seed(engine: Engine) -> SeededFacts:
         )
 
 
-def _build_app() -> tuple[Any, HarnessState, FakeCrmTransport, SeededFacts]:
+def _build_app() -> tuple[Any, Engine, FakeCrmTransport, SeededFacts]:
     engine = _fresh_migrated_engine()
     facts = _seed(engine)
-    state = HarnessState()
     transport = FakeCrmTransport()
 
     def _request_session() -> Any:
@@ -701,14 +688,15 @@ def _build_app() -> tuple[Any, HarnessState, FakeCrmTransport, SeededFacts]:
     application = create_app()
     # The ONLY overrides: the request DB session (onto the migrated, seeded
     # store) and the CRM's HTTP edge. Everything else is the production
-    # wiring create_app installed; the mentoring provider seams already
-    # default to the sanctioned dev fakes.
+    # wiring create_app installed — including the D9 identity seam, so every
+    # request REALLY resolves its acting user from the session reference;
+    # the mentoring provider seams already default to the sanctioned dev fakes.
     application.dependency_overrides[get_session] = _request_session
     application.dependency_overrides[get_espo_transport] = lambda: transport
-    return application, state, transport, facts
+    return application, engine, transport, facts
 
 
-app, _state, _transport, _facts = _build_app()
+app, _engine, _transport, _facts = _build_app()
 
 
 class OutageBody(BaseModel):
@@ -717,9 +705,22 @@ class OutageBody(BaseModel):
 
 @app.post("/e2e/session/expire")
 def expire_session() -> Envelope:
-    """Arm the expiry simulation: every non-/auth call refuses until re-auth."""
-    _state.session_expired = True
-    return ok(data={"expired": True})
+    """Expire every ACTIVE session for real: age its absolute deadline.
+
+    No middleware simulation (the pre-D9 posture): the next authenticated
+    request runs the production path — ``SessionManagement.resolve`` finds
+    the deadline passed, flips the record to ``REAUTH_PENDING``, and answers
+    the canonical ``reauthRequired`` refusal the envelope client holds
+    requests on; the journey's re-auth then revives the SAME session.
+    """
+    with Session(_engine) as db:
+        rows = db.scalars(
+            select(AuthSession).where(AuthSession.session_state == "active")
+        ).all()
+        for row in rows:
+            row.session_expires_at = utcnow() - timedelta(seconds=1)
+        db.commit()
+        return ok(data={"expired": len(rows)})
 
 
 @app.post("/e2e/crm/outage")
@@ -741,30 +742,3 @@ def harness_state() -> Envelope:
             "summitEngagementID": str(_facts.summit_engagement_id),
         }
     )
-
-
-@app.middleware("http")
-async def _simulated_expiry(request: Request, call_next: RequestResponseEndpoint) -> Response:
-    # The auth surface stays live (re-auth must succeed) and the harness
-    # switches stay reachable; everything else speaks the one refusal the
-    # envelope client intercepts (mentorapp.api.errors.CODE_REAUTH_REQUIRED).
-    path = request.url.path
-    if _state.session_expired and not path.startswith(("/auth", "/e2e", "/healthz")):
-        return JSONResponse(
-            status_code=401,
-            content={
-                "data": None,
-                "meta": {},
-                "errors": [
-                    {
-                        "fieldName": None,
-                        "code": CODE_REAUTH_REQUIRED,
-                        "message": "The session expired; re-authenticate to continue.",
-                    }
-                ],
-            },
-        )
-    response = await call_next(request)
-    if path == "/auth/reauth" and response.status_code == 200:
-        _state.session_expired = False
-    return response

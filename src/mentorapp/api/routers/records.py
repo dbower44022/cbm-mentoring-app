@@ -143,7 +143,8 @@ def get_record_preview(
     ``unknownEntityType`` for a name the catalog does not know; 404 for a
     record that never existed; 200 with ``data.notice`` for a soft-deleted
     one (a pinned pop-out must explain, never blank). Fails 500 when the
-    catalog provider is unwired; 422 without ``X-User-ID``.
+    catalog provider is unwired; 401 without a live session reference
+    (FND-909 D9).
     """
     entity_cls = catalog.entity_class(entity_type)
     if entity_cls is None:

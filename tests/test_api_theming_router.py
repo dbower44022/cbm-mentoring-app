@@ -18,6 +18,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from identity_stub import header_user_id
 from mentorapp.api.deps import get_current_user_id, get_session
 from mentorapp.api.routers.theming import (
     CODE_UNKNOWN_CONDITION_FIELD,
@@ -60,6 +61,9 @@ class _StubCatalog:
 def app_client(session: Session) -> TestClient:
     app = create_app()
     app.dependency_overrides[get_session] = lambda: session
+    # The D9 identity seam resolves sessions in production; these are not
+    # session-lifecycle tests, so the stub names the acting user directly.
+    app.dependency_overrides[get_current_user_id] = header_user_id
     app.dependency_overrides[get_condition_field_catalog] = _StubCatalog
     return TestClient(app)
 

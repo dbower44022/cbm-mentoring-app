@@ -18,8 +18,9 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from identity_stub import header_user_id
 from mentorapp.access.mentoring import LEADERSHIP_ROLE, MENTOR_ROLE, seed_mentor_access
-from mentorapp.api.deps import get_session
+from mentorapp.api.deps import get_current_user_id, get_session
 from mentorapp.api.routers.workprocess import get_role_source
 from mentorapp.main import create_app
 from mentorapp.storage import (
@@ -59,6 +60,9 @@ def roles() -> _StubRoles:
 def app_client(session: Session, roles: _StubRoles) -> TestClient:
     app = create_app()
     app.dependency_overrides[get_session] = lambda: session
+    # The D9 identity seam resolves sessions in production; these are not
+    # session-lifecycle tests, so the stub names the acting user directly.
+    app.dependency_overrides[get_current_user_id] = header_user_id
     app.dependency_overrides[get_role_source] = lambda: roles
     return TestClient(app)
 
