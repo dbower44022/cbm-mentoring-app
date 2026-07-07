@@ -61,6 +61,14 @@ test("login → engagements triage → docked rollup preview → prep → logout
   await expect(rows.first()).toContainText("Pending Acceptance");
   await expect(rows.nth(1)).toContainText("Summit Auto Detail");
 
+  // FND-909 D7 (REQ-045): the status value renders as a slot-colored chip,
+  // never plain text. The computed color proves the whole chain in a REAL
+  // browser: served rule → statusWarning slot → --slot-status-warning
+  // (#b45309) painting the chip text.
+  const pendingChip = rows.first().locator(".status-chip.slot-colored");
+  await expect(pendingChip).toHaveText("Pending Acceptance");
+  await expect(pendingChip).toHaveCSS("color", "rgb(180, 83, 9)");
+
   // Selecting a row docks the engagement preview: the REQ-073/074 rollup
   // LEADS — notes + open action items across all sessions, newest first.
   await rows.nth(1).click();

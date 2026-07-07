@@ -545,6 +545,23 @@ body,
   background: #eef2f6;
 }
 
+/* The slot-colored chip: how the grid renders a conditional-formatting
+   ACCENT effect (REQ-045, FND-909 D7) — the approved prototype's chip look
+   (rounded, bordered, tinted). The grid cell sets --chip-color to the
+   rule's status-slot var() reference, and every color here derives from
+   that ONE property: border and text take the slot color verbatim, the
+   background is the slot mixed into the panel surface (the prototype's
+   per-status tint literals, derived instead of hardcoded so the chip
+   repaints with the active template — rules name slots, never literal
+   colors, FND-906). */
+.status-chip.slot-colored {
+  border-color: var(--chip-color);
+  color: var(--chip-color);
+  background: color-mix(in srgb, var(--chip-color) 12%, var(--slot-panel-background));
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 .preview-section {
   margin-bottom: 0.6rem;
 }

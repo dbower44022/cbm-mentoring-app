@@ -43,6 +43,21 @@ export interface GridViewPayload {
   allowAdHocFilters: boolean;
 }
 
+/**
+ * One conditional-formatting rule as the panel payload serves it (REQ-045,
+ * FND-909 D7): a condition on a data-source field with a standard operator,
+ * an effect from the fixed effect vocabulary, and an `effectSlot` naming a
+ * status color slot of the active theme — never a literal color (FND-906).
+ * The array order IS the first-match-wins evaluation order.
+ */
+export interface FormattingRulePayload {
+  conditionField: string;
+  conditionOperator: string;
+  conditionValue: string | number | boolean | null;
+  effect: string;
+  effectSlot: string;
+}
+
 /** The panel view-model: which grid, its views, columns, and action set. */
 export interface GridPanelPayload {
   gridId: string;
@@ -51,6 +66,8 @@ export interface GridPanelPayload {
   /** The user's last-displayed view for this grid (REQ-031, long-term). */
   activeViewKey: string;
   columns: GridColumnPayload[];
+  /** The view's REQ-045 rules, in evaluation order (see ./formatting.ts). */
+  formattingRules: FormattingRulePayload[];
   actions: ActionPayload[];
   /** The two most common actions, rendered as buttons (REQ-021). */
   commonActionKeys: string[];

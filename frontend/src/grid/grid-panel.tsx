@@ -10,6 +10,7 @@
  */
 
 import {
+  type CSSProperties,
   type KeyboardEvent,
   type ReactElement,
   type UIEvent,
@@ -62,6 +63,7 @@ import {
 } from "./payloads";
 import { type EducatePayload } from "../api/payloads";
 import { formatCell } from "./format";
+import { rowEffects } from "./formatting";
 import {
   lifecycleTransitionFor,
   mentoringPanelActions,
@@ -842,11 +844,24 @@ function LoadedGrid({
                   const isSelected =
                     selection.kind === "filteredSet" ||
                     selection.recordIds.includes(row.recordId);
+                  // The view's REQ-045 rules, first-match-wins per target
+                  // (FND-909 D7): row effects paint the whole row through
+                  // the theme's status-slot variables; the accent effect
+                  // paints its condition field's cell as a chip below.
+                  const effects = rowEffects(panel.formattingRules, row.values);
                   return (
                     <tr
                       key={row.recordId}
                       aria-selected={isSelected}
                       className={index === focusedRow ? "grid-row-focused" : undefined}
+                      style={
+                        effects.rowBackground === null && effects.rowText === null
+                          ? undefined
+                          : {
+                              background: effects.rowBackground ?? undefined,
+                              color: effects.rowText ?? undefined,
+                            }
+                      }
                       onClick={(event) => {
                         setFocusedRow(index);
                         if (event.shiftKey || event.ctrlKey) {
@@ -871,14 +886,36 @@ function LoadedGrid({
                           />
                         </td>
                       ) : null}
-                      {panel.columns.map((column) => (
-                        <td key={column.fieldName}>
-                          {/* Every cell renders through the ONE formatter,
-                              keyed by the column's declared format kind —
-                              raw SQL values never reach the grid (D1). */}
-                          {formatCell(row.values[column.fieldName], column.format)}
-                        </td>
-                      ))}
+                      {panel.columns.map((column) => {
+                        // Every cell renders through the ONE formatter,
+                        // keyed by the column's declared format kind — raw
+                        // SQL values never reach the grid (D1).
+                        const text = formatCell(
+                          row.values[column.fieldName],
+                          column.format,
+                        );
+                        const accent = effects.accentByField[column.fieldName];
+                        return (
+                          <td key={column.fieldName}>
+                            {accent === undefined ? (
+                              text
+                            ) : (
+                              // The accent effect's rendering (D7): the
+                              // prototype's status chip, colored entirely by
+                              // the rule's status slot — the CSS custom
+                              // property carries the var() reference so the
+                              // chip repaints with the active template
+                              // (REQ-045: slots, never literal colors).
+                              <span
+                                className="status-chip slot-colored"
+                                style={{ "--chip-color": accent } as CSSProperties}
+                              >
+                                {text}
+                              </span>
+                            )}
+                          </td>
+                        );
+                      })}
                     </tr>
                   );
                 })}

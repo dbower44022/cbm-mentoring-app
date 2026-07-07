@@ -88,6 +88,7 @@ function makePanel(): GridPanelPayload {
       { fieldName: "stage", label: "Stage", format: "text" },
       { fieldName: "nextSessionAt", label: "Next Session", format: "datetime" },
     ],
+    formattingRules: [],
     actions: [OPEN, REMOVE, EXPORT],
     commonActionKeys: ["open", "export"],
     recentSearches: [],
@@ -237,6 +238,39 @@ describe("cell value formatting (FND-909 D1)", () => {
     expect(rowFor("Engagement 1").textContent).toContain("Jul 10, 10:00 AM");
     expect(rowFor("Engagement 2").textContent).toContain("—");
     expect(document.body.textContent).not.toContain("2026-07-10 10:00:00.000000");
+  });
+});
+
+describe("conditional formatting (REQ-045, FND-909 D7)", () => {
+  it("renders a matched status cell as a slot-colored chip, not plain text", async () => {
+    const panel = makePanel();
+    // The served rule shape: standard operator, accent effect, a status
+    // slot — never a literal color (FND-906).
+    panel.formattingRules = [
+      {
+        conditionField: "stage",
+        conditionOperator: "equals",
+        conditionValue: "Active",
+        effect: "accent",
+        effectSlot: "statusPositive",
+      },
+    ];
+    renderGrid({ panel });
+    await screen.findByText("Engagement 1");
+
+    const cell = rowFor("Engagement 1").querySelectorAll("td")[1];
+    const chip = cell?.querySelector(".status-chip.slot-colored");
+    if (!(chip instanceof HTMLElement)) {
+      throw new Error("The matched status cell did not render a chip");
+    }
+    expect(chip.textContent).toBe("Active");
+    // The chip's color rides the theme's status-slot custom property — the
+    // slotCssVariable derivation, so the active template paints it.
+    expect(chip.style.getPropertyValue("--chip-color")).toBe(
+      "var(--slot-status-positive)",
+    );
+    // Unruled cells stay plain: no chip around the name column.
+    expect(rowFor("Engagement 1").querySelectorAll(".status-chip").length).toBe(1);
   });
 });
 
