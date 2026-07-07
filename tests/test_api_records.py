@@ -164,6 +164,10 @@ def test_missing_user_header_is_the_standard_422(client: TestClient, session: Se
 def test_unwired_catalog_fails_loudly(session: Session, user_id: uuid.UUID) -> None:
     app = create_app()
     app.dependency_overrides[get_session] = lambda: session
+    # create_app now installs the production catalog (WTK-168 records wiring);
+    # removing that binding recreates the unwired deployment this test pins —
+    # the seam itself must still fail loudly, never serve an empty world.
+    del app.dependency_overrides[get_record_catalog]
     client = TestClient(app)
     with pytest.raises(RuntimeError, match="record catalog provider is not wired"):
         _get_preview(client, user_id, uuid7())

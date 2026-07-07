@@ -16,6 +16,7 @@ from mentorapp.api.routers.auth import router as auth_router
 from mentorapp.api.routers.grids import router as grids_router
 from mentorapp.api.routers.help import router as help_router
 from mentorapp.api.routers.home import router as home_router
+from mentorapp.api.routers.mentoring import router as mentoring_router
 from mentorapp.api.routers.outage import router as outage_router
 from mentorapp.api.routers.preferences import router as preferences_router
 from mentorapp.api.routers.records import router as records_router
@@ -23,7 +24,11 @@ from mentorapp.api.routers.schema import router as schema_router
 from mentorapp.api.routers.shell import router as shell_router
 from mentorapp.api.routers.theming import router as theming_router
 from mentorapp.api.routers.workprocess import router as workprocess_router
-from mentorapp.api.wiring import install_auth_wiring, install_home_wiring
+from mentorapp.api.wiring import (
+    install_auth_wiring,
+    install_home_wiring,
+    install_records_wiring,
+)
 from mentorapp.observability import get_logger
 
 log = get_logger(__name__)
@@ -40,6 +45,9 @@ def create_app() -> FastAPI:
     # Stored admin-message persistence (WTK-192) behind the home router's
     # message seams; the catalog seam stays unwired until WTK-025 lands.
     install_home_wiring(app)
+    # The PI-010 domain entity catalog behind the record windows (WTK-168):
+    # previews and pop-outs now resolve real entity types.
+    install_records_wiring(app)
     app.include_router(auth_router)
     app.include_router(schema_router)
     app.include_router(preferences_router)
@@ -51,6 +59,7 @@ def create_app() -> FastAPI:
     app.include_router(theming_router)
     app.include_router(workprocess_router)
     app.include_router(help_router)
+    app.include_router(mentoring_router)
 
     @app.get("/healthz")
     def healthz() -> Envelope:

@@ -57,7 +57,19 @@ from mentorapp.api.routers.auth import (
     get_token_actions,
 )
 from mentorapp.api.routers.home import get_message_admin, get_message_center
+from mentorapp.api.routers.records import get_record_catalog
 from mentorapp.crm.espo import EspoAuthGateway, EspoResponse, EspoTransport
+from mentorapp.storage import (
+    Client,
+    CrmCompanyRef,
+    CrmMentorRef,
+    Engagement,
+    Event,
+    MentoringSession,
+    Partner,
+    ProgressGoal,
+    Resource,
+)
 
 _SessionDep = Annotated[Session, Depends(get_session)]
 
@@ -217,3 +229,45 @@ def install_home_wiring(app: FastAPI) -> None:
     """
     app.dependency_overrides[get_message_center] = provide_message_center
     app.dependency_overrides[get_message_admin] = provide_message_center
+
+
+# Wire entity-type names → ORM classes for the record windows (WTK-168). Names
+# are the table names verbatim (DB-R2 — one name, one meaning); domain tables
+# landed with PI-010, so the records seam now has real entities to serve. The
+# frontend's click-through pop-ups (engagement preview → client/company/
+# contact, REQ-074) address exactly these names.
+MENTOR_RECORD_CATALOG: dict[str, type[Any]] = {
+    "engagement": Engagement,
+    "session": MentoringSession,
+    "client": Client,
+    "partner": Partner,
+    "crmCompanyRef": CrmCompanyRef,
+    "crmMentorRef": CrmMentorRef,
+    "resource": Resource,
+    "event": Event,
+    "progressGoal": ProgressGoal,
+}
+
+
+@dataclass(frozen=True)
+class MappedRecordCatalog:
+    """The production ``RecordCatalog``: a fixed name → entity-class mapping."""
+
+    mapping: Mapping[str, type[Any]]
+
+    def entity_class(self, entity_type: str) -> type[Any] | None:
+        return self.mapping.get(entity_type)
+
+
+def provide_record_catalog() -> MappedRecordCatalog:
+    """The production ``get_record_catalog``: the PI-010 domain entities."""
+    return MappedRecordCatalog(MENTOR_RECORD_CATALOG)
+
+
+def install_records_wiring(app: FastAPI) -> None:
+    """Bind the domain entity catalog onto the records router's seam (WTK-168).
+
+    Same override mechanism as the auth wiring — one seam, one binding; a
+    test that wants a different catalog re-overrides the same provider key.
+    """
+    app.dependency_overrides[get_record_catalog] = provide_record_catalog
