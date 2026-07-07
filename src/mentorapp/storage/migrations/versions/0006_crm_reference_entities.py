@@ -11,6 +11,15 @@ are domain entities: their built-in schema-registry rows are seeded here, in
 the same change-set that adds the columns (REQ-050), from the column-site
 definitions in ``storage/crm_refs.py``.
 
+PI-010 note (0014): the seed references the LIVE ORM classes, and 0014
+renamed ``crmClientRef`` → ``crmCompanyRef`` and reconciled
+``crmEngagementRef`` into the app-owned ``engagement`` entity, so this
+migration now seeds the current classes for the anchors it creates. On a
+fresh chain the registry rows therefore carry the current shape ahead of
+the 0014 table renames — the mid-chain-ahead state the seed and the 0014
+fixups absorb by design; ``engagement`` first gains registry rows at 0014,
+where its entity now lives.
+
 Revision ID: 0006
 Revises: 0005
 """
@@ -22,7 +31,7 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import Session
 
-from mentorapp.storage.crm_refs import CrmClientRef, CrmEngagementRef, CrmMentorRef
+from mentorapp.storage.crm_refs import CrmCompanyRef, CrmMentorRef
 from mentorapp.storage.registry_seed import seed_built_in_registry
 
 revision = "0006"
@@ -34,7 +43,7 @@ depends_on = None
 _JSON_OBJECT = sa.JSON().with_variant(postgresql.JSONB(), "postgresql")
 _LIVE = sa.text('"deletedAt" IS NULL')
 
-_REF_ENTITIES = (CrmClientRef, CrmEngagementRef, CrmMentorRef)
+_REF_ENTITIES = (CrmCompanyRef, CrmMentorRef)
 # (table, entity-named UUID key, CRM record id column) — one anchor per entity.
 _REF_TABLES = (
     ("crmClientRef", "crmClientRefID", "crmClientID"),
@@ -93,9 +102,15 @@ def downgrade() -> None:
         sa.column("entityType", sa.String()),
         sa.column("userDefinedFlag", sa.Boolean()),
     )
+    # Covers both shapes: the current-class entityTypes a fresh chain seeds
+    # (crmCompanyRef) and the 0006-era names a pre-0014 database carries
+    # after 0014's downgrade renamed them back (crmClientRef et al.).
+    seeded_entity_types = {entity.__tablename__ for entity in _REF_ENTITIES} | {
+        name for name, _, _ in _REF_TABLES
+    }
     op.execute(
         sa.delete(schema_registry).where(
-            schema_registry.c.entityType.in_([name for name, _, _ in _REF_TABLES]),
+            schema_registry.c.entityType.in_(sorted(seeded_entity_types)),
             schema_registry.c.userDefinedFlag.is_(False),
         )
     )

@@ -24,6 +24,7 @@ from mentorapp.storage import (
     TYPE_SCALE_DEFAULT_SIZES,
     Base,
     OptionSet,
+    schema_drift_findings,
     shared_type_scale,
     utcnow,
 )
@@ -108,14 +109,16 @@ def test_migrated_indexes_match_models(migrated_engine: Engine) -> None:
 def test_partial_unique_index_enforces_live_rows_only(migrated_engine: Engine) -> None:
     # The REQ-052 contract end-to-end on a migrated database: a soft-deleted
     # corpse never blocks a live re-add, but two live duplicates collide.
+    # The probe name is fictional on purpose — 0014 seeds real option sets
+    # (engagementStatus et al.) whose live rows a probe must not collide with.
     with Session(migrated_engine) as session:
-        corpse = OptionSet(option_set_name="engagementStatus")
+        corpse = OptionSet(option_set_name="probeStatusOptions")
         corpse.deleted_at = utcnow()
         session.add(corpse)
-        session.add(OptionSet(option_set_name="engagementStatus"))
+        session.add(OptionSet(option_set_name="probeStatusOptions"))
         session.commit()
 
-        session.add(OptionSet(option_set_name="engagementStatus"))
+        session.add(OptionSet(option_set_name="probeStatusOptions"))
         with pytest.raises(IntegrityError):
             session.commit()
 
@@ -129,6 +132,14 @@ def test_upgrade_head_seeds_the_shared_type_scale(migrated_engine: Engine) -> No
         assert scale.scale_steps == TYPE_SCALE_DEFAULT_SIZES
         assert scale.row_version == 1
         assert scale.created_by is None  # seeded, no acting user
+
+
+def test_upgrade_head_registry_matches_the_schema(migrated_engine: Engine) -> None:
+    # REQ-050 end to end: after the whole chain — including 0014's renames,
+    # retirements, and reseeds — the registry and the actual schema agree,
+    # so the startup drift gate would pass on a freshly migrated database.
+    with Session(migrated_engine) as session:
+        assert schema_drift_findings(session) == []
 
 
 def test_downgrade_base_removes_every_table(migrated_engine: Engine) -> None:

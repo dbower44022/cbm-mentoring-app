@@ -7,8 +7,10 @@ carries the schema registry, option sets, background jobs, and change feed
 grants, and data sources (WTK-001); ``registry_seed`` seeds built-in registry
 rows from the column-site definitions the drift check verifies (WTK-134);
 ``crm_refs`` carries the CRM reference anchors — the REQ-062 ownership
-boundary (WTK-150); ``mentoring`` carries the application-owned
-mentoring-process entities (REQ-063, WTK-156); ``theming`` carries the
+boundary (WTK-150, reconciled to REQ-086 in PI-010); ``mentoring`` carries
+the application-owned mentoring domain — company role subclasses,
+engagements, sessions, resources, events (PI-010, WTK-164..175); ``triage``
+carries the REQ-072 engagement triage read; ``theming`` carries the
 look-and-feel platform entities (PI-007, WTK-111); ``help`` carries the
 help-system link mappings and settings singleton (PI-006, WTK-099). One
 declarative ``Base`` spans them all.
@@ -35,7 +37,7 @@ from mentorapp.storage.auth import (
     UserCrmAccount,
 )
 from mentorapp.storage.base import StructuralColumnsMixin, as_utc, utcnow
-from mentorapp.storage.crm_refs import CrmClientRef, CrmEngagementRef, CrmMentorRef
+from mentorapp.storage.crm_refs import CrmCompanyRef, CrmMentorRef
 from mentorapp.storage.entity import (
     OWNERSHIP_SIDES,
     Base,
@@ -62,7 +64,21 @@ from mentorapp.storage.help import (
     live_help_mapping,
 )
 from mentorapp.storage.ids import uuid7, uuid7_created_at
-from mentorapp.storage.mentoring import MeetingNote, NextStep, ProgressGoal, SessionLog
+from mentorapp.storage.mentoring import (
+    ENGAGEMENT_STATUS_OPTION_SET,
+    ENGAGEMENT_STATUS_VALUES,
+    RESOURCE_KIND_OPTION_SET,
+    RESOURCE_KIND_VALUES,
+    SESSION_STATUS_OPTION_SET,
+    SESSION_STATUS_VALUES,
+    Client,
+    Engagement,
+    Event,
+    MentoringSession,
+    Partner,
+    ProgressGoal,
+    Resource,
+)
 from mentorapp.storage.messages import AdminMessage, AdminMessageReceipt
 from mentorapp.storage.models import (
     CHANGE_KINDS,
@@ -117,6 +133,11 @@ from mentorapp.storage.theming import (
     TypeScale,
     shared_type_scale,
 )
+from mentorapp.storage.triage import (
+    ENGAGEMENT_TRIAGE_COLUMNS,
+    engagement_triage_rows,
+    engagement_triage_sql,
+)
 from mentorapp.storage.workprocess import (
     ACTION_CLASSIFICATIONS,
     RUN_STATE_COMMITTED,
@@ -141,6 +162,9 @@ __all__ = [
     "CONDITION_OPERATORS",
     "CONTRAST_GUARDRAIL_BEHAVIORS",
     "CURRENT_USER_PARAM",
+    "ENGAGEMENT_STATUS_OPTION_SET",
+    "ENGAGEMENT_STATUS_VALUES",
+    "ENGAGEMENT_TRIAGE_COLUMNS",
     "FONT_SLOTS",
     "FORMATTING_EFFECTS",
     "HELP_SOURCE_TYPES",
@@ -148,12 +172,16 @@ __all__ = [
     "LAUNCH_SETS",
     "NOTIFICATION_TYPES",
     "OWNERSHIP_SIDES",
+    "RESOURCE_KIND_OPTION_SET",
+    "RESOURCE_KIND_VALUES",
     "ROW_THEME_COLOR_SLOTS",
     "RUN_STATES",
     "RUN_STATE_COMMITTED",
     "RUN_STATE_DISCARDED",
     "RUN_STATE_IN_FLIGHT",
     "SELECTION_CONTRACTS",
+    "SESSION_STATUS_OPTION_SET",
+    "SESSION_STATUS_VALUES",
     "SHARED_TYPE_SCALE_NAME",
     "SORT_DIRECTIONS",
     "STATUS_COLOR_SLOTS",
@@ -176,15 +204,17 @@ __all__ = [
     "BaseEntity",
     "BuiltInField",
     "ChangeFeedEntry",
+    "Client",
     "ColorTemplate",
     "ConditionalFormattingRule",
-    "CrmClientRef",
-    "CrmEngagementRef",
+    "CrmCompanyRef",
     "CrmMentorRef",
     "DataSource",
     "DataSourceRoleGrant",
     "DriftFinding",
     "DuplicateOverride",
+    "Engagement",
+    "Event",
     "FieldChange",
     "Grid",
     "GridDeepLink",
@@ -192,18 +222,18 @@ __all__ = [
     "GridView",
     "HelpMapping",
     "HelpSettings",
-    "MeetingNote",
-    "NextStep",
+    "MentoringSession",
     "Notification",
     "OptionSet",
     "OptionValue",
+    "Partner",
     "PostalCode",
     "ProgressGoal",
     "RegistrySeedError",
     "RegistrySeedResult",
+    "Resource",
     "SchemaDriftError",
     "SchemaRegistry",
-    "SessionLog",
     "SortSpec",
     "StructuralColumnsMixin",
     "TokenAuditEvent",
@@ -217,6 +247,8 @@ __all__ = [
     "as_utc",
     "built_in_field_from_column",
     "built_in_fields",
+    "engagement_triage_rows",
+    "engagement_triage_sql",
     "entity_key",
     "entity_ref",
     "execute_admin_sql",

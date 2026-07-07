@@ -5,10 +5,9 @@ from __future__ import annotations
 import pytest
 
 from mentorapp.storage import (
-    MeetingNote,
-    NextStep,
+    Engagement,
+    MentoringSession,
     ProgressGoal,
-    SessionLog,
     built_in_fields,
 )
 from mentorapp.ui.entry_editors import (
@@ -66,15 +65,17 @@ def test_narrative_columns_route_to_the_one_control_through_the_registry() -> No
     # WTK-205 closes the design's deferred wiring: the mentoring narrative
     # columns carry the registry type, so every entry point resolves them to
     # RICH_TEXT_CONTROL by type alone — no UI-side field-name list exists.
+    # (PI-010 reconciled the narrative set: the session's notes/action items
+    # and the engagement summary replaced the meetingNote/nextStep columns.)
     narrative_names = {
-        "meetingNoteBody",
-        "nextStepDescription",
+        "engagementSummary",
+        "sessionNotes",
+        "actionItems",
         "progressGoalDescription",
-        "sessionLogSummary",
     }
     specs = [
         spec
-        for spec in built_in_fields([MeetingNote, NextStep, ProgressGoal, SessionLog])
+        for spec in built_in_fields([Engagement, MentoringSession, ProgressGoal])
         if spec.field_name in narrative_names
     ]
     assert {spec.field_name for spec in specs} == narrative_names

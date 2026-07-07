@@ -14,6 +14,14 @@ system-wide uniqueness for non-R2b names is enforced by the seed, which no
 index can express. The index swap must precede the seed: under the old index
 sessionLog's ``crmEngagementRefID`` row cannot exist.
 
+PI-010 note (0014): the seed references the LIVE ORM classes, and 0014
+reconciled ``sessionLog`` into the app-owned ``session`` entity and folded
+``meetingNote``/``nextStep`` onto the session's rich-text fields (REQ-074/
+REQ-082), so only :class:`ProgressGoal` still exists to seed here. The
+0007-era tables are still created verbatim below — 0014 renames or retires
+them — and their registry rows now first exist in their current shape at
+0014's seed.
+
 Revision ID: 0007
 Revises: 0006
 """
@@ -25,7 +33,7 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import Session
 
-from mentorapp.storage.mentoring import MeetingNote, NextStep, ProgressGoal, SessionLog
+from mentorapp.storage.mentoring import ProgressGoal
 from mentorapp.storage.registry_seed import seed_built_in_registry
 
 revision = "0007"
@@ -37,7 +45,10 @@ depends_on = None
 _JSON_OBJECT = sa.JSON().with_variant(postgresql.JSONB(), "postgresql")
 _LIVE = sa.text('"deletedAt" IS NULL')
 
-_MENTORING_ENTITIES = (MeetingNote, NextStep, ProgressGoal, SessionLog)
+_MENTORING_ENTITIES = (ProgressGoal,)
+# The 0007-era table names, for the downgrade's registry cleanup: a
+# pre-0014 database downgraded through 0014 carries rows under these names.
+_LEGACY_ENTITY_TYPES = ("meetingNote", "nextStep", "progressGoal", "sessionLog")
 
 
 def _structural_columns() -> list[sa.Column]:
@@ -137,9 +148,7 @@ def downgrade() -> None:
     )
     op.execute(
         sa.delete(schema_registry).where(
-            schema_registry.c.entityType.in_(
-                [entity.__tablename__ for entity in _MENTORING_ENTITIES]
-            ),
+            schema_registry.c.entityType.in_(list(_LEGACY_ENTITY_TYPES)),
             schema_registry.c.userDefinedFlag.is_(False),
         )
     )
