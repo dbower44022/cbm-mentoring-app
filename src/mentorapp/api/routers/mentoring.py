@@ -1229,8 +1229,10 @@ def _merged_or_refused(
                     f"'{template.template_name}' needs "
                     f"{', '.join(sorted(missing.missing_fields))}, which this "
                     f"flow doesn't supply. Resource templates send from a "
-                    f"resource's Share action; engagement templates need the "
-                    f"engagement's contact and name completed.",
+                    f"resource's Share action; the session invitation sends "
+                    f"itself when a session is scheduled; engagement "
+                    f"templates need the engagement's contact and name "
+                    f"completed.",
                 )
             ]
         ) from missing
