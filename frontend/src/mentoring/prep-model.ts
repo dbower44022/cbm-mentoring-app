@@ -46,6 +46,14 @@ export interface PrepEntryState {
   savedNotice: string | null;
   /** Refusal errors from the last save attempt (server's own words). */
   errors: ApiError[] | null;
+  /** The standing REQ-083 proposals awaiting review; null = none. */
+  draftSummary: string | null;
+  draftActionItems: string | null;
+  /** Bumped when a draft is inserted, so the editor reloads its content —
+   * the ONLY time the surface rewrites the editable region (REQ-083: the
+   * mentor's typing is never clobbered by automation). */
+  notesRevision: number;
+  actionItemsRevision: number;
 }
 
 export function loadedEntry(session: RollupSessionPayload): PrepEntryState {
@@ -59,6 +67,10 @@ export function loadedEntry(session: RollupSessionPayload): PrepEntryState {
     saving: false,
     savedNotice: null,
     errors: null,
+    draftSummary: session.draftSummary,
+    draftActionItems: session.draftActionItems,
+    notesRevision: 0,
+    actionItemsRevision: 0,
   };
 }
 
@@ -73,7 +85,22 @@ export type PrepEntryEvent =
   | { kind: "edited"; field: "notes" | "actionItems"; value: string }
   | { kind: "saveStarted" }
   | { kind: "saveSucceeded"; rowVersion: number }
-  | { kind: "saveRefused"; errors: ApiError[] | null };
+  | { kind: "saveRefused"; errors: ApiError[] | null }
+  /** A draft proposal is inserted into its entry field (REQ-083 accept-by-edit). */
+  | { kind: "draftInserted"; field: "notes" | "actionItems" }
+  /**
+   * A server write OUTSIDE the save path landed (transcript retrieval, a
+   * pasted transcript, a proposal dismissal): re-arm rowVersion and refresh
+   * the proposals WITHOUT touching the typed entry or its baselines — an
+   * external update never costs typed work.
+   */
+  | {
+      kind: "externalUpdate";
+      rowVersion: number;
+      draftSummary: string | null;
+      draftActionItems: string | null;
+      notice: string | null;
+    };
 
 export function reducePrepEntry(
   state: PrepEntryState,
@@ -105,5 +132,34 @@ export function reducePrepEntry(
     case "saveRefused":
       // The entry stays exactly as typed: a refusal never costs work.
       return { ...state, saving: false, errors: event.errors ?? [] };
+    case "draftInserted": {
+      // Appending, never replacing: the draft joins whatever the mentor has
+      // typed, and the revision bump tells the editor to reload — the one
+      // sanctioned rewrite of the editable region. Nothing is saved yet;
+      // the mentor edits and saves as usual (author of record).
+      const draft =
+        event.field === "notes" ? state.draftSummary : state.draftActionItems;
+      if (draft === null) {
+        return state;
+      }
+      const merged = state[event.field] + draft;
+      return {
+        ...state,
+        [event.field]: merged,
+        notesRevision: state.notesRevision + (event.field === "notes" ? 1 : 0),
+        actionItemsRevision:
+          state.actionItemsRevision + (event.field === "actionItems" ? 1 : 0),
+        savedNotice: null,
+      };
+    }
+    case "externalUpdate":
+      return {
+        ...state,
+        rowVersion: event.rowVersion,
+        draftSummary: event.draftSummary,
+        draftActionItems: event.draftActionItems,
+        savedNotice: event.notice,
+        errors: null,
+      };
   }
 }

@@ -97,7 +97,10 @@ function rowsPath(
   if (cursor !== null) {
     query.set("cursor", cursor);
   }
-  return `/grids/${encodeURIComponent(gridId)}/rows?${query.toString()}`;
+  // The panel surface (WTK-233): gridId IS the panel key, and the /panels
+  // endpoints serve the seeded area sources — views are addressed by their
+  // stable view key, matching the panel payload this component booted from.
+  return `/panels/${encodeURIComponent(gridId)}/rows?${query.toString()}`;
 }
 
 /** Fetch-state for the row window; aggregates arrive independently (REQ-026). */
@@ -232,7 +235,7 @@ function LoadedGrid({
         });
       });
     void callApi<GridAggregatesPayload>(
-      `/grids/${encodeURIComponent(panel.gridId)}/aggregates?view=${encodeURIComponent(view.activeViewKey)}` +
+      `/panels/${encodeURIComponent(panel.gridId)}/aggregates?view=${encodeURIComponent(view.activeViewKey)}` +
         (searchIsLive(searchText)
           ? `&search=${encodeURIComponent(searchText.trim())}`
           : ""),

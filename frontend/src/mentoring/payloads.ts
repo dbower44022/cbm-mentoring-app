@@ -29,6 +29,14 @@ export interface RollupSessionPayload {
   conferenceLink: string | null;
   sessionNotes: string | null;
   actionItems: string | null;
+  /** Non-null = an app-created org meeting exists (REQ-080) — the platform
+   * can be asked for its transcript; null = the link was pasted (REQ-079). */
+  externalMeetingID: string | null;
+  /** Where the attached transcript came from (WTK-182 provenance). */
+  transcriptSource: string | null;
+  /** The REQ-083 PROPOSALS awaiting the mentor's review — never auto-applied. */
+  draftSummary: string | null;
+  draftActionItems: string | null;
   rowVersion: number;
 }
 
@@ -101,5 +109,9 @@ export interface SessionRecordPayload {
   conferenceLink: string | null;
   sessionNotes: string | null;
   actionItems: string | null;
+  externalMeetingID: string | null;
+  transcriptSource: string | null;
+  draftSummary: string | null;
+  draftActionItems: string | null;
   rowVersion: number;
 }

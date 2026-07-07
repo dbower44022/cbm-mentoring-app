@@ -38,10 +38,26 @@ export interface NavigationPayload {
   groups: NavigationGroupPayload[];
 }
 
+/** One server-declared Area (WTK-233, REQ-071): a panel and its default view. */
+export interface AreaEntryPayload {
+  panelKey: string;
+  label: string;
+  viewKey: string | null;
+}
+
+/** Where this boot lands (REQ-011/015; mentors default to Engagements, REQ-072). */
+export interface StartupPayload {
+  panelKey: string;
+  notice: EducateMessagePayload | null;
+}
+
 export interface ShellPayload {
   mainWindow: HeaderPayload;
   popOut: HeaderPayload;
   homePanelKey: string;
+  /** Membership is the grant boundary's decision — rendered verbatim. */
+  areas: AreaEntryPayload[];
+  startup: StartupPayload;
   navigation: NavigationPayload;
 }
 

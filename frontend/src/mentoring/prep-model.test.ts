@@ -22,6 +22,10 @@ function sessionAt(
     conferenceLink: null,
     sessionNotes: null,
     actionItems: null,
+    externalMeetingID: null,
+    transcriptSource: null,
+    draftSummary: null,
+    draftActionItems: null,
     rowVersion: 1,
     ...over,
   };
@@ -127,5 +131,61 @@ describe("the entry lifecycle", () => {
       value: "<p>x</p>",
     });
     expect(state.savedNotice).toBeNull();
+  });
+});
+
+describe("the REQ-083 proposals", () => {
+  const withDrafts = loadedEntry(
+    sessionAt("s-2", "2026-07-10T15:00:00Z", {
+      sessionNotes: "<p>Typed already</p>",
+      draftSummary: "<p>Drafted summary</p>",
+      draftActionItems: "<ul><li>Drafted item</li></ul>",
+      rowVersion: 5,
+    }),
+  );
+
+  it("loads the standing proposals without touching the entry", () => {
+    expect(withDrafts.draftSummary).toBe("<p>Drafted summary</p>");
+    expect(withDrafts.notes).toBe("<p>Typed already</p>");
+    expect(isDirty(withDrafts)).toBe(false);
+  });
+
+  it("inserting a draft APPENDS to the typed entry and bumps the revision", () => {
+    const inserted = reducePrepEntry(withDrafts, {
+      kind: "draftInserted",
+      field: "notes",
+    });
+    // The mentor's own words survive; the draft joins them (never replaces),
+    // and only saving persists anything — author of record.
+    expect(inserted.notes).toBe("<p>Typed already</p><p>Drafted summary</p>");
+    expect(inserted.notesRevision).toBe(1);
+    expect(inserted.actionItemsRevision).toBe(0);
+    expect(isDirty(inserted)).toBe(true);
+    expect(inserted.savedNotes).toBe("<p>Typed already</p>");
+  });
+
+  it("inserting with no standing draft is a no-op", () => {
+    const bare = loadedEntry(sessionAt("s-3", "2026-07-10T15:00:00Z"));
+    expect(reducePrepEntry(bare, { kind: "draftInserted", field: "notes" })).toBe(bare);
+  });
+
+  it("an external update re-arms rowVersion and drafts, never the typed text", () => {
+    const typed = reducePrepEntry(withDrafts, {
+      kind: "edited",
+      field: "notes",
+      value: "<p>Mid-edit</p>",
+    });
+    const updated = reducePrepEntry(typed, {
+      kind: "externalUpdate",
+      rowVersion: 6,
+      draftSummary: "<p>New draft</p>",
+      draftActionItems: null,
+      notice: "Transcript retrieved.",
+    });
+    expect(updated.rowVersion).toBe(6);
+    expect(updated.draftSummary).toBe("<p>New draft</p>");
+    expect(updated.draftActionItems).toBeNull();
+    expect(updated.notes).toBe("<p>Mid-edit</p>");
+    expect(updated.savedNotice).toBe("Transcript retrieved.");
   });
 });

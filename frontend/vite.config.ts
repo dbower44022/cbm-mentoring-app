@@ -22,6 +22,9 @@ const API_PREFIXES = [
   "/sessions",
   "/email",
   "/resources",
+  // The panel catalog + leadership reporting (WTK-233 / WTK-171).
+  "/panels",
+  "/leadership",
   "/openapi.json",
 ];
 
