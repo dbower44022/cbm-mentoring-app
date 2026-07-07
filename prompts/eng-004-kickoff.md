@@ -364,3 +364,16 @@ X-User-ID eliminated (closed client-claimed identity hole), stale session
 PI-005/006/010 + FND-909 resolved (DEC-094). Suites: 1257 py / 145 vitest
 / 14 e2e. NEXT: REL-003 lane — development entry, QA pass, test pass,
 Doug's ship sign-off.
+
+## SHIPPED 2026-07-07 — REL-003 "CBM Mentoring App v1 (r3)" — THE E2E IS COMPLETE
+
+Lane walked (development -> QA pass -> testing -> test pass -> deployment)
+and Doug's ship sign-off recorded; REL-003 transitioned to SHIPPED. The
+CRMBuilder end-to-end test is complete: engagement -> standards ->
+requirements -> frozen releases -> planning pipeline -> dev lanes ->
+prototype gate -> correction release -> conformance reckoning -> permanent
+rendered gate -> shipped, all governed in the store. Production deployment
+to CBM infrastructure (live Espo / org Zoom / SMTP behind the delivered
+seams) is future work. Platform yield for ENG-001: REQ-455..459, REQ-471
+(correction-release delta path, 3 facets), REQ-473 (acceptance-summary
+verification gates), plus the process lessons in the DEC/FND trail.
