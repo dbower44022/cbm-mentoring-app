@@ -48,6 +48,7 @@ from mentorapp.access import (
 )
 from mentorapp.api.deps import get_session
 from mentorapp.api.messages import StoredMessageCenter
+from mentorapp.api.panel_catalog import MentorPanelCatalog, StoredSessionRoleSource
 from mentorapp.api.routers.auth import (
     CredentialVerifier,
     ForgotPasswordFlow,
@@ -56,8 +57,15 @@ from mentorapp.api.routers.auth import (
     get_session_management,
     get_token_actions,
 )
-from mentorapp.api.routers.home import get_message_admin, get_message_center
+from mentorapp.api.routers.home import (
+    HomeCatalog,
+    get_home_catalog,
+    get_message_admin,
+    get_message_center,
+)
 from mentorapp.api.routers.records import get_record_catalog
+from mentorapp.api.routers.shell import ShellCatalog, get_shell_catalog
+from mentorapp.api.routers.workprocess import RoleSource, get_role_source
 from mentorapp.crm.espo import EspoAuthGateway, EspoResponse, EspoTransport
 from mentorapp.storage import (
     Client,
@@ -223,12 +231,45 @@ def install_home_wiring(app: FastAPI) -> None:
 
     Both message seams resolve to one :class:`StoredMessageCenter` over the
     request session, so the user surface and the admin surface read the same
-    rows. ``get_home_catalog`` stays deliberately unwired — that binding
-    belongs to the WTK-025 panel-catalog derivation, and a stub here would
-    silently serve an empty permissioned world instead of a clear error.
+    rows. ``get_home_catalog`` binds separately in
+    :func:`install_panel_wiring` — the WTK-233 panel-catalog derivation.
     """
     app.dependency_overrides[get_message_center] = provide_message_center
     app.dependency_overrides[get_message_admin] = provide_message_center
+
+
+def provide_role_source(session: _SessionDep) -> RoleSource:
+    """The production ``get_role_source``: the newest live login's role capture.
+
+    Roles are session-scoped (captured from the CRM's team names at login,
+    WTK-001/003) — ``authSession.sessionRoleNames`` is their one persisted
+    home, so the stored source reads it rather than inventing a role table.
+    """
+    return StoredSessionRoleSource(session)
+
+
+def provide_home_catalog(session: _SessionDep) -> HomeCatalog:
+    """The production ``get_home_catalog``: the WTK-233 mentor panel catalog."""
+    return MentorPanelCatalog(session, StoredSessionRoleSource(session))
+
+
+def provide_shell_catalog(session: _SessionDep) -> ShellCatalog:
+    """The production ``get_shell_catalog``: the SAME catalog the home seam gets."""
+    return MentorPanelCatalog(session, StoredSessionRoleSource(session))
+
+
+def install_panel_wiring(app: FastAPI) -> None:
+    """Bind the mentor panel catalog + stored role source (WTK-233).
+
+    One catalog satisfies the home AND shell seams, and the role seam binds
+    to the session-capture store — so the Areas rail, quick-open, pin
+    resolution, dashlets, the ``/panels`` surface, and every role-gated
+    endpoint all decide from the same grants and the same roles. Same
+    override mechanism as every wiring; tests re-override per seam.
+    """
+    app.dependency_overrides[get_home_catalog] = provide_home_catalog
+    app.dependency_overrides[get_shell_catalog] = provide_shell_catalog
+    app.dependency_overrides[get_role_source] = provide_role_source
 
 
 # Wire entity-type names → ORM classes for the record windows (WTK-168). Names
