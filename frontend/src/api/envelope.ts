@@ -2,8 +2,12 @@
  * The typed client for the one response shape every mentorapp endpoint speaks
  * (mirrors src/mentorapp/api/envelope.py — that module is the contract; this
  * one only transports it), and the ONE interception point for session
- * expiry (DEC-080): a `reauthRequired` refusal hands off to the registered
- * window session controller instead of surfacing to the caller.
+ * transitions (DEC-080): a `reauthRequired` refusal hands off to the
+ * registered window session controller (hold-and-replay), and an
+ * `unauthenticated` refusal on ANY surface notifies the controller that the
+ * session is beyond revival (FND-909 D9 — a stale reference over a rebuilt
+ * database must land the user signed out, never leave a read surface holding
+ * a raw 401).
  *
  * Inputs: an API path (same-origin; the Vite dev server proxies API prefixes
  * to FastAPI) and optional fetch init. Output: the unwrapped `{data, meta}` of
@@ -46,6 +50,9 @@ export class EnvelopeError extends Error {
 /** The refusal code `mentorapp.api.errors` serves for an expired session. */
 export const CODE_REAUTH_REQUIRED = "reauthRequired";
 
+/** The refusal code for a session beyond revival (unknown/ended reference). */
+export const CODE_UNAUTHENTICATED = "unauthenticated";
+
 /**
  * Revive the expired session — overlay REAUTH_SCREEN in place, run
  * `POST /auth/reauth`, store the rotated reference — and resolve true once
@@ -53,7 +60,11 @@ export const CODE_REAUTH_REQUIRED = "reauthRequired";
  */
 export type ReauthHandler = () => Promise<boolean>;
 
+/** Told once per `unauthenticated` refusal: this window's session is dead. */
+export type SessionEndedHandler = () => void;
+
 let reauthHandler: ReauthHandler | null = null;
+let sessionEndedHandler: SessionEndedHandler | null = null;
 let revivalInFlight: Promise<boolean> | null = null;
 
 /**
@@ -63,6 +74,16 @@ let revivalInFlight: Promise<boolean> | null = null;
  */
 export function setReauthHandler(handler: ReauthHandler | null): void {
   reauthHandler = handler;
+}
+
+/**
+ * Register the controller's beyond-revival flow (FND-909 D9): every surface's
+ * `unauthenticated` refusal routes here, so a grid read against a dead
+ * session shows the session-ended screen instead of a component-local error.
+ * The refusal still throws to the caller — this only ADDS the notification.
+ */
+export function setSessionEndedHandler(handler: SessionEndedHandler | null): void {
+  sessionEndedHandler = handler;
 }
 
 function awaitRevival(handler: ReauthHandler): Promise<boolean> {
@@ -84,21 +105,23 @@ async function exchange<TData>(
   init?: RequestInit,
 ): Promise<Exchange<TData>> {
   const headers = new Headers(init?.headers);
-  // Identity travels as the trusted X-User-ID header — the deps.py seam.
-  // The sessionReference itself is not yet consumed by read surfaces (the
-  // contract gap DEC-080 records for PI-011's API side); the store still
-  // holds and rotates it so that fix lands without touching callers.
+  // The session reference is the ONLY identity the client sends; the server
+  // resolves WHO from it (FND-909 D9 — the old client-claimed X-User-ID
+  // header let any caller act as any user, and is gone). Read fresh from
+  // storage on EVERY attempt and always overwrite: a held request replayed
+  // after in-place re-auth must carry the rotated reference, never the dead
+  // one captured in its original init.
   const session = readSession();
-  if (session !== null && !headers.has("X-User-ID")) {
-    headers.set("X-User-ID", session.userID);
+  if (session !== null) {
+    headers.set("X-Session-Reference", session.sessionReference);
   }
   const response = await fetch(path, { ...init, headers });
   const body = (await response.json()) as Envelope<TData>;
   return { status: response.status, body };
 }
 
-function isReauthRequired(body: Envelope<unknown>): boolean {
-  return body.errors?.some((error) => error.code === CODE_REAUTH_REQUIRED) ?? false;
+function hasCode(body: Envelope<unknown>, code: string): boolean {
+  return body.errors?.some((error) => error.code === code) ?? false;
 }
 
 // TData appears only in the return type by design: the caller asserts the
@@ -110,7 +133,7 @@ export async function callApi<TData>(
 ): Promise<{ data: TData; meta: Record<string, unknown> }> {
   let result = await exchange<TData>(path, init);
   const handler = reauthHandler;
-  if (handler !== null && isReauthRequired(result.body)) {
+  if (handler !== null && hasCode(result.body, CODE_REAUTH_REQUIRED)) {
     // Hold the request through revival, then replay it ONCE with the fresh
     // headers (never dropped — the DEC-080 hold-and-replay invariant). A
     // replay that expires again surfaces as the error; no retry loop.
@@ -121,6 +144,14 @@ export async function callApi<TData>(
     }
   }
   if (result.body.errors !== null) {
+    if (sessionEndedHandler !== null && hasCode(result.body, CODE_UNAUTHENTICATED)) {
+      // Beyond revival, on WHATEVER surface hit it (FND-909 D9): tell the
+      // window session controller so the user lands on the session-ended
+      // screen → sign in, instead of a component-local dead end. /auth is
+      // no exception — the only /auth endpoint that answers unauthenticated
+      // is a re-auth against a dead session, the same terminal state.
+      sessionEndedHandler();
+    }
     throw new EnvelopeError(result.status, result.body.errors, result.body.data);
   }
   return { data: result.body.data, meta: result.body.meta };

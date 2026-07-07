@@ -10,8 +10,9 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+from identity_stub import header_user_id
 from mentorapp.access.grants import GrantLookup, InMemoryGrantRegistry, SourceGrant
-from mentorapp.api.deps import get_session
+from mentorapp.api.deps import get_current_user_id, get_session
 from mentorapp.api.routers.shell import get_shell_catalog
 from mentorapp.main import create_app
 from mentorapp.storage import AppUser, Notification, UserPreference, utcnow, uuid7
@@ -77,6 +78,9 @@ def client(session: Session) -> TestClient:
     registry = InMemoryGrantRegistry([SourceGrant("ds.mentors", "mentor")])
     app = create_app()
     app.dependency_overrides[get_session] = lambda: session
+    # The D9 identity seam resolves sessions in production; these are not
+    # session-lifecycle tests, so the stub names the acting user directly.
+    app.dependency_overrides[get_current_user_id] = header_user_id
     app.dependency_overrides[get_shell_catalog] = lambda: StubShellCatalog(registry)
     return TestClient(app)
 

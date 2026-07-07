@@ -20,6 +20,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+from identity_stub import header_user_id
 from mentorapp.access.mentoring import (
     DS_LEADERSHIP_ENGAGEMENTS,
     DS_MENTOR_ENGAGEMENTS,
@@ -27,7 +28,7 @@ from mentorapp.access.mentoring import (
     MENTOR_ROLE,
     seed_mentor_access,
 )
-from mentorapp.api.deps import get_session
+from mentorapp.api.deps import get_current_user_id, get_session
 from mentorapp.api.panel_catalog import (
     MENTOR_PANELS,
     MentorPanelCatalog,
@@ -84,6 +85,9 @@ def roles() -> _StubRoles:
 def app_client(session: Session, roles: _StubRoles) -> TestClient:
     app = create_app()
     app.dependency_overrides[get_session] = lambda: session
+    # The D9 identity seam resolves sessions in production; these are not
+    # session-lifecycle tests, so the stub names the acting user directly.
+    app.dependency_overrides[get_current_user_id] = header_user_id
     app.dependency_overrides[get_role_source] = lambda: roles
     # The shell/home catalogs construct their own stored role source in
     # production; tests bind the SAME catalog over the stub roles so every
@@ -394,9 +398,11 @@ def test_shell_declares_areas_and_the_mentor_landing(
     app_client: TestClient, session: Session, seeded: dict[str, uuid.UUID]
 ) -> None:
     data = app_client.get("/shell", headers=_headers(seeded["mentorA"])).json()["data"]
-    # The seven REQ-071 areas, server-decided, in requirement order, each
-    # naming the panel and its default view.
+    # Home FIRST (FND-909 D8, REQ-011: the prototype's navigation leads with
+    # Home), then the seven REQ-071 areas, server-decided, in requirement
+    # order, each naming the panel and its default view.
     assert [area["panelKey"] for area in data["areas"]] == [
+        "home",
         "contacts",
         "companies",
         "clients",
@@ -405,6 +411,8 @@ def test_shell_declares_areas_and_the_mentor_landing(
         "resources",
         "events",
     ]
+    # Home opens the home panel itself, never a grid view.
+    assert data["areas"][0] == {"panelKey": "home", "label": "Home", "viewKey": None}
     engagements = next(a for a in data["areas"] if a["panelKey"] == "engagements")
     assert engagements["viewKey"] == DS_MENTOR_ENGAGEMENTS
     # The REQ-072 ruling: the seeded org default lands mentors on the
@@ -423,11 +431,12 @@ def test_shell_declares_areas_and_the_mentor_landing(
     data = app_client.get("/shell", headers=_headers(seeded["mentorA"])).json()["data"]
     assert data["startup"]["panelKey"] == "home"
 
-    # A role-less caller has no areas and lands on Home with the educate
-    # notice — the org default names a panel they cannot open.
+    # A role-less caller keeps Home (it needs no grant) and nothing else, and
+    # lands on Home with the educate notice — the org default names a panel
+    # they cannot open.
     stranger = uuid.uuid4()
     data = app_client.get("/shell", headers=_headers(stranger)).json()["data"]
-    assert data["areas"] == []
+    assert [area["panelKey"] for area in data["areas"]] == ["home"]
     assert data["startup"]["panelKey"] == "home"
     assert data["startup"]["notice"] is not None
 

@@ -41,6 +41,7 @@ from mentorapp.access import (
     TokenActionService,
     VerifiedIdentity,
 )
+from mentorapp.api.deps import get_session_management
 from mentorapp.api.envelope import Envelope, ok
 from mentorapp.api.errors import (
     CrmUnavailableError,
@@ -103,13 +104,10 @@ class ForgotPasswordFlow(Protocol):
     def initiate(self, login_name: str, email_address: str) -> None: ...
 
 
-def get_session_management() -> SessionManagement:
-    """Provide the session process; deployments and tests override this.
-
-    Fail-loud like ``deps._engine``: an unwired auth backend must be a clear
-    server error, never a silently permissive fallback.
-    """
-    raise RuntimeError("session management is not wired; override get_session_management")
+# get_session_management moved to mentorapp.api.deps (FND-909 D9): the whole
+# API resolves the acting user through it now, not just this router. Imported
+# above so existing override sites keyed on this module keep binding the same
+# provider object.
 
 
 def get_credential_verifier() -> CredentialVerifier:

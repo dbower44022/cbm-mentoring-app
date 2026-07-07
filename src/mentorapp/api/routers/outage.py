@@ -252,7 +252,8 @@ def list_preserved_drafts(user_id: _UserDep, store: _StoreDep) -> Envelope:
 
     Feeds the recovery list and the notification bell. Every entry carries
     its recovery offer and its honest discard confirmation, so the shell
-    renders wording from one home. 422 without ``X-User-ID``; fails loudly
+    renders wording from one home. 401 without a live session reference
+    (FND-909 D9); fails loudly
     when the store provider is unwired.
     """
     drafts = recoverable_drafts(store, str(user_id))

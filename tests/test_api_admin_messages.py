@@ -19,7 +19,8 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from mentorapp.api.deps import get_session
+from identity_stub import header_user_id
+from mentorapp.api.deps import get_current_user_id, get_session
 from mentorapp.api.routers.home import get_home_catalog
 from mentorapp.main import create_app
 from mentorapp.storage import AdminMessageReceipt, AppUser, utcnow, uuid7
@@ -41,6 +42,9 @@ def client(session: Session) -> TestClient:
     # deliberately: the stored center IS the subject under test.
     app = create_app()
     app.dependency_overrides[get_session] = lambda: session
+    # The D9 identity seam resolves sessions in production; these are not
+    # session-lifecycle tests, so the stub names the acting user directly.
+    app.dependency_overrides[get_current_user_id] = header_user_id
     app.dependency_overrides[get_home_catalog] = lambda: StubCatalog()
     return TestClient(app)
 

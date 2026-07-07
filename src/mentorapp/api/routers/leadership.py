@@ -62,7 +62,7 @@ def get_leadership_reports(
     per UTC calendar month, oldest first. ``data.mentorActivity`` — per
     paired mentor: engagement count, sessions held, last session held.
     403 through the one grant boundary for callers without the leadership
-    engagement span; 422 without ``X-User-ID``.
+    engagement span; 401 without a live session reference (FND-909 D9).
     """
     authorize_data_source(
         StoredGrantRegistry(session),

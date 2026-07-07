@@ -2,13 +2,14 @@
  * Window session state (DEC-080 §B/§J): storage is re-exported from
  * api/session.ts — its ONE canonical home, shared with the envelope client so
  * the login that writes the session and the request that reads it can never
- * disagree on where it lives. This module owns what sits above storage:
- * per-request identity headers and the per-user BroadcastChannel that moves
- * whole-session transitions across windows (layout standard: logout is
- * explicit and total; one re-login restores every window).
+ * disagree on where it lives. This module owns what sits above storage: the
+ * per-user BroadcastChannel that moves whole-session transitions across
+ * windows (layout standard: logout is explicit and total; one re-login
+ * restores every window). Identity headers are NOT built here any more
+ * (FND-909 D9): the envelope client attaches the session reference itself,
+ * fresh from storage on every attempt — a per-component header helper was a
+ * second identity source that could go stale across an in-place re-auth.
  */
-
-import type { SessionState } from "./api/session";
 
 export {
   clearSession,
@@ -16,11 +17,6 @@ export {
   type SessionState,
   writeSession,
 } from "./api/session";
-
-/** Request headers that carry the acting user on every non-/auth call. */
-export function userHeaders(session: SessionState): Record<string, string> {
-  return { "X-User-ID": session.userID };
-}
 
 /**
  * The whole-session transitions windows broadcast to each other:

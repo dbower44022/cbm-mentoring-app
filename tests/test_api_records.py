@@ -11,7 +11,8 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
-from mentorapp.api.deps import get_session
+from identity_stub import header_user_id
+from mentorapp.api.deps import get_current_user_id, get_session
 from mentorapp.api.routers.records import get_record_catalog
 from mentorapp.main import create_app
 from mentorapp.storage import BaseEntity, entity_key, utcnow, uuid7
@@ -38,6 +39,9 @@ class StubCatalog:
 def client(session: Session) -> TestClient:
     app = create_app()
     app.dependency_overrides[get_session] = lambda: session
+    # The D9 identity seam resolves sessions in production; these are not
+    # session-lifecycle tests, so the stub names the acting user directly.
+    app.dependency_overrides[get_current_user_id] = header_user_id
     app.dependency_overrides[get_record_catalog] = lambda: StubCatalog()
     return TestClient(app)
 
@@ -164,6 +168,9 @@ def test_missing_user_header_is_the_standard_422(client: TestClient, session: Se
 def test_unwired_catalog_fails_loudly(session: Session, user_id: uuid.UUID) -> None:
     app = create_app()
     app.dependency_overrides[get_session] = lambda: session
+    # The D9 identity seam resolves sessions in production; these are not
+    # session-lifecycle tests, so the stub names the acting user directly.
+    app.dependency_overrides[get_current_user_id] = header_user_id
     # create_app now installs the production catalog (WTK-168 records wiring);
     # removing that binding recreates the unwired deployment this test pins —
     # the seam itself must still fail loudly, never serve an empty world.
