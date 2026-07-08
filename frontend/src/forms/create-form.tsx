@@ -29,17 +29,22 @@ import { type ApiError, callApi, EnvelopeError } from "../api/envelope";
 import {
   type CreateFormPayload,
   type EducatePayload,
+  type FormFieldPayload,
   type SimilarCandidatePayload,
   type SimilarRecordsPayload,
 } from "../api/payloads";
 import { EducateNotice } from "../shell/educate";
 import { formatFieldValue, popOutRecord } from "../windows/record";
 import {
+  autoFormatValue,
   blankToNull,
   dirtyChanges,
   FieldControl,
   FieldLabel,
+  FORMATTED_TYPES,
   leaveWarning,
+  postalFill,
+  resolvePasteText,
   validateOnExit,
 } from "./edit-form";
 
@@ -292,12 +297,39 @@ export function CreateFormScreen({
     }
   };
 
-  const exitField = (fieldName: string): void => {
+  const fillEmptyFields = (fill: Record<string, string>): void => {
+    // The REQ-034 auto-fill rule: EMPTY controls only — a user-typed value
+    // is never overwritten.
+    setValues((current) => {
+      const next = { ...current };
+      for (const [name, filled] of Object.entries(fill)) {
+        if (name in next && blankToNull(next[name]) === null) {
+          next[name] = filled;
+        }
+      }
+      return next;
+    });
+  };
+
+  const exitField = async (fieldName: string): Promise<void> => {
     const field = fieldsByName.get(fieldName);
     if (field === undefined) {
       return;
     }
-    const problem = validateOnExit(field, values[fieldName]);
+    let value = values[fieldName];
+    // Auto-format before validation (REQ-034) — same order as the edit form.
+    if (
+      FORMATTED_TYPES.has(field.fieldType) &&
+      typeof value === "string" &&
+      value.trim() !== ""
+    ) {
+      const formatted = await autoFormatValue(field.fieldType, value);
+      if (formatted !== value) {
+        setValues((current) => ({ ...current, [fieldName]: formatted }));
+        value = formatted;
+      }
+    }
+    const problem = validateOnExit(field, value);
     setFieldErrors((current) => {
       const next = Object.fromEntries(
         Object.entries(current).filter(([name]) => name !== fieldName),
@@ -307,8 +339,39 @@ export function CreateFormScreen({
       }
       return next;
     });
+    if (field.fieldType === "postalCode" && typeof value === "string" && value !== "") {
+      const fill = await postalFill(value);
+      if (fill !== null) {
+        fillEmptyFields(fill);
+      }
+    }
     if (identityFields.has(fieldName)) {
       void checkSimilar();
+    }
+  };
+
+  const smartPaste = async (field: FormFieldPayload, text: string): Promise<void> => {
+    // Composite paste (REQ-034): components fill, the remainder stays
+    // visible in the pasted-into control, the paste is never blocked.
+    const { components, remainder } = await resolvePasteText(field.fieldType, text);
+    setValues((current) => {
+      const next: Record<string, unknown> = {
+        ...current,
+        [field.fieldName]: remainder,
+      };
+      for (const [name, filled] of Object.entries(components)) {
+        if (name in next) {
+          next[name] = filled;
+        }
+      }
+      return next;
+    });
+    const postal = components.postalCode;
+    if (postal !== undefined && postal !== "") {
+      const fill = await postalFill(postal);
+      if (fill !== null) {
+        fillEmptyFields(fill);
+      }
     }
   };
 
@@ -534,7 +597,10 @@ export function CreateFormScreen({
                   setValues((current) => ({ ...current, [field.fieldName]: value }));
                 }}
                 onExit={() => {
-                  exitField(field.fieldName);
+                  void exitField(field.fieldName);
+                }}
+                onSmartPaste={(text) => {
+                  void smartPaste(field, text);
                 }}
               />
               {field.fieldName in fieldErrors && (

@@ -184,6 +184,68 @@ export function leaveWarning(dirtyLabels: string[]): EducatePayload {
   };
 }
 
+// --- Smart input (REQ-034): the thin client over /form-input — the parsers
+// stay server-side (DB-S13 one canonical home), the form only applies fills.
+
+/** The auto-formatted types (form_input._FORMATTERS' vocabulary). */
+export const FORMATTED_TYPES = new Set(["phone", "email", "website", "postalCode"]);
+
+/** Composite types that accept a smart paste (form_input.PASTE_RESOLVERS). */
+export const PASTE_RESOLVABLE_TYPES = new Set(["personName", "address"]);
+
+/** Auto-format one typed value on focus exit — convenience, never a gate:
+ * an unreachable formatter returns the value as typed. */
+export async function autoFormatValue(
+  fieldType: string,
+  value: string,
+): Promise<string> {
+  try {
+    const result = await callApi<{ value: string }>("/form-input/format", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fieldType, value }),
+    });
+    return result.data.value;
+  } catch {
+    return value;
+  }
+}
+
+/** Resolve pasted free text into components; a failed resolve keeps the
+ * whole paste as remainder — the paste is NEVER blocked. */
+export async function resolvePasteText(
+  fieldType: string,
+  text: string,
+): Promise<{ components: Record<string, string>; remainder: string }> {
+  try {
+    const result = await callApi<{
+      components: Record<string, string>;
+      remainder: string;
+    }>("/form-input/resolve-paste", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fieldType, text }),
+    });
+    return result.data;
+  } catch {
+    return { components: {}, remainder: text };
+  }
+}
+
+/** City/state for a postal code — null means unknown, not invalid. */
+export async function postalFill(
+  postalCode: string,
+): Promise<{ cityName: string; stateCode: string } | null> {
+  try {
+    const result = await callApi<{
+      fill: { cityName: string; stateCode: string } | null;
+    }>(`/form-input/postal-autofill?postal_code=${encodeURIComponent(postalCode)}`);
+    return result.data.fill;
+  } catch {
+    return null;
+  }
+}
+
 /** The label block every field variant shares: asterisk + help marker (REQ-033/040). */
 export function FieldLabel({
   field,
@@ -222,6 +284,7 @@ export function FieldControl({
   invalid,
   onChange,
   onExit,
+  onSmartPaste,
 }: {
   entityType: string;
   field: FormFieldPayload;
@@ -229,6 +292,9 @@ export function FieldControl({
   invalid: boolean;
   onChange: (value: unknown) => void;
   onExit: () => void;
+  /** Composite-field paste (REQ-034): the form resolves and fills; absent
+   * means the host has no cross-field fill (paste lands as typed). */
+  onSmartPaste?: (text: string) => void;
 }): ReactElement {
   const controlId = `field-${field.fieldName}`;
   const shared = {
@@ -338,6 +404,14 @@ export function FieldControl({
       onChange={(event) => {
         onChange(event.target.value);
       }}
+      onPaste={
+        onSmartPaste !== undefined && PASTE_RESOLVABLE_TYPES.has(field.fieldType)
+          ? (event) => {
+              event.preventDefault();
+              onSmartPaste(event.clipboardData.getData("text"));
+            }
+          : undefined
+      }
     />
   );
 }
@@ -434,9 +508,38 @@ export function EditFormScreen({
     setValues((current) => ({ ...current, [fieldName]: value }));
   };
 
-  const exitField = (field: FormFieldPayload): void => {
+  const fillEmptyFields = (fill: Record<string, string>): void => {
+    // The REQ-034 auto-fill rule: EMPTY controls only — a user-typed value
+    // is never overwritten.
+    setValues((current) => {
+      const next = { ...current };
+      for (const [name, filled] of Object.entries(fill)) {
+        if (name in next && blankToNull(next[name]) === null) {
+          next[name] = filled;
+        }
+      }
+      return next;
+    });
+  };
+
+  const exitField = async (field: FormFieldPayload): Promise<void> => {
+    let value = values[field.fieldName];
+    // Auto-format runs BEFORE validation sees the value (REQ-034): what the
+    // user sees, what validates, and what the payload carries are the same
+    // string. Convenience, never a gate.
+    if (
+      FORMATTED_TYPES.has(field.fieldType) &&
+      typeof value === "string" &&
+      value.trim() !== ""
+    ) {
+      const formatted = await autoFormatValue(field.fieldType, value);
+      if (formatted !== value) {
+        setValue(field.fieldName, formatted);
+        value = formatted;
+      }
+    }
     // Per-field validation on exit (REQ-033): this field only.
-    const problem = validateOnExit(field, values[field.fieldName]);
+    const problem = validateOnExit(field, value);
     setFieldErrors((current) => {
       const next = Object.fromEntries(
         Object.entries(current).filter(([name]) => name !== field.fieldName),
@@ -446,6 +549,36 @@ export function EditFormScreen({
       }
       return next;
     });
+    // A postal code landing fills empty city/state (the one auto-fill path).
+    if (field.fieldType === "postalCode" && typeof value === "string" && value !== "") {
+      const fill = await postalFill(value);
+      if (fill !== null) {
+        fillEmptyFields(fill);
+      }
+    }
+  };
+
+  const smartPaste = async (field: FormFieldPayload, text: string): Promise<void> => {
+    // Composite paste (REQ-034): confident components fill in, the
+    // unresolved remainder stays VISIBLE in the pasted-into control, and
+    // the paste is never blocked.
+    const { components, remainder } = await resolvePasteText(field.fieldType, text);
+    setValues((current) => {
+      const next = { ...current, [field.fieldName]: remainder };
+      for (const [name, filled] of Object.entries(components)) {
+        if (name in next) {
+          next[name] = filled;
+        }
+      }
+      return next;
+    });
+    const postal = components.postalCode;
+    if (postal !== undefined && postal !== "") {
+      const fill = await postalFill(postal);
+      if (fill !== null) {
+        fillEmptyFields(fill);
+      }
+    }
   };
 
   const placeServerErrors = (errors: ApiError[]): void => {
@@ -745,7 +878,10 @@ export function EditFormScreen({
                   setValue(field.fieldName, value);
                 }}
                 onExit={() => {
-                  exitField(field);
+                  void exitField(field);
+                }}
+                onSmartPaste={(text) => {
+                  void smartPaste(field, text);
                 }}
               />
               {field.fieldName in fieldErrors && (
