@@ -11,7 +11,7 @@
  */
 
 import { type ReactElement } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 
 import { type RecordPreviewPayload } from "../api/payloads";
 import { useEnvelope } from "../api/useEnvelope";
@@ -49,6 +49,21 @@ export function popOutWindowName(entityType: string, recordId: string): string {
 export function popOutRecord(entityType: string, recordId: string): void {
   const opened = window.open(
     `/records/${entityType}/${recordId}`,
+    popOutWindowName(entityType, recordId),
+    "popup=yes,width=1000,height=800",
+  );
+  opened?.focus();
+}
+
+/**
+ * The Edit action's opener (REQ-032): the record's pinned window, at the
+ * full-screen edit route. SAME window name as `popOutRecord` — one window
+ * per record holds (layout standard's switch-to-that-window rule), and an
+ * open read window becomes the edit form rather than stacking a duplicate.
+ */
+export function popOutRecordEdit(entityType: string, recordId: string): void {
+  const opened = window.open(
+    `/records/${entityType}/${recordId}/edit`,
     popOutWindowName(entityType, recordId),
     "popup=yes,width=1000,height=800",
   );
@@ -112,6 +127,11 @@ export function RecordWindow(): ReactElement {
           menu join when the shell-header slice renders them app-wide. */}
       <header>
         <span>CBM Mentoring</span>
+        {/* The pane's first edit path (REQ-012 editPaths[0], REQ-032): the
+            Edit action, hosted by the window frame — never the preview. */}
+        <Link to={`/records/${entityType}/${recordId}/edit`} className="edit-action">
+          Edit
+        </Link>
         <NotificationBell />
       </header>
       <RecordPreview entityType={entityType} recordId={recordId} />

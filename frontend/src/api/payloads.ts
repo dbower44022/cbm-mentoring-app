@@ -66,6 +66,76 @@ export interface BellPayload {
   entries: BellEntryPayload[];
 }
 
+/** One option value as `GET /schema/{entity}` serves it (DB-S7). */
+export interface OptionValuePayload {
+  optionValueID: string;
+  optionValueName: string;
+  optionValueLabel: string;
+  optionValueSortOrder: number;
+  activeFlag: boolean;
+}
+
+export interface OptionSetPayload {
+  optionSetID: string;
+  optionSetName: string;
+  optionValues: OptionValuePayload[];
+}
+
+/** One field's edit-form entry: settings + disposition (records.py). */
+export interface FormFieldPayload {
+  fieldName: string;
+  fieldLabel: string;
+  fieldType: string;
+  requiredFlag: boolean;
+  validationRules: Record<string, unknown> | null;
+  defaultValue: unknown;
+  helpText: string | null;
+  optionSet: OptionSetPayload | null;
+  editable: boolean;
+  /** Set exactly when not editable: kind + the click-to-explain message (REQ-039). */
+  readOnly: {
+    kind: string;
+    explanation: EducatePayload;
+    rendering: { position: string; value: string; click: string; tabStop: boolean };
+  } | null;
+  /** Set exactly when field settings carry help text (REQ-040). */
+  help: {
+    helpText: string;
+    rendering: {
+      marker: string;
+      placement: string;
+      reveal: string[];
+      persistent: boolean;
+      tabStop: boolean;
+    };
+  } | null;
+}
+
+/** `GET /records/{entityType}/{recordId}/edit-form` (records.py, REQ-032). */
+export interface EditFormPayload {
+  screen: {
+    presentation: string;
+    fieldPositions: string;
+    controlScale: string;
+    initialFocus: string;
+    escape: string;
+    save: { label: string; prominence: string; shortcut: string };
+    cancel: { label: string; behavior: string };
+  };
+  keyboard: {
+    save: string;
+    escapeFullForm: string;
+    escapePerFieldWindow: string;
+    enter: string;
+    tab: string;
+    shiftTab: string;
+    initialFocus: string;
+  };
+  record: Record<string, unknown>;
+  fields: FormFieldPayload[];
+  initialFocusField: string | null;
+}
+
 /** `GET /records/{entityType}/{recordId}/preview` (records.py, REQ-012). */
 export interface RecordPreviewPayload {
   pane: {

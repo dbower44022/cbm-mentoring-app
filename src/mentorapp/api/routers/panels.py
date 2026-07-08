@@ -257,6 +257,10 @@ def get_panel_grid(
                     "label": view.label,
                     "criteria": view.criteria,
                     "dataSourceKey": view.data_source_key,
+                    # The record-catalog entity behind each row — what the
+                    # Edit action and record windows address (REQ-032/012);
+                    # null for projected sources with no app entity key.
+                    "entityType": view.entity_type,
                     "isSystemView": True,
                     "allowAdHocFilters": False,
                 }

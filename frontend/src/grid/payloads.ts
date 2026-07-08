@@ -42,6 +42,12 @@ export interface GridViewPayload {
    * panel keys its `/workprocesses/actions/{key}` read off the ACTIVE view.
    */
   dataSourceKey: string;
+  /**
+   * The record-catalog entity behind each row — what the Edit action and
+   * record windows address (REQ-032/012); null for projected sources whose
+   * row identity is an aliased CRM column, not an app entity key.
+   */
+  entityType: string | null;
   isSystemView: boolean;
   allowAdHocFilters: boolean;
 }

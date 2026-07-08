@@ -27,11 +27,12 @@ import { DeclinedNotice, EducateNotice, UnreachableNotice } from "../shell/educa
 import { openHelp } from "../shell/help";
 import { PanelSplitter, ResizablePanel, usePanelChrome } from "../shell/panel-chrome";
 import { readSession } from "../session";
-import { RecordPreview } from "../windows/record";
+import { popOutRecordEdit, RecordPreview } from "../windows/record";
 import {
   actionMenus,
   bindingFor,
   destructiveConfirmation,
+  EDIT_RECORD_ACTION,
   EMPTY_SELECTION,
   HELP_ACTION,
   invalidInvocation,
@@ -371,6 +372,9 @@ function LoadedGrid({
   // Mentoring domain actions join exactly as workprocess entries do — the
   // one action-menu fold, keyed by the active view's data source (WTK-183).
   const menus = actionMenus(panel.actions, panel.commonActionKeys, [
+    // Edit joins every grid whose active view names an app entity
+    // (REQ-032); a projected source (entityType null) has no record to edit.
+    ...(activeView?.entityType != null ? [EDIT_RECORD_ACTION] : []),
     ...workprocessEntries.map(workprocessPanelAction),
     ...mentoringPanelActions(dataSourceKey),
   ]);
@@ -413,6 +417,16 @@ function LoadedGrid({
     // The mentoring flows (WTK-183/169/178): all contract "single", already
     // validated above, so the one selected/focused row is the subject.
     const [subjectId] = launchSelection(selection, rowsState.rows);
+    if (
+      action.key === EDIT_RECORD_ACTION.key &&
+      subjectId !== undefined &&
+      activeView?.entityType != null
+    ) {
+      // The full-screen form opens in the record's pinned pop-out window
+      // (one window per record); the grid keeps working behind it.
+      popOutRecordEdit(activeView.entityType, subjectId);
+      return;
+    }
     const transition = lifecycleTransitionFor(action.key);
     if (transition !== null && subjectId !== undefined) {
       // Modifying classification: the transition confirms in its own dialog
@@ -1114,8 +1128,16 @@ function LoadedGrid({
           // The per-source domain preview (preview-seam): the engagement
           // sources render the rollup-led REQ-073/088 content here.
           <DomainPreview recordId={previewRecordId} refreshToken={generation} />
+        ) : activeView?.entityType != null ? (
+          <RecordPreview
+            entityType={activeView.entityType}
+            recordId={previewRecordId}
+          />
         ) : (
-          <RecordPreview entityType="grid" recordId={previewRecordId} />
+          <p className="grid-preview-hint">
+            This view's rows come from a combined source with no single record behind
+            them, so there is nothing more to preview than the row itself.
+          </p>
         )}
       </ResizablePanel>
     </div>

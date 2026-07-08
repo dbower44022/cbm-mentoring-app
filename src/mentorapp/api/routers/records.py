@@ -63,7 +63,8 @@ from mentorapp.api.edit_safety import ROW_VERSION_FIELD
 from mentorapp.api.envelope import Envelope, field_error, ok
 from mentorapp.api.errors import ApiValidationError, RecordNotFoundError
 from mentorapp.api.lookup_suggestions import suggest_related_records
-from mentorapp.api.records import registry_for, serialize_record
+from mentorapp.api.records import STRUCTURAL_FIELDS, registry_for, serialize_record
+from mentorapp.api.routers.schema import field_payload
 from mentorapp.api.routers.workprocess import RoleSource, get_role_source
 from mentorapp.api.write_engine import (
     CODE_TYPE_MISMATCH,
@@ -74,8 +75,17 @@ from mentorapp.api.write_engine import (
     restore_record,
 )
 from mentorapp.observability import get_logger
+from mentorapp.storage import SchemaRegistry
 from mentorapp.ui.auth_flows import EducateMessage
+from mentorapp.ui.edit_form import EDIT_FORM_SCREEN
+from mentorapp.ui.field_help import field_help
+from mentorapp.ui.form_keyboard import FORM_KEYBOARD_MODEL
 from mentorapp.ui.lookup_control import related_entity_type
+from mentorapp.ui.readonly_fields import (
+    ReadOnlyField,
+    classify_read_only,
+    edit_form_disposition,
+)
 from mentorapp.ui.record_preview import (
     POP_OUT_HAS_NAVIGATION,
     POP_OUT_HEADER_RIGHT,
@@ -454,6 +464,186 @@ def post_similar_records(
             "blocking": False,
         },
         meta={"candidateCount": len(candidates)},
+    )
+
+
+# --- The edit-form view-model (REQ-032/033/038/039/040) -----------------------------
+
+
+def _read_only_payload(read_only: ReadOnlyField) -> dict[str, Any]:
+    return {
+        "kind": read_only.kind,
+        "explanation": read_only.explanation.as_payload(),
+        "rendering": {
+            "position": read_only.rendering.position,
+            "value": read_only.rendering.value,
+            "click": read_only.rendering.click,
+            "tabStop": read_only.rendering.tab_stop,
+        },
+    }
+
+
+def _help_payload(spec: dict[str, Any]) -> dict[str, Any] | None:
+    help_ = field_help(spec)
+    if help_ is None:
+        return None
+    return {
+        "helpText": help_.help_text,
+        "rendering": {
+            "marker": help_.rendering.marker,
+            "placement": help_.rendering.placement,
+            "reveal": list(help_.rendering.reveal),
+            "persistent": help_.rendering.persistent,
+            "tabStop": help_.rendering.tab_stop,
+        },
+    }
+
+
+def _system_field_entry(entity_type: str, field_name: str) -> dict[str, Any]:
+    """A structural field's form entry: rendered read-only in place (REQ-039).
+
+    Structural columns never appear in the registry (the seed excludes them)
+    yet they render on read surfaces, so the edit form carries them as
+    system dispositions — label falls back to the wire name, exactly as the
+    preview renders it.
+    """
+    read_only = classify_read_only(entity_type, field_name, field_name)
+    if read_only is None:  # pragma: no cover — structural names always classify
+        raise RuntimeError(f"{field_name} did not classify as a system field")
+    return {
+        "fieldName": field_name,
+        "fieldLabel": field_name,
+        "fieldType": "system",
+        "requiredFlag": False,
+        "validationRules": None,
+        "defaultValue": None,
+        "helpText": None,
+        "historyTrackedFlag": False,
+        "searchableFlag": False,
+        "visibilityHints": None,
+        "userDefinedFlag": False,
+        "optionSet": None,
+        "editable": False,
+        "readOnly": _read_only_payload(read_only),
+        "help": None,
+    }
+
+
+def _screen_payload() -> dict[str, Any]:
+    return {
+        "presentation": EDIT_FORM_SCREEN.presentation,
+        "fieldPositions": EDIT_FORM_SCREEN.field_positions,
+        "controlScale": EDIT_FORM_SCREEN.control_scale,
+        "initialFocus": EDIT_FORM_SCREEN.initial_focus,
+        "escape": EDIT_FORM_SCREEN.escape,
+        "save": {
+            "label": EDIT_FORM_SCREEN.save.label,
+            "prominence": EDIT_FORM_SCREEN.save.prominence,
+            "shortcut": EDIT_FORM_SCREEN.save.shortcut,
+        },
+        "cancel": {
+            "label": EDIT_FORM_SCREEN.cancel.label,
+            "behavior": EDIT_FORM_SCREEN.cancel.behavior,
+        },
+    }
+
+
+def _keyboard_payload() -> dict[str, Any]:
+    return {
+        "save": FORM_KEYBOARD_MODEL.save,
+        "escapeFullForm": FORM_KEYBOARD_MODEL.escape_full_form,
+        "escapePerFieldWindow": FORM_KEYBOARD_MODEL.escape_per_field_window,
+        "enter": FORM_KEYBOARD_MODEL.enter,
+        "tab": FORM_KEYBOARD_MODEL.tab,
+        "shiftTab": FORM_KEYBOARD_MODEL.shift_tab,
+        "initialFocus": FORM_KEYBOARD_MODEL.initial_focus,
+    }
+
+
+def edit_form_fields(
+    entity_type: str,
+    record_payload: dict[str, Any],
+    registry: dict[str, SchemaRegistry],
+) -> list[dict[str, Any]]:
+    """Compose the form's field entries in read-view order (REQ-032).
+
+    Order rule — fields sit roughly where the read view puts them: record
+    keys first (as :func:`serialize_record` serves them), then registry
+    fields not yet on the record (a custom attribute never written). Record
+    keys outside both the registry and the structural set (normalized shadow
+    columns) are internal and carry no form entry.
+    """
+    specs = {name: field_payload(row) for name, row in registry.items()}
+    dispositions = edit_form_disposition(entity_type, [specs[name] for name in sorted(specs)])
+    by_name = {d.field_name: d if isinstance(d, ReadOnlyField) else None for d in dispositions}
+
+    def registry_entry(name: str) -> dict[str, Any]:
+        read_only = by_name[name]
+        return {
+            **specs[name],
+            "editable": read_only is None,
+            "readOnly": _read_only_payload(read_only) if read_only else None,
+            "help": _help_payload(specs[name]),
+        }
+
+    entries: list[dict[str, Any]] = []
+    for name in record_payload:
+        if name in specs:
+            entries.append(registry_entry(name))
+        elif name in STRUCTURAL_FIELDS or name == f"{entity_type}ID":
+            entries.append(_system_field_entry(entity_type, name))
+    entries.extend(registry_entry(name) for name in sorted(specs) if name not in record_payload)
+    return entries
+
+
+@router.get("/records/{entity_type}/{record_id}/edit-form")
+def get_edit_form(
+    entity_type: str,
+    record_id: uuid.UUID,
+    session: _SessionDep,
+    user_id: _UserDep,
+    catalog: _CatalogDep,
+) -> Envelope:
+    """The full-screen edit form's complete view-model (REQ-032).
+
+    One answer carries everything the shell renders verbatim: the frame
+    declarations (``EDIT_FORM_SCREEN`` + the REQ-038 keyboard model), the
+    record flat with ``rowVersion``, and every field's settings + disposition
+    — editable, or read-only in place with its click-to-explain message
+    (REQ-039) — plus the REQ-040 help affordance where field settings carry
+    help text. A soft-deleted record is 404: editing a removed record is a
+    restore first, never a silent resurrection.
+    """
+    entity_cls = _entity_class(catalog, entity_type)
+    record = session.get(entity_cls, record_id)
+    if record is None or record.deleted_at is not None:
+        raise RecordNotFoundError(entity_type, str(record_id))
+    registry = registry_for(session, entity_type)
+    record_payload = serialize_record(record)
+    fields = edit_form_fields(entity_type, record_payload, registry)
+    editable_names = [entry["fieldName"] for entry in fields if entry["editable"]]
+    log.info(
+        "edit form served",
+        extra={
+            "context": {
+                "userId": str(user_id),
+                "entityType": entity_type,
+                "recordId": str(record_id),
+                "fieldCount": len(fields),
+                "editableCount": len(editable_names),
+            }
+        },
+    )
+    return ok(
+        data={
+            "screen": _screen_payload(),
+            "keyboard": _keyboard_payload(),
+            "record": record_payload,
+            "fields": fields,
+            # The forms standard's first-editable-field rule, resolved
+            # server-side so the shell renders, never re-derives.
+            "initialFocusField": editable_names[0] if editable_names else None,
+        }
     )
 
 

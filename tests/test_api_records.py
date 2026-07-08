@@ -455,6 +455,95 @@ def test_similar_records_without_a_complete_rule_offers_nothing(
     assert response.json()["data"]["candidates"] == []
 
 
+# --- The edit-form view-model (REQ-032/039/040) --------------------------------------
+
+
+def test_edit_form_serves_frame_record_and_dispositions(
+    client: TestClient, session: Session, user_id: uuid.UUID, write_registry: None
+) -> None:
+    record = _mentor(session, custom_attributes={"favoriteColor": "teal"})
+    session.commit()
+    response = client.get(
+        f"/records/mentor/{record.preview_mentor_id}/edit-form", headers=_headers(user_id)
+    )
+    assert response.status_code == 200
+    data = response.json()["data"]
+    # The frame declarations, verbatim (REQ-032 + the REQ-038 keyboard).
+    screen = data["screen"]
+    assert screen["presentation"] == "fullScreen"
+    assert screen["fieldPositions"] == "matchesReadView"
+    assert screen["save"] == {"label": "Save", "prominence": "large", "shortcut": "Ctrl+S"}
+    assert screen["cancel"] == {"label": "Cancel", "behavior": "revertToOriginal"}
+    assert data["keyboard"]["enter"] == "activateFocusedControl"
+    assert data["keyboard"]["tab"] == "nextEditableField"
+    # The record rides flat with rowVersion — the PATCH base.
+    assert data["record"]["rowVersion"] == 1
+    fields = {entry["fieldName"]: entry for entry in data["fields"]}
+    # Registry fields are editable; the required flag reaches the form as a
+    # field setting (REQ-033), and the custom attribute is indistinguishable.
+    assert fields["mentorName"]["editable"] is True
+    assert fields["mentorName"]["requiredFlag"] is True
+    assert fields["favoriteColor"]["editable"] is True
+    # Structural fields render read-only in place with click-to-explain
+    # (REQ-039): system kind, educate voice, no tab stop.
+    created = fields["createdAt"]
+    assert created["editable"] is False
+    assert created["readOnly"]["kind"] == "system"
+    assert created["readOnly"]["rendering"]["tabStop"] is False
+    assert "system field" in created["readOnly"]["explanation"]["why"]
+    # Focus starts on the first editable field in read-view order (REQ-038).
+    assert data["initialFocusField"] == "mentorName"
+
+
+def test_edit_form_carries_the_help_affordance_only_where_settings_do(
+    client: TestClient, session: Session, user_id: uuid.UUID
+) -> None:
+    session.add_all(
+        [
+            SchemaRegistry(
+                entity_type="mentor",
+                field_name="mentorName",
+                field_type="text",
+                field_label="Name",
+                help_text="The mentor's full legal name.",
+            ),
+            SchemaRegistry(
+                entity_type="mentor",
+                field_name="favoriteColor",
+                field_type="text",
+                field_label="Favorite Color",
+                user_defined_flag=True,
+            ),
+        ]
+    )
+    record = _mentor(session)
+    session.commit()
+    response = client.get(
+        f"/records/mentor/{record.preview_mentor_id}/edit-form", headers=_headers(user_id)
+    )
+    fields = {entry["fieldName"]: entry for entry in response.json()["data"]["fields"]}
+    help_ = fields["mentorName"]["help"]
+    # REQ-040: a subtle affordance — marker on the label, hover/focus reveal,
+    # never persistent; and NOTHING where no help text exists.
+    assert help_["helpText"] == "The mentor's full legal name."
+    assert help_["rendering"]["marker"] == "infoMarker"
+    assert help_["rendering"]["reveal"] == ["hover", "focus"]
+    assert help_["rendering"]["persistent"] is False
+    assert fields["favoriteColor"]["help"] is None
+
+
+def test_edit_form_for_a_removed_record_is_404(
+    client: TestClient, session: Session, user_id: uuid.UUID, write_registry: None
+) -> None:
+    record = _mentor(session, deleted_at=utcnow(), deleted_by=uuid7())
+    session.commit()
+    response = client.get(
+        f"/records/mentor/{record.preview_mentor_id}/edit-form", headers=_headers(user_id)
+    )
+    # Editing a removed record is a restore first, never a resurrection.
+    assert response.status_code == 404
+
+
 # --- The lookup type-ahead read (REQ-036) --------------------------------------------
 
 

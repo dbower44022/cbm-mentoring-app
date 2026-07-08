@@ -47,7 +47,13 @@ def _option_set_payload(option_set: OptionSet) -> dict[str, Any]:
     }
 
 
-def _field_payload(row: SchemaRegistry) -> dict[str, Any]:
+def field_payload(row: SchemaRegistry) -> dict[str, Any]:
+    """One registry row as the wire serves it — THE field-settings payload.
+
+    Public because every field-settings consumer (the schema endpoint, the
+    edit-form composition) must serve the identical shape; a second
+    serializer would be the enum-drift this registry exists to kill.
+    """
     return {
         "fieldName": row.field_name,
         "fieldType": row.field_type,
@@ -90,7 +96,7 @@ def get_entity_schema(
     ).all()
     if not rows:
         raise RecordNotFoundError("entity schema", entity_type)
-    fields = [_field_payload(row) for row in rows]
+    fields = [field_payload(row) for row in rows]
     return ok(
         data={"entityType": entity_type, "fields": fields},
         meta={"fieldCount": len(fields)},

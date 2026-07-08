@@ -197,6 +197,19 @@ export const HELP_ACTION: ActionPayload = {
   classification: "safe",
 };
 
+/**
+ * The Edit action (ui/edit_form.py EDIT_RECORD, REQ-032): modifying, exactly
+ * one row. Joins any grid whose active view names an app entity — the form
+ * itself opens in the record's pinned pop-out window, so the grid keeps
+ * working (REQ-012's keep-working rule applies to edit entry too).
+ */
+export const EDIT_RECORD_ACTION: ActionPayload = {
+  key: "EditRecord",
+  label: "Edit",
+  selectionContract: "single",
+  classification: "modifying",
+};
+
 export const CONFIRMATION_LISTED_LIMIT = 5;
 
 /** Honest soft-delete wording (system-wide rule): never claim permanence. */

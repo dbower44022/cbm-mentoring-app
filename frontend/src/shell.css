@@ -952,3 +952,198 @@ span.link-row {
 .grid-table {
   width: 100%;
 }
+
+/* --- The full-screen edit form (REQ-032/033/038/039/040, REL-004 block 1).
+   Full screen, fields roughly where the read view puts them scaled up for
+   edit controls; a LARGE Save (never one more toolbar button); read-only
+   fields in place as read values; inline errors at the offending field. */
+
+.record-edit-window {
+  min-height: 100vh;
+  background: var(--slot-app-background);
+  display: flex;
+  flex-direction: column;
+}
+
+.record-edit-window > header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 12px;
+  background: var(--slot-header-background);
+  color: var(--slot-header-text);
+}
+
+.record-edit-window > header .edit-action {
+  color: var(--slot-header-text);
+}
+
+.edit-form {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 12px 16px;
+  background: var(--slot-panel-background);
+}
+
+.edit-form-fields {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 10px 24px;
+  align-content: start;
+}
+
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.form-field-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--type-step-sm);
+  color: var(--slot-group-header-text);
+}
+
+.required-marker {
+  color: var(--slot-status-negative);
+}
+
+/* REQ-040: the subtle affordance — marker on the label, text on hover or on
+   the field's editor gaining focus, never a persistent paragraph. */
+.field-help {
+  position: relative;
+}
+
+.field-help-marker {
+  cursor: help;
+  color: var(--slot-accent);
+  font-size: var(--type-step-sm);
+}
+
+.field-help-text {
+  display: none;
+  position: absolute;
+  left: 0;
+  top: 100%;
+  z-index: 20;
+  width: max-content;
+  max-width: 320px;
+  padding: 6px 8px;
+  background: var(--slot-group-header-background);
+  color: var(--slot-group-header-text);
+  border: 1px solid var(--slot-accent);
+  border-radius: 3px;
+  font-size: var(--type-step-sm);
+}
+
+.field-help:hover .field-help-text,
+.form-field:focus-within .field-help-text {
+  display: block;
+}
+
+/* Edit controls scaled up (controlScale: scaledUpForEditControls). */
+.edit-form input[type="text"],
+.edit-form input[type="date"],
+.edit-form input[type="datetime-local"],
+.edit-form select {
+  font-size: var(--type-step-md);
+  padding: 6px 8px;
+  border: 1px solid var(--slot-group-header-background);
+  border-radius: 3px;
+  background: var(--slot-row-background);
+  color: var(--slot-row-text);
+}
+
+.edit-form input[aria-invalid="true"],
+.edit-form select[aria-invalid="true"] {
+  border-color: var(--slot-status-negative);
+}
+
+/* REQ-039: the read value in its usual position — visibly NOT an input, and
+   NOT grayed out; the pointer says "you can ask why". */
+.readonly-value {
+  text-align: left;
+  border: none;
+  background: transparent;
+  padding: 6px 0;
+  font-size: var(--type-step-md);
+  color: var(--slot-row-text);
+  cursor: help;
+}
+
+.field-error {
+  margin: 0;
+  font-size: var(--type-step-sm);
+  color: var(--slot-status-negative);
+}
+
+.form-level-errors {
+  border: 1px solid var(--slot-status-negative);
+  border-radius: 3px;
+  padding: 8px 12px;
+  margin-bottom: 10px;
+}
+
+.edit-form-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  padding-top: 12px;
+}
+
+/* The REQ-032 large Save: the biggest thing on the form. */
+.save-button-large {
+  font-size: var(--type-step-xl);
+  padding: 10px 36px;
+  background: var(--slot-accent);
+  color: var(--slot-header-text);
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.cancel-button,
+.leave-button {
+  font-size: var(--type-step-md);
+  padding: 8px 16px;
+  cursor: pointer;
+}
+
+.save-confirmation {
+  color: var(--slot-status-positive);
+  font-size: var(--type-step-sm);
+  margin-right: auto;
+}
+
+.leave-guard,
+.field-explain,
+.merge-walkthrough {
+  position: fixed;
+  top: 20%;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 40;
+  background: var(--slot-panel-background);
+  border: 1px solid var(--slot-accent);
+  border-radius: 4px;
+  padding: 14px 18px;
+  max-width: 560px;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.25);
+}
+
+.leave-guard-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.merge-table th,
+.merge-table td {
+  text-align: left;
+  padding: 4px 10px;
+}

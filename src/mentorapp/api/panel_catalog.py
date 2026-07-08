@@ -93,6 +93,10 @@ class PanelViewSpec:
     record_id_field: str
     title_field: str
     aggregates: tuple[AggregateSpec, ...] = ()
+    #: The record-catalog entity behind each row — what the Edit action and
+    #: record windows address (REQ-032/REQ-012). None for projected sources
+    #: whose row identity is an aliased CRM column, not an app entity key.
+    entity_type: str | None = None
 
     @property
     def data_source_key(self) -> str:
@@ -161,6 +165,7 @@ MENTOR_PANELS: Final[tuple[PanelSpec, ...]] = (
                 "the companies behind your engagements",
                 record_id_field="crmCompanyRefID",
                 title_field="crmCompanyID",
+                entity_type="crmCompanyRef",
             ),
         ),
     ),
@@ -174,6 +179,7 @@ MENTOR_PANELS: Final[tuple[PanelSpec, ...]] = (
                 "the client roles your engagements serve",
                 record_id_field="clientID",
                 title_field="crmCompanyID",
+                entity_type="client",
             ),
         ),
     ),
@@ -187,6 +193,7 @@ MENTOR_PANELS: Final[tuple[PanelSpec, ...]] = (
                 "your engagements, ordered for triage",
                 record_id_field="engagementID",
                 title_field="engagementName",
+                entity_type="engagement",
                 # SKL-112's footer row needs a served aggregate to exist; the
                 # triage views declare the one honest aggregate a triage set
                 # carries — the engagement count (FND-909 D11).
@@ -198,6 +205,7 @@ MENTOR_PANELS: Final[tuple[PanelSpec, ...]] = (
                 "every engagement across mentors, ordered for triage",
                 record_id_field="engagementID",
                 title_field="engagementName",
+                entity_type="engagement",
                 aggregates=(AggregateSpec("count", "engagementName"),),
             ),
         ),
@@ -212,6 +220,7 @@ MENTOR_PANELS: Final[tuple[PanelSpec, ...]] = (
                 "every session of your engagements, in time order",
                 record_id_field="sessionID",
                 title_field="engagementName",
+                entity_type="session",
             ),
         ),
     ),
@@ -225,6 +234,7 @@ MENTOR_PANELS: Final[tuple[PanelSpec, ...]] = (
                 "the staff-maintained resource library",
                 record_id_field="resourceID",
                 title_field="resourceTitle",
+                entity_type="resource",
             ),
         ),
     ),
@@ -238,6 +248,7 @@ MENTOR_PANELS: Final[tuple[PanelSpec, ...]] = (
                 "staff-defined events, soonest first",
                 record_id_field="eventID",
                 title_field="eventTitle",
+                entity_type="event",
             ),
         ),
     ),
