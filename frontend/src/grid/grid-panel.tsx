@@ -28,6 +28,7 @@ import { openHelp } from "../shell/help";
 import { PanelSplitter, ResizablePanel, usePanelChrome } from "../shell/panel-chrome";
 import { readSession } from "../session";
 import { popOutRecordEdit, RecordPreview } from "../windows/record";
+import { popOutRecordCreate } from "../windows/record-create";
 import {
   actionMenus,
   bindingFor,
@@ -35,6 +36,7 @@ import {
   EDIT_RECORD_ACTION,
   EMPTY_SELECTION,
   HELP_ACTION,
+  NEW_RECORD_ACTION,
   invalidInvocation,
   isModified,
   markModified,
@@ -372,9 +374,10 @@ function LoadedGrid({
   // Mentoring domain actions join exactly as workprocess entries do — the
   // one action-menu fold, keyed by the active view's data source (WTK-183).
   const menus = actionMenus(panel.actions, panel.commonActionKeys, [
-    // Edit joins every grid whose active view names an app entity
-    // (REQ-032); a projected source (entityType null) has no record to edit.
-    ...(activeView?.entityType != null ? [EDIT_RECORD_ACTION] : []),
+    // Edit and New join every grid whose active view names an app entity
+    // (REQ-032/037); a projected source (entityType null) has no record
+    // to edit and no data set to create into.
+    ...(activeView?.entityType != null ? [EDIT_RECORD_ACTION, NEW_RECORD_ACTION] : []),
     ...workprocessEntries.map(workprocessPanelAction),
     ...mentoringPanelActions(dataSourceKey),
   ]);
@@ -417,6 +420,11 @@ function LoadedGrid({
     // The mentoring flows (WTK-183/169/178): all contract "single", already
     // validated above, so the one selected/focused row is the subject.
     const [subjectId] = launchSelection(selection, rowsState.rows);
+    if (action.key === NEW_RECORD_ACTION.key && activeView?.entityType != null) {
+      // The same form, empty, in a fresh window (REQ-037).
+      popOutRecordCreate(activeView.entityType);
+      return;
+    }
     if (
       action.key === EDIT_RECORD_ACTION.key &&
       subjectId !== undefined &&

@@ -544,6 +544,63 @@ def test_edit_form_for_a_removed_record_is_404(
     assert response.status_code == 404
 
 
+# --- The create-form view-model (REQ-037) --------------------------------------------
+
+
+def test_create_form_is_the_same_form_opened_empty_with_seed_and_identity(
+    client: TestClient, session: Session, user_id: uuid.UUID
+) -> None:
+    session.add_all(
+        [
+            SchemaRegistry(
+                entity_type="mentor",
+                field_name="mentorName",
+                field_type="text",
+                field_label="Name",
+                required_flag=True,
+                validation_rules={"duplicateMatchRules": ["byName"]},
+            ),
+            SchemaRegistry(
+                entity_type="mentor",
+                field_name="favoriteColor",
+                field_type="text",
+                field_label="Favorite Color",
+                default_value="teal",
+                user_defined_flag=True,
+            ),
+        ]
+    )
+    session.commit()
+    response = client.get("/records/mentor/create-form", headers=_headers(user_id))
+    assert response.status_code == 200
+    data = response.json()["data"]
+    form = data["form"]
+    # The SAME full-screen form editing uses, opened empty, defaults only;
+    # the duplicate check is declared advisory, Cancel creates nothing.
+    assert form["kind"] == "fullScreenForm"
+    assert form["opens"] == "empty"
+    assert form["similarCheck"] == "nonBlocking"
+    assert form["landsOn"] == "readView"
+    assert form["cancelCreates"] == "nothing"
+    assert data["seed"] == {"favoriteColor": "teal"}
+    # Identity fields arm the pre-save check — from the match rules, no
+    # second declaration anywhere.
+    assert data["identityFieldNames"] == ["mentorName"]
+    names = [entry["fieldName"] for entry in data["fields"]]
+    assert names == ["favoriteColor", "mentorName"]
+    assert all(entry["editable"] for entry in data["fields"])
+    assert data["initialFocusField"] == "favoriteColor"
+
+
+def test_create_form_for_an_unknown_entity_is_404(
+    client: TestClient, user_id: uuid.UUID
+) -> None:
+    # 'mentor' is catalog-known but has no registry rows in this test — an
+    # entity with zero fields cannot exist.
+    response = client.get("/records/mentor/create-form", headers=_headers(user_id))
+    assert response.status_code == 404
+
+
 # --- The lookup type-ahead read (REQ-036) --------------------------------------------
 
 

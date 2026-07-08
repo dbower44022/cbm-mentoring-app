@@ -210,6 +210,18 @@ export const EDIT_RECORD_ACTION: ActionPayload = {
   classification: "modifying",
 };
 
+/**
+ * The New action (REQ-037): the same full-screen form, empty. No selection
+ * contract — creating needs no row — and its window is always fresh
+ * (several creates may be in flight; there is no record to pin yet).
+ */
+export const NEW_RECORD_ACTION: ActionPayload = {
+  key: "NewRecord",
+  label: "New",
+  selectionContract: "none",
+  classification: "modifying",
+};
+
 export const CONFIRMATION_LISTED_LIMIT = 5;
 
 /** Honest soft-delete wording (system-wide rule): never claim permanence. */

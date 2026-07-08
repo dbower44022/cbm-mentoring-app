@@ -21,6 +21,7 @@ import { SessionBoundary } from "./auth/session-boundary";
 import { SignIn } from "./auth/sign-in";
 import { Shell } from "./shell/shell";
 import { RecordWindow } from "./windows/record";
+import { RecordCreateWindow } from "./windows/record-create";
 import { RecordEditWindow } from "./windows/record-edit";
 
 export function App(): ReactElement {
@@ -42,6 +43,9 @@ export function App(): ReactElement {
       }}
     >
       <Routes>
+        {/* The New action's destination (REQ-037): the same form, empty.
+            Declared before the :recordId route — 'new' is not a record. */}
+        <Route path="/records/:entityType/new" element={<RecordCreateWindow />} />
         <Route path="/records/:entityType/:recordId" element={<RecordWindow />} />
         {/* The Edit action's destination (REQ-032): the full-screen form. */}
         <Route

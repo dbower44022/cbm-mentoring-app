@@ -425,8 +425,8 @@ describe("actions (REQ-021, REQ-022)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Other Actions" }));
     const menu = screen.getByRole("list", { name: "All actions" });
     const labels = [...menu.querySelectorAll("button")].map((b) => b.textContent);
-    // Edit joins every entity-backed view's menu (REQ-032), before Help.
-    expect(labels).toEqual(["Open", "Export", "Remove", "Edit", "Help"]);
+    // Edit and New join every entity-backed view's menu (REQ-032/037).
+    expect(labels).toEqual(["Open", "Export", "Remove", "Edit", "New", "Help"]);
     // Never disabled: every entry is invocable regardless of selection.
     expect(
       [...menu.querySelectorAll("button")].every((button) => !button.disabled),
@@ -764,9 +764,10 @@ describe("workprocess actions (REQ-041, REQ-042)", () => {
       "Open",
       "Export",
       "Remove",
-      // Edit joins first among the appended entries (REQ-032), then the
-      // data source's workprocesses, Help still closing the list.
+      // Edit and New join first among the appended entries (REQ-032/037),
+      // then the data source's workprocesses, Help still closing the list.
       "Edit",
+      "New",
       "Reassign Mentor",
       "Purge Engagements",
       "Help",

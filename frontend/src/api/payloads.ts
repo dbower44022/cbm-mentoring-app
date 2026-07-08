@@ -136,6 +136,42 @@ export interface EditFormPayload {
   initialFocusField: string | null;
 }
 
+/** `GET /records/{entityType}/create-form` (records.py, REQ-037). */
+export interface CreateFormPayload {
+  screen: EditFormPayload["screen"];
+  keyboard: EditFormPayload["keyboard"];
+  form: {
+    kind: string;
+    opens: string;
+    prefillSource: string;
+    validation: string;
+    similarCheck: string;
+    comparison: string;
+    commits: string;
+    landsOn: string;
+    cancelCreates: string;
+  };
+  fields: FormFieldPayload[];
+  /** Field-setting defaults — the form's initial values AND dirty baseline. */
+  seed: Record<string, unknown>;
+  /** Fields participating in any duplicate-match rule: they arm the check. */
+  identityFieldNames: string[];
+  initialFocusField: string | null;
+}
+
+/** One advisory-check candidate (POST .../similar-records, REQ-037). */
+export interface SimilarCandidatePayload {
+  record: Record<string, unknown>;
+  /** True only for a soft-deleted match — the restore-instead offer. */
+  removed: boolean;
+}
+
+export interface SimilarRecordsPayload {
+  candidates: SimilarCandidatePayload[];
+  matchedRuleNames: string[];
+  blocking: boolean;
+}
+
 /** `GET /records/{entityType}/{recordId}/preview` (records.py, REQ-012). */
 export interface RecordPreviewPayload {
   pane: {

@@ -63,6 +63,11 @@ from mentorapp.api.edit_safety import ROW_VERSION_FIELD
 from mentorapp.api.envelope import Envelope, field_error, ok
 from mentorapp.api.errors import ApiValidationError, RecordNotFoundError
 from mentorapp.api.lookup_suggestions import suggest_related_records
+from mentorapp.api.record_create import (
+    CREATE_FORM,
+    create_form_seed,
+    identity_field_names,
+)
 from mentorapp.api.records import STRUCTURAL_FIELDS, registry_for, serialize_record
 from mentorapp.api.routers.schema import field_payload
 from mentorapp.api.routers.workprocess import RoleSource, get_role_source
@@ -642,6 +647,63 @@ def get_edit_form(
             "fields": fields,
             # The forms standard's first-editable-field rule, resolved
             # server-side so the shell renders, never re-derives.
+            "initialFocusField": editable_names[0] if editable_names else None,
+        }
+    )
+
+
+@router.get("/records/{entity_type}/create-form")
+def get_create_form(
+    entity_type: str,
+    session: _SessionDep,
+    user_id: _UserDep,
+    catalog: _CatalogDep,
+) -> Envelope:
+    """The create form's complete view-model (REQ-037).
+
+    THE SAME full-screen form editing uses (``CREATE_FORM.kind`` declares
+    it), opened empty: the same field entries and dispositions, the frame
+    and keyboard declarations, plus the create-only facts — the
+    field-setting-default seed, and the identity fields whose values arm
+    the non-blocking similar-records check before save.
+    """
+    _entity_class(catalog, entity_type)
+    registry = registry_for(session, entity_type)
+    if not registry:
+        # An entity with zero fields cannot exist (the schema endpoint's
+        # rule): a create form with nothing to enter means unknown entity.
+        raise RecordNotFoundError("entity schema", entity_type)
+    fields = edit_form_fields(entity_type, {}, registry)
+    specs = [field_payload(row) for row in registry.values()]
+    editable_names = [entry["fieldName"] for entry in fields if entry["editable"]]
+    log.info(
+        "create form served",
+        extra={
+            "context": {
+                "userId": str(user_id),
+                "entityType": entity_type,
+                "fieldCount": len(fields),
+            }
+        },
+    )
+    return ok(
+        data={
+            "screen": _screen_payload(),
+            "keyboard": _keyboard_payload(),
+            "form": {
+                "kind": CREATE_FORM.kind,
+                "opens": CREATE_FORM.opens,
+                "prefillSource": CREATE_FORM.prefill_source,
+                "validation": CREATE_FORM.validation,
+                "similarCheck": CREATE_FORM.similar_check,
+                "comparison": CREATE_FORM.comparison,
+                "commits": CREATE_FORM.commits,
+                "landsOn": CREATE_FORM.lands_on,
+                "cancelCreates": CREATE_FORM.cancel_creates,
+            },
+            "fields": fields,
+            "seed": create_form_seed(specs),
+            "identityFieldNames": sorted(identity_field_names(specs)),
             "initialFocusField": editable_names[0] if editable_names else None,
         }
     )

@@ -184,7 +184,7 @@ export function leaveWarning(dirtyLabels: string[]): EducatePayload {
 }
 
 /** The label block every field variant shares: asterisk + help marker (REQ-033/040). */
-function FieldLabel({
+export function FieldLabel({
   field,
   htmlFor,
 }: {
@@ -214,7 +214,7 @@ function FieldLabel({
 }
 
 /** One editable control, dispatched on the registry fieldType. */
-function FieldControl({
+export function FieldControl({
   field,
   value,
   invalid,
