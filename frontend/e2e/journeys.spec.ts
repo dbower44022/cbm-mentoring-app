@@ -877,6 +877,46 @@ test("accept assignment: pending engagement flips with next steps offered", asyn
   expect(body.data.engagement.engagementStatusLabel).toBe("Assigned");
 });
 
+test("Themes: the account menu opens the picker (launch set), a choice repaints, a created template joins the picker (REQ-044/046)", async ({
+  page,
+}) => {
+  await signIn(page);
+
+  // The account menu's Themes entry opens the surface (REQ-044).
+  await page.getByRole("button", { name: "Account ▾" }).click();
+  await page.getByRole("menuitem", { name: "Themes" }).click();
+  const dialog = page.getByRole("dialog", { name: "Themes" });
+  await expect(dialog).toBeVisible();
+
+  // The seeded launch set is the picker's system templates (migration 0018).
+  for (const name of ["Standard", "Compact", "Large print", "Dark"]) {
+    await expect(dialog.getByRole("button", { name: new RegExp(name) })).toBeVisible();
+  }
+
+  // Choosing Dark records the layer-two preference and repaints the shell —
+  // the header background CSS variable becomes the Dark template's slot.
+  await dialog.getByRole("button", { name: /Dark/ }).click();
+  await expect
+    .poll(async () =>
+      page.evaluate(() =>
+        getComputedStyle(document.documentElement)
+          .getPropertyValue("--slot-header-background")
+          .trim(),
+      ),
+    )
+    .toBe("#0d1b2a");
+
+  // The creator fills the fixed slots and saves; the base size is a defined
+  // step (a dropdown, never a free size — REQ-046). The save succeeds and the
+  // new template joins the picker.
+  await dialog.getByRole("button", { name: "New template…" }).click();
+  await dialog.getByLabel("Template name").fill("My Theme");
+  await expect(dialog.getByLabel("Base size step")).toBeVisible();
+  await dialog.getByRole("button", { name: "Save template" }).click();
+  // Back at the picker (a clean save with no contrast issue returns directly).
+  await expect(dialog.getByRole("button", { name: /My Theme/ })).toBeVisible();
+});
+
 /** A real session for API-side asserts: identity is server-resolved (D9). */
 async function sessionReference(
   request: APIRequestContext,

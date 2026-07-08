@@ -115,6 +115,65 @@ STANDARD_TEMPLATE: Final[dict[str, Any]] = {
     "sizeStep": "md",
 }
 
+# The other three curated launch templates (REQ-044's launch set: Standard,
+# Compact, Large print, Dark). Compact and Large print share Standard's palette
+# and vary only density (the row-height/size the template maxes within the
+# fixed slots); Dark recolors every slot. All fill exactly COLOR_SLOTS and
+# FONT_SLOTS, so each is a complete, pickable template document.
+COMPACT_TEMPLATE: Final[dict[str, Any]] = {
+    "colors": dict(STANDARD_TEMPLATE["colors"]),
+    "fonts": {"uiFont": "Inter", "dataFont": "Inter"},
+    "rowHeight": "compact",
+    "sizeStep": "sm",
+}
+
+LARGE_PRINT_TEMPLATE: Final[dict[str, Any]] = {
+    "colors": dict(STANDARD_TEMPLATE["colors"]),
+    "fonts": {"uiFont": "Inter", "dataFont": "Inter"},
+    "rowHeight": "large",
+    "sizeStep": "lg",
+}
+
+DARK_TEMPLATE: Final[dict[str, Any]] = {
+    "colors": {
+        "appBackground": "#121417",
+        "panelBackground": "#1b1f24",
+        "headerBackground": "#0d1b2a",
+        "headerText": "#e6edf3",
+        "accent": "#5aa0cf",
+        "rowBackground": "#1b1f24",
+        "rowAlternateBackground": "#222831",
+        "rowText": "#e6edf3",
+        "selectedRowBackground": "#274156",
+        "selectedRowText": "#eaf2f8",
+        "groupHeaderBackground": "#2a323c",
+        "groupHeaderText": "#c6d2de",
+        "statusPositive": "#5fbf94",
+        "statusWarning": "#e0a24a",
+        "statusNegative": "#e07a83",
+    },
+    "fonts": {"uiFont": "Inter", "dataFont": "Inter"},
+    "rowHeight": "standard",
+    "sizeStep": "md",
+}
+
+# The four launch templates keyed by their LAUNCH_TEMPLATE_KEYS entry — the
+# one home the seed reads to create the curated system ColorTemplate rows.
+LAUNCH_TEMPLATES: Final[dict[str, dict[str, Any]]] = {
+    "standard": STANDARD_TEMPLATE,
+    "compact": COMPACT_TEMPLATE,
+    "largePrint": LARGE_PRINT_TEMPLATE,
+    "dark": DARK_TEMPLATE,
+}
+
+# The picker label for each launch template (product copy, one home).
+LAUNCH_TEMPLATE_NAMES: Final[dict[str, str]] = {
+    "standard": "Standard",
+    "compact": "Compact",
+    "largePrint": "Large print",
+    "dark": "Dark",
+}
+
 
 def validate_template(document: Mapping[str, Any]) -> None:
     """Reject anything but a complete fixed-slot template document (REQ-044).

@@ -21,6 +21,7 @@ import { GridPanel } from "../grid/grid-panel";
 import { PrepSurface } from "../mentoring/prep-surface";
 import { HomePanel } from "../panels/home";
 import type { SessionState } from "../session";
+import { Appearance } from "./appearance";
 import { UrgentBanner } from "./banner";
 import { Header } from "./header";
 import { openHelp } from "./help";
@@ -51,6 +52,9 @@ export function Shell({ session, onLoggedOut }: ShellProps): ReactElement {
     errors: [],
   });
   const [paletteOpen, setPaletteOpen] = useState(false);
+  // The account menu's "Themes" surface (REQ-044/046) — a shell-level overlay
+  // reachable from any panel, not a route.
+  const [themesOpen, setThemesOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   // Home's render reads its messages (REQ-011 auto-read on view); bumping
   // this token re-fetches the banner so it never banners what was just read.
@@ -236,6 +240,11 @@ export function Shell({ session, onLoggedOut }: ShellProps): ReactElement {
       openPageHelp();
       return;
     }
+    if (key === "themes") {
+      // REQ-044/046: the color-template picker + creator (built, block 2).
+      setThemesOpen(true);
+      return;
+    }
     // Interim educate notice while the preference screens are unbuilt —
     // never a dead control, never a hidden item.
     setNotice(
@@ -339,6 +348,13 @@ export function Shell({ session, onLoggedOut }: ShellProps): ReactElement {
                 onActivate={openPanel}
                 onClose={() => {
                   setPaletteOpen(false);
+                }}
+              />
+            )}
+            {themesOpen && (
+              <Appearance
+                onClose={() => {
+                  setThemesOpen(false);
                 }}
               />
             )}
