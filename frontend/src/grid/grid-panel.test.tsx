@@ -764,12 +764,12 @@ describe("workprocess actions (REQ-041, REQ-042)", () => {
       "Open",
       "Export",
       "Remove",
-      // Edit and New join first among the appended entries (REQ-032/037),
-      // then the data source's workprocesses, Help still closing the list.
-      "Edit",
-      "New",
       "Reassign Mentor",
       "Purge Engagements",
+      // Edit and New join last among the appended entries (REQ-032/037) so
+      // the ruled common buttons keep the bar; Help still closes the list.
+      "Edit",
+      "New",
       "Help",
     ]);
     // Never hidden, never disabled — REQ-041's whole point.

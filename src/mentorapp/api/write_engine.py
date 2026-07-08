@@ -163,6 +163,45 @@ def _validate_choice(row: FieldRule, value: Any) -> ApiError | None:
     return None
 
 
+def _native_builtin_value(row: SchemaRegistry, value: Any) -> tuple[Any, ApiError | None]:
+    """Coerce one validated WIRE value to the built-in column's native type.
+
+    JSON delivers uuid-valued fields (choice/reference/id) and temporal
+    fields as strings; the ORM columns want ``uuid.UUID``/``datetime``/
+    ``date``. Coercion lives HERE — beside the one validator — so every
+    write path (HTTP create/PATCH and in-process callers, which may already
+    pass native values) lands identical column values, and a malformed
+    string is the standard ``typeMismatch`` entry, never a 500 out of the
+    driver. Custom attributes are deliberately NOT coerced: the
+    ``customAttributes`` bag is JSON, so wire scalars are its native form.
+    """
+    if value is None or not isinstance(value, str):
+        return value, None
+    field_type = row.field_type
+    if field_type in ("choice", "reference", "id"):
+        try:
+            return uuid.UUID(value), None
+        except ValueError:
+            return value, field_error(
+                row.field_name, CODE_TYPE_MISMATCH, "Expected a record identifier."
+            )
+    if field_type in ("datetime", "timestamp"):
+        try:
+            return datetime.fromisoformat(value), None
+        except ValueError:
+            return value, field_error(
+                row.field_name, CODE_TYPE_MISMATCH, "Expected an ISO datetime."
+            )
+    if field_type == "date":
+        try:
+            return date.fromisoformat(value), None
+        except ValueError:
+            return value, field_error(
+                row.field_name, CODE_TYPE_MISMATCH, "Expected an ISO date."
+            )
+    return value, None
+
+
 def _validate_changes(
     registry: dict[str, SchemaRegistry], changes: dict[str, Any], *, creating: bool
 ) -> tuple[dict[str, Any], dict[str, Any], list[ApiError]]:
@@ -186,7 +225,14 @@ def _validate_changes(
         if error is not None:
             errors.append(error)
             continue
-        (custom if row.user_defined_flag else builtin)[name] = value
+        if row.user_defined_flag:
+            custom[name] = value
+            continue
+        native, coercion_error = _native_builtin_value(row, value)
+        if coercion_error is not None:
+            errors.append(coercion_error)
+            continue
+        builtin[name] = native
     if creating:
         errors.extend(
             field_error(name, CODE_REQUIRED_FIELD, "This field is required.")

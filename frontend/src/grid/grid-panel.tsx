@@ -373,12 +373,14 @@ function LoadedGrid({
   // Mentoring domain actions join exactly as workprocess entries do — the
   // one action-menu fold, keyed by the active view's data source (WTK-183).
   const menus = actionMenus(panel.actions, panel.commonActionKeys, [
-    // Edit and New join every grid whose active view names an app entity
-    // (REQ-032/037); a projected source (entityType null) has no record
-    // to edit and no data set to create into.
-    ...(activeView?.entityType != null ? [EDIT_RECORD_ACTION, NEW_RECORD_ACTION] : []),
     ...workprocessEntries.map(workprocessPanelAction),
     ...mentoringPanelActions(dataSourceKey),
+    // Edit and New join every grid whose active view names an app entity
+    // (REQ-032/037); a projected source (entityType null) has no record
+    // to edit and no data set to create into. They join LAST so the ruled
+    // two-most-common buttons (REQ-021 — the leading domain actions) keep
+    // the action bar; Edit/New live in the one full menu.
+    ...(activeView?.entityType != null ? [EDIT_RECORD_ACTION, NEW_RECORD_ACTION] : []),
   ]);
 
   const openWorkprocess = (entry: WorkprocessActionPayload): void => {

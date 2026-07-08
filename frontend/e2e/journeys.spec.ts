@@ -635,6 +635,177 @@ test("a CRM outage at login never reads as a wrong password", async ({
   await expect(page.locator(".shell-header")).toBeVisible();
 });
 
+// --- REL-004 block 1: forms & editing (REQ-032..040) ---------------------------------
+
+test("Edit action → full-screen form: read-only explains, help reveals, Ctrl+S saves, Escape guards", async ({
+  page,
+}) => {
+  await signIn(page);
+  const rows = page.locator(".grid-table tbody tr");
+  await rows.nth(1).click(); // Summit Auto Detail
+
+  // The Edit action joins the one full menu (REQ-032) and opens the
+  // record's PINNED pop-out window at the edit route — a real window.
+  await page.getByRole("button", { name: "Other Actions" }).click();
+  const popupPromise = page.waitForEvent("popup");
+  await page
+    .locator('menu[aria-label="All actions"]')
+    .getByRole("button", { name: "Edit", exact: true })
+    .click();
+  const editor = await popupPromise;
+  await expect(editor).toHaveURL(/\/records\/engagement\/[0-9a-f-]+\/edit$/);
+
+  // REQ-032 anatomy: the full-screen form with the LARGE Save.
+  const form = editor.locator("form.edit-form");
+  await expect(form).toBeVisible();
+  const save = form.getByRole("button", { name: "Save" });
+  await expect(save).toHaveAttribute("data-prominence", "large");
+
+  // REQ-039: the structural field renders read-only IN PLACE — clicking it
+  // explains in the educate voice instead of opening an editor.
+  await form.locator('[data-readonly-kind="system"]').first().click();
+  await expect(
+    editor.getByRole("dialog", { name: "Why this field is not editable" }),
+  ).toContainText("This is a system field; it is maintained automatically.");
+  await editor.getByRole("button", { name: "Got it" }).click();
+
+  // REQ-040: the admin-maintained help text reveals from the label marker —
+  // a subtle affordance, not a permanent paragraph.
+  const summaryField = form
+    .locator(".form-field")
+    .filter({ has: editor.getByText("Engagement Summary") })
+    .first();
+  await expect(summaryField.locator(".field-help-text")).toBeHidden();
+  await summaryField.locator(".field-help-marker").hover();
+  await expect(summaryField.locator(".field-help-text")).toContainText("at a glance");
+
+  // Edit a field, then Escape: the dirty guard NAMES the changed field and
+  // navigation does not proceed (REQ-032/038) — real keyboard input.
+  const contact = form.getByLabel("Primary Contact Name");
+  await contact.fill("Deshawn Carter Jr.");
+  await contact.press("Escape");
+  const guard = editor.getByRole("alertdialog", { name: "Unsaved changes" });
+  await expect(guard).toContainText("Primary Contact Name");
+  await guard.getByRole("button", { name: "Keep editing" }).click();
+
+  // Enter never submits a multi-field form (REQ-038): no save confirmation.
+  await contact.press("Enter");
+  await expect(editor.locator(".save-confirmation")).toHaveCount(0);
+
+  // Ctrl+S saves (REQ-038): the PATCH lands, the form stays open and rebases.
+  await contact.press("Control+s");
+  await expect(editor.locator(".save-confirmation")).toContainText("Saved at");
+
+  // Cancel now reverts relative to the SAVED originals: no guard on leave.
+  await editor.getByRole("button", { name: "Close" }).click();
+  await expect(editor).toHaveURL(/\/records\/engagement\/[0-9a-f-]+$/);
+  await expect(editor.locator("dl")).toContainText("Deshawn Carter Jr.");
+  await editor.close();
+});
+
+test("double-click on the preview opens the per-field window; one field commits alone", async ({
+  page,
+  request,
+}) => {
+  const state = await seededState(request);
+  await signIn(page);
+  await page.goto(`/records/engagement/${state.summitEngagementID}`);
+  await expect(page.locator("dl")).toBeVisible();
+
+  // REQ-035: double-click the field's read-only element → the SMALL
+  // self-contained window, focus in its one editor.
+  const contactRow = page
+    .locator("dl > div")
+    .filter({ has: page.getByText("primaryContactName", { exact: true }) });
+  await contactRow.dblclick();
+  const window = page.locator('[data-kind="smallWindow"]');
+  await expect(window).toBeVisible();
+  await expect(window).toHaveAttribute("data-commits", "singleFieldPatch");
+
+  const editor = window.getByRole("textbox");
+  await editor.fill("Maria Kovac-Ellis");
+  await window.getByRole("button", { name: "Save" }).click();
+  // The single-field write landed and the preview re-read its content.
+  await expect(page.locator("dl")).toContainText("Maria Kovac-Ellis");
+  await expect(window).toHaveCount(0);
+
+  // A structural field explains instead of opening (REQ-039's words, both
+  // gestures — never a silent nothing).
+  const createdRow = page
+    .locator("dl > div")
+    .filter({ has: page.getByText("createdAt", { exact: true }) });
+  await createdRow.dblclick();
+  await expect(
+    page.getByRole("dialog", { name: "Why this field is not editable" }),
+  ).toContainText("This is a system field; it is maintained automatically.");
+
+  // Esc IS Cancel in this window: a second double-click, edit, then Escape
+  // discards directly — no guard, nothing written.
+  await page.getByRole("button", { name: "Got it" }).click();
+  await contactRow.dblclick();
+  await window.getByRole("textbox").fill("Someone Else");
+  await window.getByRole("textbox").press("Escape");
+  await expect(window).toHaveCount(0);
+  await expect(page.locator("dl")).toContainText("Maria Kovac-Ellis");
+});
+
+test("New → similar-records offer compares without blocking; continue records the override", async ({
+  page,
+}) => {
+  await signIn(page);
+  // The resources library: its create needs only the fields a journey can
+  // type (title + location), so the whole REQ-037 flow renders end to end.
+  await page.goto("/panel/resources");
+  const grid = page.locator("section.grid-panel");
+  await expect(grid).toHaveAttribute("aria-label", "Resources");
+  await page.getByRole("button", { name: "Other Actions" }).click();
+  const popupPromise = page.waitForEvent("popup");
+  await page
+    .locator('menu[aria-label="All actions"]')
+    .getByRole("button", { name: "New", exact: true })
+    .click();
+  const creator = await popupPromise;
+  await expect(creator).toHaveURL(/\/records\/resource\/new$/);
+  const form = creator.locator("form.create-form");
+  await expect(form).toBeVisible();
+
+  // Typing an existing resource's title arms the ADVISORY check on exit:
+  // the offer compares side by side and is declared non-blocking (REQ-037).
+  const title = form.getByLabel("Resource Title");
+  await title.fill("Pricing & Margin Worksheet");
+  await title.press("Tab");
+  const offer = creator.getByRole("dialog", { name: "Similar records exist" });
+  await expect(offer).toBeVisible();
+  await expect(offer).toHaveAttribute("data-blocking", "false");
+  await expect(offer.locator(".offer-comparison")).toContainText(
+    "Pricing & Margin Worksheet",
+  );
+  // Continue just dismisses — Save remains the user's act.
+  await offer.getByRole("button", { name: "Continue", exact: true }).click();
+  await expect(offer).toHaveCount(0);
+
+  // The save sweep still guards required settings (REQ-033): the other
+  // required field settings get real values before Save.
+  await form
+    .getByLabel("Resource Location")
+    .fill("https://library.cbm.example/pricing-v2");
+  await form.getByLabel("Resource Kind").selectOption({ label: "Document" });
+
+  // Save → the server's DB-S12 duplicate rejection re-presents the offer
+  // ENFORCED; continuing resubmits with the recorded override (REQ-059).
+  await form.getByRole("button", { name: "Save" }).click();
+  await expect(offer).toBeVisible();
+  await offer
+    .getByLabel(/Why is this not a duplicate/)
+    .fill("updated worksheet, keeping both");
+  await offer.getByRole("button", { name: "Continue and create anyway" }).click();
+
+  // The first save lands on the NEW record's read view (REQ-037).
+  await expect(creator).toHaveURL(/\/records\/resource\/[0-9a-f-]+$/);
+  await expect(creator.locator("dl")).toContainText("Pricing & Margin Worksheet");
+  await creator.close();
+});
+
 test("accept assignment: pending engagement flips with next steps offered", async ({
   page,
   request,

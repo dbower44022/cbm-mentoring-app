@@ -37,6 +37,10 @@ class PreviewMentor(BaseEntity):
 
     preview_mentor_id: Mapped[uuid.UUID] = entity_key("previewMentorID")
     mentor_name: Mapped[str] = mapped_column("mentorName", nullable=False)
+    # Uuid-typed columns for the wire-coercion contract (choice + reference):
+    # JSON delivers their values as strings; the engine must land UUIDs.
+    mentor_status: Mapped[uuid.UUID | None] = mapped_column("mentorStatus", nullable=True)
+    crony_id: Mapped[uuid.UUID | None] = mapped_column("cronyID", nullable=True)
 
 
 @dataclass(frozen=True)
@@ -453,6 +457,83 @@ def test_similar_records_without_a_complete_rule_offers_nothing(
     )
     assert response.status_code == 200
     assert response.json()["data"]["candidates"] == []
+
+
+def test_wire_values_land_native_in_uuid_columns(
+    client: TestClient, session: Session, user_id: uuid.UUID
+) -> None:
+    """JSON strings for choice/reference fields must store as UUIDs (DB-S7).
+
+    The rendered gate caught the raw path 500ing ('str' has no attribute
+    'hex') on the first HTTP write of an optionValueID — the wire-coercion
+    step in the engine is what this pins.
+    """
+    from mentorapp.storage import OptionSet, OptionValue
+
+    option_set = OptionSet(option_set_name="mentorStatus")
+    active = OptionValue(
+        option_set=option_set,
+        option_value_name="active",
+        option_value_label="Active",
+        option_value_sort_order=1,
+    )
+    session.add_all(
+        [
+            active,
+            SchemaRegistry(
+                entity_type="mentor",
+                field_name="mentorName",
+                field_type="text",
+                field_label="Name",
+                required_flag=True,
+            ),
+            SchemaRegistry(
+                entity_type="mentor",
+                field_name="mentorStatus",
+                field_type="choice",
+                field_label="Status",
+                option_set=option_set,
+            ),
+            SchemaRegistry(
+                entity_type="mentor",
+                field_name="cronyID",
+                field_type="reference",
+                field_label="Crony",
+            ),
+        ]
+    )
+    session.commit()
+    crony = uuid7()
+    response = client.post(
+        "/records/mentor",
+        headers=_headers(user_id),
+        json={
+            "values": {
+                "mentorName": "Grace Hopper",
+                # Exactly as JSON delivers them: strings.
+                "mentorStatus": str(active.option_value_id),
+                "cronyID": str(crony),
+            }
+        },
+    )
+    assert response.status_code == 200
+    stored = session.get(
+        PreviewMentor, uuid.UUID(response.json()["data"]["record"]["previewMentorID"])
+    )
+    assert stored is not None
+    assert stored.mentor_status == active.option_value_id
+    assert stored.crony_id == crony
+
+    # A malformed identifier on a reference field is the standard 422
+    # typeMismatch — never a 500 out of the database driver.
+    refused = client.post(
+        "/records/mentor",
+        headers=_headers(user_id),
+        json={"values": {"mentorName": "Ada", "cronyID": "not-an-identifier"}},
+    )
+    assert refused.status_code == 422
+    (error,) = refused.json()["errors"]
+    assert (error["fieldName"], error["code"]) == ("cronyID", "typeMismatch")
 
 
 # --- The edit-form view-model (REQ-032/039/040) --------------------------------------
