@@ -526,6 +526,7 @@ export function CreateFormScreen({
             <div key={field.fieldName} className="form-field">
               <FieldLabel field={field} htmlFor={`field-${field.fieldName}`} />
               <FieldControl
+                entityType={entityType}
                 field={field}
                 value={values[field.fieldName]}
                 invalid={field.fieldName in fieldErrors}

@@ -16,18 +16,6 @@ import { CreateFormScreen } from "../forms/create-form";
 import { NotificationBell } from "../shell/bell";
 import { DeclinedNotice, EducateNotice, UnreachableNotice } from "../shell/educate";
 
-/** Open the create form for one entity in a fresh window (the New action). */
-export function popOutRecordCreate(entityType: string): void {
-  // Unlike a record window there is nothing to pin yet, so every New opens
-  // its own window — several creates may be in flight at once.
-  const opened = window.open(
-    `/records/${entityType}/new`,
-    "_blank",
-    "popup=yes,width=1000,height=800",
-  );
-  opened?.focus();
-}
-
 export function RecordCreateWindow(): ReactElement {
   const { entityType } = useParams();
   const navigate = useNavigate();

@@ -27,8 +27,7 @@ import { DeclinedNotice, EducateNotice, UnreachableNotice } from "../shell/educa
 import { openHelp } from "../shell/help";
 import { PanelSplitter, ResizablePanel, usePanelChrome } from "../shell/panel-chrome";
 import { readSession } from "../session";
-import { popOutRecordEdit, RecordPreview } from "../windows/record";
-import { popOutRecordCreate } from "../windows/record-create";
+import { popOutRecordCreate, popOutRecordEdit, RecordPreview } from "../windows/record";
 import {
   actionMenus,
   bindingFor,

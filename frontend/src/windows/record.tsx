@@ -10,13 +10,44 @@
  * call.
  */
 
-import { type ReactElement } from "react";
+import { type ReactElement, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
-import { type RecordPreviewPayload } from "../api/payloads";
+import {
+  type EducatePayload,
+  type FormFieldPayload,
+  type RecordPreviewPayload,
+} from "../api/payloads";
 import { useEnvelope } from "../api/useEnvelope";
+import { FieldEditWindow } from "../forms/field-edit-window";
 import { NotificationBell } from "../shell/bell";
 import { DeclinedNotice, EducateNotice, UnreachableNotice } from "../shell/educate";
+
+/** The schema payload's field entry, promoted to the form vocabulary. */
+type SchemaFieldSpec = Omit<FormFieldPayload, "editable" | "readOnly" | "help">;
+
+interface EntitySchemaPayload {
+  entityType: string;
+  fields: SchemaFieldSpec[];
+}
+
+/** One explanation per field, two gestures (readonly_fields wording). */
+function cannotEditMessage(fieldName: string, computed: boolean): EducatePayload {
+  if (computed) {
+    return {
+      whatHappened: `'${fieldName}' can't be edited.`,
+      why: "Its value is calculated automatically from other information on the record.",
+      whatNext:
+        "Edit the fields it is calculated from — this value updates on its own.",
+    };
+  }
+  return {
+    whatHappened: `'${fieldName}' can't be edited.`,
+    why: "This is a system field; it is maintained automatically.",
+    whatNext:
+      "No action is needed — the system keeps it up to date as the record changes.",
+  };
+}
 
 /** Display rendering for one flat record value; identity stays server-side. */
 export function formatFieldValue(value: unknown): string {
@@ -70,6 +101,18 @@ export function popOutRecordEdit(entityType: string, recordId: string): void {
   opened?.focus();
 }
 
+/** Open the create form for one entity in a fresh window (the New action).
+ * Unlike a record window there is nothing to pin yet, so every New opens
+ * its own window — several creates may be in flight at once. */
+export function popOutRecordCreate(entityType: string): void {
+  const opened = window.open(
+    `/records/${entityType}/new`,
+    "_blank",
+    "popup=yes,width=1000,height=800",
+  );
+  opened?.focus();
+}
+
 export function RecordPreview({
   entityType,
   recordId,
@@ -77,9 +120,37 @@ export function RecordPreview({
   entityType: string;
   recordId: string;
 }): ReactElement {
-  const { state } = useEnvelope<RecordPreviewPayload>(
+  const { state, reload } = useEnvelope<RecordPreviewPayload>(
     `/records/${entityType}/${recordId}/preview`,
   );
+  // The double-click gesture's field settings (REQ-035): the same schema
+  // read every form renders from. A declined/unreachable schema degrades to
+  // the refusal path — the preview itself never depends on it.
+  const { state: schemaState } = useEnvelope<EntitySchemaPayload>(
+    `/schema/${entityType}`,
+  );
+  const [editing, setEditing] = useState<string | null>(null);
+  const [refusal, setRefusal] = useState<EducatePayload | null>(null);
+
+  const openFieldEditor = (fieldName: string): void => {
+    // The pane's second edit path (editPaths[1]): double-click opens the
+    // small per-field window, or explains why the field has no editor —
+    // never a silent nothing (REQ-039's words, both gestures).
+    const spec =
+      schemaState.phase === "loaded"
+        ? schemaState.data.fields.find((entry) => entry.fieldName === fieldName)
+        : undefined;
+    if (spec === undefined) {
+      setRefusal(cannotEditMessage(fieldName, false));
+      return;
+    }
+    const hints = spec.visibilityHints;
+    if (hints !== null && Boolean(hints.computed)) {
+      setRefusal(cannotEditMessage(spec.fieldLabel, true));
+      return;
+    }
+    setEditing(fieldName);
+  };
 
   switch (state.phase) {
     case "loading":
@@ -88,20 +159,67 @@ export function RecordPreview({
       return <DeclinedNotice errors={state.errors} />;
     case "unreachable":
       return <UnreachableNotice />;
-    case "loaded":
+    case "loaded": {
+      const record = state.data.record;
+      const editingSpec =
+        editing !== null && schemaState.phase === "loaded"
+          ? schemaState.data.fields.find((entry) => entry.fieldName === editing)
+          : undefined;
       return (
         <article aria-label="Record preview">
           {state.data.notice !== null && <EducateNotice notice={state.data.notice} />}
           <dl>
-            {Object.entries(state.data.record).map(([fieldName, value]) => (
-              <div key={fieldName}>
+            {Object.entries(record).map(([fieldName, value]) => (
+              <div
+                key={fieldName}
+                onDoubleClick={() => {
+                  openFieldEditor(fieldName);
+                }}
+              >
                 <dt>{fieldName}</dt>
                 <dd>{formatFieldValue(value)}</dd>
               </div>
             ))}
           </dl>
+          {refusal !== null && (
+            <div
+              role="dialog"
+              aria-label="Why this field is not editable"
+              className="field-explain"
+            >
+              <EducateNotice notice={refusal} />
+              <button
+                type="button"
+                tabIndex={-1}
+                onClick={() => {
+                  setRefusal(null);
+                }}
+              >
+                Got it
+              </button>
+            </div>
+          )}
+          {editingSpec !== undefined && (
+            <FieldEditWindow
+              entityType={entityType}
+              recordId={recordId}
+              field={{ ...editingSpec, editable: true, readOnly: null, help: null }}
+              baseValue={record[editingSpec.fieldName]}
+              rowVersion={Number(record.rowVersion)}
+              onSaved={() => {
+                // The single-field write landed: the window closes and the
+                // preview re-reads its one content answer.
+                setEditing(null);
+                reload();
+              }}
+              onClose={() => {
+                setEditing(null);
+              }}
+            />
+          )}
         </article>
       );
+    }
   }
 }
 

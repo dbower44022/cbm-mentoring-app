@@ -35,6 +35,7 @@ function field(
     validationRules: null,
     defaultValue: null,
     helpText: null,
+    visibilityHints: null,
     optionSet: null,
     editable: true,
     readOnly: null,

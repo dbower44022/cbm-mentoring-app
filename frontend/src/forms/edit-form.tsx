@@ -41,6 +41,7 @@ import {
 import { RichTextEditor } from "../mentoring/rich-text";
 import { EducateNotice } from "../shell/educate";
 import { formatFieldValue } from "../windows/record";
+import { LookupControl } from "./lookup-control";
 
 /** The DB-R2 exemption set (api/records.py STRUCTURAL_FIELDS) — never counts
  * as another save's business change in conflict resolution. */
@@ -215,12 +216,14 @@ export function FieldLabel({
 
 /** One editable control, dispatched on the registry fieldType. */
 export function FieldControl({
+  entityType,
   field,
   value,
   invalid,
   onChange,
   onExit,
 }: {
+  entityType: string;
   field: FormFieldPayload;
   value: unknown;
   invalid: boolean;
@@ -233,6 +236,20 @@ export function FieldControl({
     "aria-invalid": invalid || undefined,
     onBlur: onExit,
   };
+  if (field.fieldType === "reference") {
+    // The one relationship control (REQ-036), registry-driven — never a
+    // per-form widget choice.
+    return (
+      <LookupControl
+        entityType={entityType}
+        field={field}
+        value={value}
+        invalid={invalid}
+        onChange={onChange}
+        onExit={onExit}
+      />
+    );
+  }
   if (field.fieldType === "boolean") {
     return (
       <input
@@ -720,6 +737,7 @@ export function EditFormScreen({
             <div key={field.fieldName} className="form-field">
               <FieldLabel field={field} htmlFor={`field-${field.fieldName}`} />
               <FieldControl
+                entityType={entityType}
                 field={field}
                 value={values[field.fieldName]}
                 invalid={field.fieldName in fieldErrors}

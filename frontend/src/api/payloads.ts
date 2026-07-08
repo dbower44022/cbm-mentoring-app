@@ -90,6 +90,8 @@ export interface FormFieldPayload {
   validationRules: Record<string, unknown> | null;
   defaultValue: unknown;
   helpText: string | null;
+  /** Client-rendering hints (e.g. `computed` — REQ-039's declared home). */
+  visibilityHints: Record<string, unknown> | null;
   optionSet: OptionSetPayload | null;
   editable: boolean;
   /** Set exactly when not editable: kind + the click-to-explain message (REQ-039). */
