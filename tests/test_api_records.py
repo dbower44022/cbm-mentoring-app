@@ -9,13 +9,23 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from identity_stub import header_user_id
 from mentorapp.api.deps import get_current_user_id, get_session
 from mentorapp.api.routers.records import get_record_catalog
 from mentorapp.main import create_app
-from mentorapp.storage import BaseEntity, entity_key, utcnow, uuid7
+from mentorapp.storage import (
+    BaseEntity,
+    ChangeFeedEntry,
+    DuplicateOverride,
+    FieldChange,
+    SchemaRegistry,
+    entity_key,
+    utcnow,
+    uuid7,
+)
 
 
 class PreviewMentor(BaseEntity):
@@ -56,7 +66,7 @@ def _headers(user_id: uuid.UUID) -> dict[str, str]:
 
 
 def _mentor(session: Session, **overrides: Any) -> PreviewMentor:
-    record = PreviewMentor(mentor_name="Ada Lovelace", **overrides)
+    record = PreviewMentor(**{"mentor_name": "Ada Lovelace", **overrides})
     session.add(record)
     session.flush()
     return record
@@ -178,3 +188,245 @@ def test_unwired_catalog_fails_loudly(session: Session, user_id: uuid.UUID) -> N
     client = TestClient(app)
     with pytest.raises(RuntimeError, match="record catalog provider is not wired"):
         _get_preview(client, user_id, uuid7())
+
+
+# --- The write surface (REL-004 block 1) ---------------------------------------------
+
+
+@pytest.fixture()
+def write_registry(session: Session) -> None:
+    """Registry rows for the ``mentor`` write tests — the field settings of record.
+
+    ``mentorName`` carries a duplicate-match rule (text fallback path: no
+    shadow column, ``lower(trim())`` inline); ``favoriteColor`` is
+    user-defined so writes must land in the custom bag yet serve flat.
+    """
+    session.add_all(
+        [
+            SchemaRegistry(
+                entity_type="mentor",
+                field_name="mentorName",
+                field_type="text",
+                field_label="Name",
+                required_flag=True,
+                history_tracked_flag=True,
+                validation_rules={"duplicateMatchRules": ["byName"]},
+            ),
+            SchemaRegistry(
+                entity_type="mentor",
+                field_name="favoriteColor",
+                field_type="text",
+                field_label="Favorite Color",
+                user_defined_flag=True,
+            ),
+        ]
+    )
+    session.commit()
+
+
+def _post_create(
+    client: TestClient, user_id: uuid.UUID, values: dict[str, Any], **extra: Any
+) -> Any:
+    return client.post(
+        "/records/mentor", headers=_headers(user_id), json={"values": values, **extra}
+    )
+
+
+def test_create_lands_flat_with_row_version_and_feeds(
+    client: TestClient, session: Session, user_id: uuid.UUID, write_registry: None
+) -> None:
+    response = _post_create(
+        client, user_id, {"mentorName": "Grace Hopper", "favoriteColor": "navy"}
+    )
+    assert response.status_code == 200
+    served = response.json()["data"]["record"]
+    assert served["mentorName"] == "Grace Hopper"
+    # DB-R3: the custom attribute serves flat, indistinguishable from built-ins.
+    assert served["favoriteColor"] == "navy"
+    assert served["rowVersion"] == 1
+    stored = session.get(PreviewMentor, uuid.UUID(served["previewMentorID"]))
+    assert stored is not None and stored.custom_attributes == {"favoriteColor": "navy"}
+    assert stored.created_by == user_id
+    feed = session.scalars(select(ChangeFeedEntry)).all()
+    assert [entry.change_kind for entry in feed] == ["created"]
+
+
+def test_create_reports_every_field_failure_at_once(
+    client: TestClient, user_id: uuid.UUID, write_registry: None
+) -> None:
+    response = _post_create(client, user_id, {"mentorHat": "fedora"})
+    assert response.status_code == 422
+    errors = {error["fieldName"]: error["code"] for error in response.json()["errors"]}
+    # One round trip carries BOTH failures: the unknown field and the
+    # missing required field (REQ-033's save sweep, server side).
+    assert errors == {"mentorHat": "unknownField", "mentorName": "requiredField"}
+
+
+def test_create_duplicate_answers_409_and_override_is_recorded(
+    client: TestClient, session: Session, user_id: uuid.UUID, write_registry: None
+) -> None:
+    _mentor(session, mentor_name="Ada Lovelace")
+    session.commit()
+    rejected = _post_create(client, user_id, {"mentorName": "  ada LOVELACE "})
+    # Same-name create rejects with the candidates in the body (DB-S12).
+    assert rejected.status_code == 409
+    (error,) = rejected.json()["errors"]
+    assert error["code"] == "duplicateCandidates"
+
+    overridden = _post_create(
+        client,
+        user_id,
+        {"mentorName": "  ada LOVELACE "},
+        overrideDuplicates=True,
+        overrideReason="different person, same name",
+    )
+    # Continuing is allowed, and remembered (REQ-059): the override rides the
+    # same transaction as the create.
+    assert overridden.status_code == 200
+    override = session.scalars(select(DuplicateOverride)).one()
+    assert override.matched_rule_names == ["byName"]
+    assert override.override_reason == "different person, same name"
+
+
+def test_patch_updates_bumps_version_and_writes_history(
+    client: TestClient, session: Session, user_id: uuid.UUID, write_registry: None
+) -> None:
+    record = _mentor(session)
+    session.commit()
+    response = client.patch(
+        f"/records/mentor/{record.preview_mentor_id}",
+        headers=_headers(user_id),
+        json={"mentorName": "Ada King", "rowVersion": 1},
+    )
+    assert response.status_code == 200
+    served = response.json()["data"]["record"]
+    assert served["mentorName"] == "Ada King"
+    assert served["rowVersion"] == 2
+    change = session.scalars(select(FieldChange)).one()
+    assert (change.field_name, change.old_value, change.new_value) == (
+        "mentorName",
+        "Ada Lovelace",
+        "Ada King",
+    )
+
+
+def test_patch_stale_version_answers_409_with_the_current_record(
+    client: TestClient, session: Session, user_id: uuid.UUID, write_registry: None
+) -> None:
+    record = _mentor(session)
+    session.commit()
+    response = client.patch(
+        f"/records/mentor/{record.preview_mentor_id}",
+        headers=_headers(user_id),
+        json={"mentorName": "Ada King", "rowVersion": 7},
+    )
+    assert response.status_code == 409
+    body = response.json()
+    (error,) = body["errors"]
+    assert error["code"] == "staleRowVersion"
+    # The current record rides the 409 body so the client can merge, not guess.
+    assert body["data"]["mentorName"] == "Ada Lovelace"
+    assert body["data"]["rowVersion"] == 1
+
+
+def test_patch_without_row_version_is_refused(
+    client: TestClient, session: Session, user_id: uuid.UUID, write_registry: None
+) -> None:
+    record = _mentor(session)
+    session.commit()
+    response = client.patch(
+        f"/records/mentor/{record.preview_mentor_id}",
+        headers=_headers(user_id),
+        json={"mentorName": "Ada King"},
+    )
+    assert response.status_code == 422
+    (error,) = response.json()["errors"]
+    assert error["fieldName"] == "rowVersion"
+
+
+def test_patch_soft_deleted_target_is_404_not_resurrection(
+    client: TestClient, session: Session, user_id: uuid.UUID, write_registry: None
+) -> None:
+    record = _mentor(session, deleted_at=utcnow(), deleted_by=uuid7())
+    session.commit()
+    response = client.patch(
+        f"/records/mentor/{record.preview_mentor_id}",
+        headers=_headers(user_id),
+        json={"mentorName": "Ada King", "rowVersion": 1},
+    )
+    assert response.status_code == 404
+
+
+def test_restore_brings_a_removed_record_back(
+    client: TestClient, session: Session, user_id: uuid.UUID, write_registry: None
+) -> None:
+    record = _mentor(session, deleted_at=utcnow(), deleted_by=uuid7())
+    session.commit()
+    response = client.post(
+        f"/records/mentor/{record.preview_mentor_id}/restore",
+        headers=_headers(user_id),
+        json={"rowVersion": 1},
+    )
+    assert response.status_code == 200
+    assert response.json()["data"]["record"]["deletedAt"] is None
+    session.expire_all()
+    assert record.deleted_at is None
+    feed = session.scalars(select(ChangeFeedEntry)).all()
+    assert [entry.change_kind for entry in feed] == ["restored"]
+
+
+def test_restoring_a_live_record_is_a_calm_no_op(
+    client: TestClient, session: Session, user_id: uuid.UUID, write_registry: None
+) -> None:
+    record = _mentor(session)
+    session.commit()
+    response = client.post(
+        f"/records/mentor/{record.preview_mentor_id}/restore",
+        headers=_headers(user_id),
+        json={"rowVersion": 1},
+    )
+    # The offer raced a restore that already happened — not an error.
+    assert response.status_code == 200
+    assert response.json()["data"]["record"]["rowVersion"] == 1
+
+
+def test_similar_records_check_is_advisory_and_sees_removed_matches(
+    client: TestClient, session: Session, user_id: uuid.UUID, write_registry: None
+) -> None:
+    live = _mentor(session, mentor_name="Ada Lovelace")
+    removed = _mentor(session, mentor_name="Ada Lovelace", deleted_at=utcnow())
+    session.commit()
+    response = client.post(
+        "/records/mentor/similar-records",
+        headers=_headers(user_id),
+        json={"values": {"mentorName": "ada lovelace"}},
+    )
+    assert response.status_code == 200
+    data = response.json()["data"]
+    # Never a wall in front of Save: the offer is declared non-blocking.
+    assert data["blocking"] is False
+    assert data["matchedRuleNames"] == ["byName"]
+    by_id = {
+        candidate["record"]["previewMentorID"]: candidate["removed"]
+        for candidate in data["candidates"]
+    }
+    # The deleted-inclusive advisory scan flags the removed match so the form
+    # can offer restore-instead-of-create (REQ-037).
+    assert by_id == {
+        str(live.preview_mentor_id): False,
+        str(removed.preview_mentor_id): True,
+    }
+
+
+def test_similar_records_without_a_complete_rule_offers_nothing(
+    client: TestClient, session: Session, user_id: uuid.UUID, write_registry: None
+) -> None:
+    _mentor(session, mentor_name="Ada Lovelace")
+    session.commit()
+    response = client.post(
+        "/records/mentor/similar-records",
+        headers=_headers(user_id),
+        json={"values": {"favoriteColor": "teal"}},
+    )
+    assert response.status_code == 200
+    assert response.json()["data"]["candidates"] == []

@@ -23,6 +23,25 @@ same-user-sync fan-out re-fetches it after a save in another window.
   blank window and never a 404 that reads as "the app broke". Only a record
   that never existed is 404.
 
+The write half (REL-004 block 1) exposes the PI-004/PI-008 write engine over
+the same catalog seam — the endpoints every form commits through:
+
+- ``POST /records/{entityType}`` is the whole-record create
+  (:func:`~mentorapp.api.write_engine.create_record`): registry-validated
+  with every failure at once, duplicate-detected server-side (409 with the
+  candidate records unless the recorded override rides along — REQ-037/059).
+- ``PATCH /records/{entityType}/{recordId}`` is the one update verb
+  (:func:`~mentorapp.api.write_engine.partial_update`): changed fields plus
+  ``rowVersion`` flat in the body — exactly the
+  :func:`~mentorapp.api.field_edit.single_field_patch` shape, so the
+  per-field window and the full form speak one contract (DB-S12).
+- ``POST /records/{entityType}/{recordId}/restore`` commits the REQ-037
+  restore-instead-of-create choice under the standard ``rowVersion`` guard.
+- ``POST /records/{entityType}/similar-records`` is the advisory pre-save
+  check (deleted-inclusive, never blocking): the create form's
+  similar-records offer reads its candidates here, from the SAME rule
+  evaluation the create-time rejection uses.
+
 Entity-type resolution follows the home-router seam pattern (fail loudly
 until wired; tests and deployments override :func:`get_record_catalog`):
 domain tables land with their own planning items, and an empty in-process
@@ -35,12 +54,21 @@ import uuid
 from typing import Annotated, Any, Protocol
 
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from mentorapp.api.deps import get_current_user_id, get_session
+from mentorapp.api.edit_safety import ROW_VERSION_FIELD
 from mentorapp.api.envelope import Envelope, field_error, ok
 from mentorapp.api.errors import ApiValidationError, RecordNotFoundError
-from mentorapp.api.records import serialize_record
+from mentorapp.api.records import registry_for, serialize_record
+from mentorapp.api.write_engine import (
+    CODE_TYPE_MISMATCH,
+    create_record,
+    find_similar_records,
+    partial_update,
+    restore_record,
+)
 from mentorapp.observability import get_logger
 from mentorapp.ui.auth_flows import EducateMessage
 from mentorapp.ui.record_preview import (
@@ -89,6 +117,23 @@ def get_record_catalog() -> RecordCatalog:
 _SessionDep = Annotated[Session, Depends(get_session)]
 _UserDep = Annotated[uuid.UUID, Depends(get_current_user_id)]
 _CatalogDep = Annotated[RecordCatalog, Depends(get_record_catalog)]
+
+
+def _entity_class(catalog: RecordCatalog, entity_type: str) -> type[Any]:
+    """Resolve a wire entity-type name, or refuse with the standard 422."""
+    entity_cls = catalog.entity_class(entity_type)
+    if entity_cls is None:
+        raise ApiValidationError(
+            [
+                field_error(
+                    "entityType",
+                    CODE_UNKNOWN_ENTITY_TYPE,
+                    f"'{entity_type}' is not an entity type this app serves; "
+                    "check the link or view that led here.",
+                )
+            ]
+        )
+    return entity_cls
 
 
 def removed_record_message(entity_type: str) -> EducateMessage:
@@ -146,18 +191,7 @@ def get_record_preview(
     catalog provider is unwired; 401 without a live session reference
     (FND-909 D9).
     """
-    entity_cls = catalog.entity_class(entity_type)
-    if entity_cls is None:
-        raise ApiValidationError(
-            [
-                field_error(
-                    "entityType",
-                    CODE_UNKNOWN_ENTITY_TYPE,
-                    f"'{entity_type}' is not an entity type this app serves; "
-                    "check the link or view that led here.",
-                )
-            ]
-        )
+    entity_cls = _entity_class(catalog, entity_type)
     record = session.get(entity_cls, record_id)
     if record is None:
         raise RecordNotFoundError(entity_type, str(record_id))
@@ -181,4 +215,223 @@ def get_record_preview(
             "record": serialize_record(record),
             "notice": notice.as_payload() if notice else None,
         }
+    )
+
+
+# --- The write surface (REL-004 block 1: REQ-032/035/037 commits land here) ---------
+
+
+class RecordCreateBody(BaseModel):
+    """POST body — the :class:`~mentorapp.api.record_create.CommitCreate` shape.
+
+    ``overrideDuplicates`` is set ONLY when the user chose Continue past the
+    server's duplicate rejection; the engine records the override (REQ-059).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    values: dict[str, Any]
+    override_duplicates: bool = Field(default=False, alias="overrideDuplicates")
+    override_reason: str | None = Field(default=None, alias="overrideReason")
+
+
+class SimilarRecordsBody(BaseModel):
+    """The advisory check's input: whatever identity fields the form holds so far."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    values: dict[str, Any]
+
+
+class RestoreBody(BaseModel):
+    """Restore commits under the candidate's ``rowVersion``, like every write."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    row_version: int = Field(alias="rowVersion")
+
+
+@router.post("/records/{entity_type}")
+def post_record(
+    entity_type: str,
+    body: RecordCreateBody,
+    session: _SessionDep,
+    user_id: _UserDep,
+    catalog: _CatalogDep,
+) -> Envelope:
+    """Whole-record create through the one write engine (REQ-037, DB-S12).
+
+    Registry-validated with every field failure in one round trip; duplicate
+    detection answers 409 with the candidate records unless the body carries
+    the user's recorded override. Returns the created record flat (with
+    ``rowVersion``) so the form can land on the read view without a second
+    fetch.
+    """
+    entity_cls = _entity_class(catalog, entity_type)
+    record = create_record(
+        session,
+        entity_cls,
+        entity_type,
+        body.values,
+        acting_user_id=user_id,
+        override_duplicates=body.override_duplicates,
+        override_reason=body.override_reason,
+    )
+    session.commit()
+    log.info(
+        "record created",
+        extra={
+            "context": {
+                "userId": str(user_id),
+                "entityType": entity_type,
+                "overrodeDuplicates": body.override_duplicates,
+            }
+        },
+    )
+    return ok(data={"record": serialize_record(record)})
+
+
+@router.patch("/records/{entity_type}/{record_id}")
+def patch_record(
+    entity_type: str,
+    record_id: uuid.UUID,
+    body: dict[str, Any],
+    session: _SessionDep,
+    user_id: _UserDep,
+    catalog: _CatalogDep,
+) -> Envelope:
+    """PATCH — changed fields plus ``rowVersion``, flat (DB-S4/S12).
+
+    The body is exactly :func:`~mentorapp.api.field_edit.single_field_patch`
+    output scaled to any field count: the full edit form and the per-field
+    window speak this one contract. A stale ``rowVersion`` is the standard
+    409 carrying the current record; a no-op payload returns the record
+    untouched (no version bump). A soft-deleted target is 404 — editing a
+    removed record is a restore first, never a silent resurrection.
+    """
+    row_version = body.pop(ROW_VERSION_FIELD, None)
+    if not isinstance(row_version, int) or isinstance(row_version, bool):
+        raise ApiValidationError(
+            [
+                field_error(
+                    ROW_VERSION_FIELD,
+                    CODE_TYPE_MISMATCH,
+                    "Every update carries the rowVersion the edit was based on.",
+                )
+            ]
+        )
+    entity_cls = _entity_class(catalog, entity_type)
+    record = session.get(entity_cls, record_id)
+    if record is None:
+        raise RecordNotFoundError(entity_type, str(record_id))
+    updated = partial_update(
+        session,
+        record,
+        entity_type,
+        body,
+        row_version=row_version,
+        acting_user_id=user_id,
+    )
+    session.commit()
+    log.info(
+        "record updated",
+        extra={
+            "context": {
+                "userId": str(user_id),
+                "entityType": entity_type,
+                "recordId": str(record_id),
+                "fieldCount": len(body),
+            }
+        },
+    )
+    return ok(data={"record": serialize_record(updated)})
+
+
+@router.post("/records/{entity_type}/{record_id}/restore")
+def post_record_restore(
+    entity_type: str,
+    record_id: uuid.UUID,
+    body: RestoreBody,
+    session: _SessionDep,
+    user_id: _UserDep,
+    catalog: _CatalogDep,
+) -> Envelope:
+    """Bring a removed record back — the restore-instead-of-create write (REQ-037).
+
+    Restoring a live record is a no-op returning it unchanged (the offer
+    raced a restore that already happened — not an error). A stale
+    ``rowVersion`` is the standard 409 with the current record.
+    """
+    entity_cls = _entity_class(catalog, entity_type)
+    record = session.get(entity_cls, record_id)
+    if record is None:
+        raise RecordNotFoundError(entity_type, str(record_id))
+    restored = restore_record(
+        session,
+        record,
+        entity_type,
+        row_version=body.row_version,
+        acting_user_id=user_id,
+    )
+    session.commit()
+    log.info(
+        "record restored",
+        extra={
+            "context": {
+                "userId": str(user_id),
+                "entityType": entity_type,
+                "recordId": str(record_id),
+            }
+        },
+    )
+    return ok(data={"record": serialize_record(restored)})
+
+
+@router.post("/records/{entity_type}/similar-records")
+def post_similar_records(
+    entity_type: str,
+    body: SimilarRecordsBody,
+    session: _SessionDep,
+    user_id: _UserDep,
+    catalog: _CatalogDep,
+) -> Envelope:
+    """The advisory pre-save duplicate check — compare, never block (REQ-037).
+
+    Runs the SAME rule evaluation as the create-time rejection
+    (:func:`~mentorapp.api.write_engine.find_similar_records`), deleted-
+    inclusive so a match on a removed record can offer restore instead of
+    create. ``data.candidates`` carries each match flat with ``removed``
+    beside it; ``data.blocking`` is declared false so no shell can render
+    this offer as a wall in front of Save.
+    """
+    entity_cls = _entity_class(catalog, entity_type)
+    registry = registry_for(session, entity_type)
+    candidates, matched_rule_names = find_similar_records(
+        session, entity_cls, registry, body.values, include_deleted=True
+    )
+    if candidates:
+        log.info(
+            "similar-records offer served",
+            extra={
+                "context": {
+                    "userId": str(user_id),
+                    "entityType": entity_type,
+                    "candidateCount": len(candidates),
+                    "matchedRuleNames": matched_rule_names,
+                }
+            },
+        )
+    return ok(
+        data={
+            "candidates": [
+                {
+                    "record": serialize_record(record),
+                    "removed": record.deleted_at is not None,
+                }
+                for record in candidates
+            ],
+            "matchedRuleNames": matched_rule_names,
+            "blocking": False,
+        },
+        meta={"candidateCount": len(candidates)},
     )
