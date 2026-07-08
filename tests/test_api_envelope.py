@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from identity_stub import header_user_id
 from mentorapp.access import (
+    InMemoryLookupSources,
     InMemorySessionStore,
     InMemoryTokenActionStore,
     SessionManagement,
@@ -44,7 +45,7 @@ from mentorapp.api.routers.auth import (
 from mentorapp.api.routers.grids import get_grid_entity_catalog
 from mentorapp.api.routers.home import get_home_catalog, get_message_center
 from mentorapp.api.routers.outage import get_draft_store
-from mentorapp.api.routers.records import get_record_catalog
+from mentorapp.api.routers.records import get_lookup_sources, get_record_catalog
 from mentorapp.api.routers.shell import get_shell_catalog
 from mentorapp.api.routers.theming import get_condition_field_catalog
 from mentorapp.api.routers.workprocess import get_role_source
@@ -287,6 +288,10 @@ def mounted_client(session: Session) -> TestClient:
     # The record catalog is fail-loud until the domain entities wire it
     # (WTK-029); same treatment as the seams above.
     app.dependency_overrides[get_record_catalog] = _SweepRecordCatalog
+    # The lookup-source resolver is fail-loud until lookup bindings get a
+    # durable home (REL-004 block 1); same treatment as the seams above —
+    # an empty binding set renders the probe as the unbound educate phase.
+    app.dependency_overrides[get_lookup_sources] = lambda: InMemoryLookupSources([])
     # The grid entity catalog is fail-loud until the grids wiring lands
     # (WTK-047); same treatment as the seams above.
     app.dependency_overrides[get_grid_entity_catalog] = _SweepGridCatalog

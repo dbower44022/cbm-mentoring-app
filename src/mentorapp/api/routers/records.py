@@ -57,13 +57,17 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
+from mentorapp.access.lookup_grants import LookupSourceResolver
 from mentorapp.api.deps import get_current_user_id, get_session
 from mentorapp.api.edit_safety import ROW_VERSION_FIELD
 from mentorapp.api.envelope import Envelope, field_error, ok
 from mentorapp.api.errors import ApiValidationError, RecordNotFoundError
+from mentorapp.api.lookup_suggestions import suggest_related_records
 from mentorapp.api.records import registry_for, serialize_record
+from mentorapp.api.routers.workprocess import RoleSource, get_role_source
 from mentorapp.api.write_engine import (
     CODE_TYPE_MISMATCH,
+    CODE_UNKNOWN_FIELD,
     create_record,
     find_similar_records,
     partial_update,
@@ -71,6 +75,7 @@ from mentorapp.api.write_engine import (
 )
 from mentorapp.observability import get_logger
 from mentorapp.ui.auth_flows import EducateMessage
+from mentorapp.ui.lookup_control import related_entity_type
 from mentorapp.ui.record_preview import (
     POP_OUT_HAS_NAVIGATION,
     POP_OUT_HEADER_RIGHT,
@@ -114,9 +119,24 @@ def get_record_catalog() -> RecordCatalog:
     )
 
 
+def get_lookup_sources() -> LookupSourceResolver:
+    """Provide the lookup-binding resolver (REQ-036); wiring binds it.
+
+    Fail-loud like the catalog: an unbound resolver must read as a
+    deployment error, never as "no entity has a lookup source" — that
+    silent shape would render every relationship field noAccess.
+    """
+    raise RuntimeError(
+        "lookup source resolver is not wired; install records wiring or "
+        "override get_lookup_sources."
+    )
+
+
 _SessionDep = Annotated[Session, Depends(get_session)]
 _UserDep = Annotated[uuid.UUID, Depends(get_current_user_id)]
 _CatalogDep = Annotated[RecordCatalog, Depends(get_record_catalog)]
+_RolesDep = Annotated[RoleSource, Depends(get_role_source)]
+_LookupSourcesDep = Annotated[LookupSourceResolver, Depends(get_lookup_sources)]
 
 
 def _entity_class(catalog: RecordCatalog, entity_type: str) -> type[Any]:
@@ -434,4 +454,80 @@ def post_similar_records(
             "blocking": False,
         },
         meta={"candidateCount": len(candidates)},
+    )
+
+
+@router.get("/lookups/{entity_type}/{field_name}")
+def get_lookup_suggestions(
+    entity_type: str,
+    field_name: str,
+    session: _SessionDep,
+    user_id: _UserDep,
+    catalog: _CatalogDep,
+    roles: _RolesDep,
+    lookup_sources: _LookupSourcesDep,
+    q: str = "",
+) -> Envelope:
+    """One type-ahead keystroke for a relationship field (REQ-036).
+
+    ``entity_type``/``field_name`` name the HOST entity's reference field
+    (its registry row supplies the label the educate states speak);
+    the related entity is derived from the entity-named key itself
+    (``mentorID`` → ``mentor``, DB-R2b). The whole outcome — matches with
+    the full-set count, keep-typing, or a no-access explanation that keeps
+    the field visible — comes from the one suggestion read; access denial
+    is a rendered phase here, never an HTTP error, because the control
+    educates instead of hiding.
+    """
+    host_registry = registry_for(session, entity_type)
+    field_row = host_registry.get(field_name)
+    if field_row is None:
+        raise ApiValidationError(
+            [
+                field_error(
+                    "fieldName",
+                    CODE_UNKNOWN_FIELD,
+                    f"'{entity_type}' has no field named '{field_name}'.",
+                )
+            ]
+        )
+    try:
+        related = related_entity_type(field_name)
+    except ValueError:
+        raise ApiValidationError(
+            [
+                field_error(
+                    "fieldName",
+                    CODE_UNKNOWN_FIELD,
+                    f"'{field_name}' is not a relationship field; lookups "
+                    "search the data set an entity-named key references.",
+                )
+            ]
+        ) from None
+    related_cls = _entity_class(catalog, related)
+    outcome = suggest_related_records(
+        session,
+        lookup_sources,
+        entity_cls=related_cls,
+        field_name=field_name,
+        search_text=q,
+        user_id=user_id,
+        user_roles=roles.user_roles(user_id),
+        related_label=field_row.field_label,
+    )
+    return ok(
+        data={
+            "phase": outcome.phase,
+            "suggestions": [
+                {
+                    "entityType": ref.entity_type,
+                    "recordId": ref.record_id,
+                    "title": ref.title,
+                }
+                for ref in outcome.suggestions
+            ],
+            "totalMatches": outcome.total_matches,
+            "summary": outcome.summary,
+            "message": outcome.message.as_payload() if outcome.message else None,
+        }
     )

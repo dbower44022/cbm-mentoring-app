@@ -13,12 +13,15 @@ from sqlalchemy import select
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from identity_stub import header_user_id
+from mentorapp.access import InMemoryLookupSources, LookupBinding, grant_data_source_role
 from mentorapp.api.deps import get_current_user_id, get_session
-from mentorapp.api.routers.records import get_record_catalog
+from mentorapp.api.routers.records import get_lookup_sources, get_record_catalog
+from mentorapp.api.routers.workprocess import get_role_source
 from mentorapp.main import create_app
 from mentorapp.storage import (
     BaseEntity,
     ChangeFeedEntry,
+    DataSource,
     DuplicateOverride,
     FieldChange,
     SchemaRegistry,
@@ -26,6 +29,7 @@ from mentorapp.storage import (
     utcnow,
     uuid7,
 )
+from mentorapp.storage.mentoring import ProgressGoal
 
 
 class PreviewMentor(BaseEntity):
@@ -37,12 +41,27 @@ class PreviewMentor(BaseEntity):
 
 @dataclass(frozen=True)
 class StubCatalog:
-    """The entity catalog, stubbed: one known wire name."""
+    """The entity catalog, stubbed: the wire names these tests serve."""
 
-    entities: Mapping[str, type[Any]] = field(default_factory=lambda: {"mentor": PreviewMentor})
+    entities: Mapping[str, type[Any]] = field(
+        default_factory=lambda: {"mentor": PreviewMentor, "progressGoal": ProgressGoal}
+    )
 
     def entity_class(self, entity_type: str) -> type[Any] | None:
         return self.entities.get(entity_type)
+
+
+@dataclass(frozen=True)
+class StubRoles:
+    """Every user is a mentor: these are not role-resolution tests."""
+
+    roles: frozenset[str] = frozenset({"mentor"})
+
+    def user_roles(self, user_id: uuid.UUID) -> frozenset[str]:
+        return self.roles
+
+
+LOOKUP_SOURCE_KEY = "progressGoalsForLookup"
 
 
 @pytest.fixture()
@@ -53,6 +72,10 @@ def client(session: Session) -> TestClient:
     # session-lifecycle tests, so the stub names the acting user directly.
     app.dependency_overrides[get_current_user_id] = header_user_id
     app.dependency_overrides[get_record_catalog] = lambda: StubCatalog()
+    app.dependency_overrides[get_role_source] = lambda: StubRoles()
+    app.dependency_overrides[get_lookup_sources] = lambda: InMemoryLookupSources(
+        [LookupBinding("progressGoal", LOOKUP_SOURCE_KEY)]
+    )
     return TestClient(app)
 
 
@@ -430,3 +453,106 @@ def test_similar_records_without_a_complete_rule_offers_nothing(
     )
     assert response.status_code == 200
     assert response.json()["data"]["candidates"] == []
+
+
+# --- The lookup type-ahead read (REQ-036) --------------------------------------------
+
+
+@pytest.fixture()
+def lookup_registry(session: Session, user_id: uuid.UUID) -> None:
+    """Host field row (the label source) + searchable related field + grant."""
+    session.add_all(
+        [
+            SchemaRegistry(
+                entity_type="mentor",
+                field_name="progressGoalID",
+                field_type="reference",
+                field_label="Progress goal",
+            ),
+            SchemaRegistry(
+                entity_type="progressGoal",
+                field_name="progressGoalDescription",
+                field_type="text",
+                field_label="Description",
+                searchable_flag=True,
+            ),
+            DataSource(
+                data_source_key=LOOKUP_SOURCE_KEY,
+                data_source_name="Progress goals for lookup",
+                data_source_sql="SELECT * FROM vwProgressGoal",
+            ),
+        ]
+    )
+    session.flush()
+    grant_data_source_role(
+        session,
+        data_source_key=LOOKUP_SOURCE_KEY,
+        role_name="mentor",
+        granted_by=user_id,
+    )
+    session.commit()
+
+
+def _lookup(client: TestClient, user_id: uuid.UUID, q: str) -> Any:
+    return client.get(
+        "/lookups/mentor/progressGoalID", headers=_headers(user_id), params={"q": q}
+    )
+
+
+def test_lookup_serves_matches_with_the_full_set_count(
+    client: TestClient, session: Session, user_id: uuid.UUID, lookup_registry: None
+) -> None:
+    session.add_all(
+        [
+            ProgressGoal(progress_goal_description="Improve budgeting skills"),
+            ProgressGoal(progress_goal_description="Budget review cadence"),
+            ProgressGoal(progress_goal_description="Hire a bookkeeper"),
+        ]
+    )
+    session.commit()
+    response = _lookup(client, user_id, "budget")
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["phase"] == "matches"
+    assert data["totalMatches"] == 2
+    titles = {suggestion["title"] for suggestion in data["suggestions"]}
+    assert titles == {"Improve budgeting skills", "Budget review cadence"}
+    assert all(s["entityType"] == "progressGoal" for s in data["suggestions"])
+
+
+def test_lookup_educates_below_the_live_threshold(
+    client: TestClient, user_id: uuid.UUID, lookup_registry: None
+) -> None:
+    response = _lookup(client, user_id, "b")
+    # Short text never queries: the shared presentation rule decides.
+    assert response.json()["data"]["phase"] == "keepTyping"
+
+
+def test_lookup_denial_renders_as_no_access_not_an_error(
+    client: TestClient, session: Session, user_id: uuid.UUID, lookup_registry: None
+) -> None:
+    # Revoke by granting to a role the stub user does not hold: rebuild the
+    # grant world with only 'leadership'.
+    from mentorapp.storage import DataSourceRoleGrant
+
+    for grant in session.scalars(select(DataSourceRoleGrant)):
+        grant.deleted_at = utcnow()
+    session.commit()
+    response = _lookup(client, user_id, "budget")
+    # The field stays visible and explains (never hide): 200 with a phase,
+    # not an HTTP refusal.
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["phase"] == "noAccess"
+    assert data["message"] is not None
+
+
+def test_lookup_on_an_unknown_host_field_is_refused(
+    client: TestClient, user_id: uuid.UUID, lookup_registry: None
+) -> None:
+    response = client.get(
+        "/lookups/mentor/favoriteSnackID", headers=_headers(user_id), params={"q": "x"}
+    )
+    assert response.status_code == 422
+    (error,) = response.json()["errors"]
+    assert error["code"] == "unknownField"
