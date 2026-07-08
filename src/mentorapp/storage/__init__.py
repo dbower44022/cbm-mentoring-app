@@ -33,6 +33,7 @@ from mentorapp.storage.auth import (
     AuthSession,
     DataSource,
     DataSourceRoleGrant,
+    LookupSourceBinding,
     TokenAuditEvent,
     UserCrmAccount,
 )
@@ -229,6 +230,7 @@ __all__ = [
     "GridView",
     "HelpMapping",
     "HelpSettings",
+    "LookupSourceBinding",
     "MentoringSession",
     "Notification",
     "OptionSet",

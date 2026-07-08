@@ -357,3 +357,42 @@ class DataSourceRoleGrant(StructuralColumnsMixin, Base):
         "dataSourceID", ForeignKey("dataSource.dataSourceID"), nullable=False
     )
     role_name: Mapped[str] = mapped_column("roleName", String(100), nullable=False)
+
+
+class LookupSourceBinding(StructuralColumnsMixin, Base):
+    """The persisted binding: which data source governs one entity's lookup (REQ-036).
+
+    The one configuration fact the relationship-lookup design named as its
+    only new persisted state (``access/lookup_grants.py``): a lookup over a
+    related entity is searched, and permission-gated, through the grants on
+    that entity's *bound* data source. Grants stay key-based
+    (``dataSourceKey``), so the binding references the source by its stable
+    key exactly as ``workprocessRegistration.targetDataSourceKeys`` does —
+    not by ``dataSourceID`` — and re-binding an entity changes the very next
+    keystroke's answer without touching a grant.
+
+    A platform table like its ``dataSourceRoleGrant`` sibling
+    (``StructuralColumnsMixin`` + ``Base``): access configuration is never
+    reachable through the admin read surface, so it gets no registry rows and
+    no generated read view. One live binding per entity; re-binding soft-
+    deletes the prior row, so the binding history survives (retain-not-delete).
+    """
+
+    __tablename__ = "lookupSourceBinding"
+    __table_args__ = (
+        Index(
+            "uq_lookupSourceBinding_entity_live",
+            "relatedEntityType",
+            unique=True,
+            sqlite_where=_LIVE,
+            postgresql_where=_LIVE,
+        ),
+    )
+
+    lookup_source_binding_id: Mapped[uuid.UUID] = mapped_column(
+        "lookupSourceBindingID", primary_key=True, default=uuid7
+    )
+    related_entity_type: Mapped[str] = mapped_column(
+        "relatedEntityType", String(100), nullable=False
+    )
+    data_source_key: Mapped[str] = mapped_column("dataSourceKey", String(200), nullable=False)

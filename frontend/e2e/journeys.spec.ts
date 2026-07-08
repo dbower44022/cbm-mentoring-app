@@ -679,6 +679,19 @@ test("Edit action → full-screen form: read-only explains, help reveals, Ctrl+S
   await summaryField.locator(".field-help-marker").hover();
   await expect(summaryField.locator(".field-help-text")).toContainText("at a glance");
 
+  // REQ-036: a reference field renders the ONE lookup control — a combobox
+  // over the durable lookupSourceBinding store (PI-012), with its two
+  // always-visible inline affordances. The whole gate running with NO
+  // resolver stub (harness uses the real StoredLookupSources over the seeded
+  // bindings) is what proves the durable chain end to end; this pins the
+  // rendered control so a regression to a bare input goes red.
+  const clientField = form
+    .locator(".form-field")
+    .filter({ has: editor.getByRole("combobox", { name: "Client ID" }) })
+    .first();
+  await expect(clientField.getByRole("button", { name: "Open" })).toBeVisible();
+  await expect(clientField.getByRole("button", { name: "New…" })).toBeVisible();
+
   // Edit a field, then Escape: the dirty guard NAMES the changed field and
   // navigation does not proceed (REQ-032/038) — real keyboard input.
   const contact = form.getByLabel("Primary Contact Name");

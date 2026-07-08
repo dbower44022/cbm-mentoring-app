@@ -55,7 +55,7 @@ from mentorapp.access.views import (
     authorize_capability,
 )
 from mentorapp.observability import get_logger
-from mentorapp.storage import DataSource
+from mentorapp.storage import DataSource, LookupSourceBinding
 from mentorapp.storage.columns import ColumnSpec, FormattingRuleSpec, exposed_field_names
 from mentorapp.storage.triage import (
     ENGAGEMENT_TRIAGE_COLUMNS,
@@ -299,6 +299,55 @@ MENTOR_DATA_SOURCES: Final[tuple[MentorSourceSpec, ...]] = (
         formatting_rules=ENGAGEMENT_TRIAGE_FORMATTING_RULES,
     ),
 )
+
+
+# The lookup bindings (REQ-036): which area source governs each entity's
+# relationship type-ahead. The key is the related entity type a reference
+# field derives (``clientID`` → ``client``); the value is the seeded area
+# source whose grants gate the search (so a lookup reads exactly the rows the
+# entity's grid would). crmMentorRef is deliberately left unbound — the
+# mentor anchor has no browse source, so a lookup over it explains "no
+# access" until an administrator binds one, rather than reading ungoverned.
+MENTOR_LOOKUP_BINDINGS: Final[tuple[tuple[str, str], ...]] = (
+    ("client", DS_MENTOR_CLIENTS),
+    ("engagement", DS_MENTOR_ENGAGEMENTS),
+    ("session", DS_MENTOR_SESSIONS),
+    ("resource", DS_MENTOR_RESOURCES),
+    ("event", DS_MENTOR_EVENTS),
+    ("crmCompanyRef", DS_MENTOR_COMPANIES),
+)
+
+
+def seed_mentor_lookup_bindings(session: Session) -> None:
+    """Seed/reconcile the REQ-036 lookup bindings (durable resolver store).
+
+    Idempotent and convergent, the ``seed_mentor_access`` philosophy: a
+    missing binding is inserted, an existing live one has its source
+    reconciled to the source-controlled spec (these are platform-seeded
+    product config — their truth is this module). Flushes but never commits —
+    the caller (a migration or startup wiring) owns the transaction.
+    """
+    for related_entity_type, data_source_key in MENTOR_LOOKUP_BINDINGS:
+        row = session.scalars(
+            select(LookupSourceBinding).where(
+                LookupSourceBinding.related_entity_type == related_entity_type,
+                LookupSourceBinding.deleted_at.is_(None),
+            )
+        ).one_or_none()
+        if row is None:
+            session.add(
+                LookupSourceBinding(
+                    related_entity_type=related_entity_type,
+                    data_source_key=data_source_key,
+                )
+            )
+        else:
+            row.data_source_key = data_source_key
+    session.flush()
+    log.info(
+        "mentor lookup bindings seeded",
+        extra={"context": {"bindingCount": len(MENTOR_LOOKUP_BINDINGS)}},
+    )
 
 
 def seed_mentor_access(session: Session) -> None:

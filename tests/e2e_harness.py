@@ -52,10 +52,8 @@ from pydantic import BaseModel
 from sqlalchemy import Engine, create_engine, event, select
 from sqlalchemy.orm import Session
 
-from mentorapp.access import InMemoryLookupSources, LookupBinding
 from mentorapp.api.deps import get_session
 from mentorapp.api.envelope import Envelope, ok
-from mentorapp.api.routers.records import get_lookup_sources
 from mentorapp.api.wiring import get_espo_transport
 from mentorapp.crm.espo import EspoResponse
 from mentorapp.main import create_app
@@ -717,25 +715,16 @@ def _build_app() -> tuple[Any, Engine, FakeCrmTransport, SeededFacts]:
             yield session
 
     application = create_app()
-    # The overrides: the request DB session (onto the migrated, seeded
-    # store), the CRM's HTTP edge, and the REQ-036 lookup bindings (which
-    # have no durable store yet — REL-004 block 1 finding; the demo binds
-    # each entity to its seeded area source). Everything else is the
-    # production wiring create_app installed — including the D9 identity
-    # seam, so every request REALLY resolves its acting user from the
-    # session reference; the mentoring provider seams already default to
-    # the sanctioned dev fakes.
+    # The ONLY overrides: the request DB session (onto the migrated, seeded
+    # store) and the CRM's HTTP edge. Everything else is the production
+    # wiring create_app installed — including the D9 identity seam (so every
+    # request REALLY resolves its acting user from the session reference) and
+    # the REQ-036 lookup resolver, which now reads the durable
+    # ``lookupSourceBinding`` table the migration seeds; the gate exercises
+    # the real store, not a stub. The mentoring provider seams already
+    # default to the sanctioned dev fakes.
     application.dependency_overrides[get_session] = _request_session
     application.dependency_overrides[get_espo_transport] = lambda: transport
-    application.dependency_overrides[get_lookup_sources] = lambda: InMemoryLookupSources(
-        [
-            LookupBinding("client", "mentorClients"),
-            LookupBinding("engagement", "mentorEngagements"),
-            LookupBinding("session", "mentorSessions"),
-            LookupBinding("resource", "mentorResources"),
-            LookupBinding("event", "mentorEvents"),
-        ]
-    )
     return application, engine, transport, facts
 
 

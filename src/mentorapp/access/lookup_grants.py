@@ -64,7 +64,7 @@ from mentorapp.access.grants import (
     roles_cover_data_source,
 )
 from mentorapp.observability import get_logger
-from mentorapp.storage import DataSource
+from mentorapp.storage import DataSource, LookupSourceBinding
 
 log = get_logger(__name__)
 
@@ -119,6 +119,29 @@ class InMemoryLookupSources:
 
     def lookup_source_key(self, related_entity_type: str) -> str | None:
         return self._by_entity.get(related_entity_type)
+
+
+class StoredLookupSources:
+    """The production :class:`LookupSourceResolver`: the persisted binding table.
+
+    Reads the one live :class:`~mentorapp.storage.LookupSourceBinding` per
+    entity, so a re-bind (a new live row, the prior soft-deleted) reaches the
+    next keystroke with no restart — the seam's re-resolve-every-time contract
+    over durable state instead of the in-memory reference. An unbound entity
+    is a missing row, answered ``None`` exactly as the reference resolver
+    does, so every caller's unbound handling is unchanged.
+    """
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def lookup_source_key(self, related_entity_type: str) -> str | None:
+        return self._session.scalars(
+            select(LookupSourceBinding.data_source_key).where(
+                LookupSourceBinding.related_entity_type == related_entity_type,
+                LookupSourceBinding.deleted_at.is_(None),
+            )
+        ).one_or_none()
 
 
 def is_lookup_searchable(

@@ -18,6 +18,7 @@ import {
   blankToNull,
   dirtyChanges,
   EditFormScreen,
+  isoForInput,
   leaveWarning,
   resolveStaleSave,
   validateOnExit,
@@ -482,5 +483,40 @@ describe("the keyboard (REQ-038)", () => {
     fireEvent.change(name, { target: { value: "Grace" } });
     fireEvent.keyDown(name, { key: "Enter" });
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("temporal field controls (REQ-032, finding #2)", () => {
+  it("slices a stored ISO value to the control's precision", () => {
+    expect(isoForInput("2026-07-08T15:30:00.000000+00:00", true)).toBe(
+      "2026-07-08T15:30",
+    );
+    expect(isoForInput("2026-07-08T15:30:00.000000+00:00", false)).toBe("2026-07-08");
+    // Absent value renders empty, not "undefined".
+    expect(isoForInput(null, true)).toBe("");
+    expect(isoForInput("", false)).toBe("");
+  });
+
+  it("renders a timestamp field as a datetime-local picker, not bare text", () => {
+    const p = payload();
+    p.fields = [field("startsAt", { fieldLabel: "Starts At", fieldType: "timestamp" })];
+    p.record = {
+      mentorID: "m-1",
+      startsAt: "2026-07-08T15:30:00+00:00",
+      rowVersion: 1,
+    };
+    p.initialFocusField = "startsAt";
+    render(
+      <EditFormScreen
+        entityType="mentor"
+        recordId="m-1"
+        payload={p}
+        onLeave={vi.fn()}
+      />,
+    );
+    const control = screen.getByLabelText<HTMLInputElement>("Starts At");
+    expect(control.type).toBe("datetime-local");
+    // The stored ISO value shows sliced to minutes, not blank.
+    expect(control.value).toBe("2026-07-08T15:30");
   });
 });

@@ -70,6 +70,21 @@ function controlText(value: unknown): string {
   return "";
 }
 
+/**
+ * The value a native date / datetime-local input can show, from a stored ISO
+ * string. A `date` control wants `YYYY-MM-DD` and a `datetime-local` wants
+ * `YYYY-MM-DDTHH:MM`, but a stored value carries seconds and an offset, which
+ * the control rejects (rendering blank) — so it is sliced to the control's
+ * precision. Both shapes round-trip through the server's `fromisoformat`, so
+ * what shows and what saves stay the one value; a non-string (absent) is "".
+ */
+export function isoForInput(value: unknown, withTime: boolean): string {
+  if (typeof value !== "string" || value === "") {
+    return "";
+  }
+  return withTime ? value.slice(0, 16) : value.slice(0, 10);
+}
+
 /** form_validation.normalized_input: blank text is NO value. */
 export function blankToNull(value: unknown): unknown {
   if (typeof value === "string" && value.trim() === "") {
@@ -383,12 +398,24 @@ export function FieldControl({
       />
     );
   }
-  if (field.fieldType === "date" || field.fieldType === "datetime") {
+  // Temporal fields get native pickers. "timestamp" is what the registry
+  // derives for a DateTime column (registry_seed._derived_field_type), so a
+  // real domain datetime lands here, not in the text fallback; "datetime" is
+  // the registry-declared override name. A stored value is a full ISO string
+  // (seconds + offset) that a <input type> cannot show, so it is sliced to
+  // the control's precision — the server re-parses either shape via
+  // fromisoformat, so what shows and what saves stay one value.
+  if (
+    field.fieldType === "date" ||
+    field.fieldType === "datetime" ||
+    field.fieldType === "timestamp"
+  ) {
+    const withTime = field.fieldType !== "date";
     return (
       <input
         {...shared}
-        type={field.fieldType === "date" ? "date" : "datetime-local"}
-        value={typeof value === "string" ? value : ""}
+        type={withTime ? "datetime-local" : "date"}
+        value={isoForInput(value, withTime)}
         onChange={(event) => {
           onChange(event.target.value);
         }}

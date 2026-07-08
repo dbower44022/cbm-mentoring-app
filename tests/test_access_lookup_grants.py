@@ -14,13 +14,18 @@ from mentorapp.access import (
     LookupBinding,
     LookupUnboundError,
     SourceGrant,
+    StoredLookupSources,
     authorize_lookup_search,
     grant_data_source_role,
     is_lookup_searchable,
     revoke_data_source_role,
     stored_lookup_scope,
 )
-from mentorapp.storage import DataSource, utcnow
+from mentorapp.access.mentoring import (
+    MENTOR_LOOKUP_BINDINGS,
+    seed_mentor_lookup_bindings,
+)
+from mentorapp.storage import DataSource, LookupSourceBinding, utcnow
 from mentorapp.ui.lookup_control import resolve_suggestions
 
 MENTOR_USER = uuid.uuid4()
@@ -195,3 +200,46 @@ def test_binding_to_a_retired_source_denies_like_ungranted(
             user_id=MENTOR_USER,
             user_roles=frozenset({"mentor"}),
         )
+
+
+# --- the durable resolver + its seed (PI-012) ---------------------------------------
+
+
+def test_stored_resolver_reads_the_live_binding(session: Session) -> None:
+    session.add(
+        LookupSourceBinding(related_entity_type="mentor", data_source_key="mentorsForLookup")
+    )
+    session.flush()
+    resolver = StoredLookupSources(session)
+    assert resolver.lookup_source_key("mentor") == "mentorsForLookup"
+    # An unbound entity is a missing row: None, exactly like the reference.
+    assert resolver.lookup_source_key("gadget") is None
+
+
+def test_stored_resolver_ignores_a_soft_deleted_binding(session: Session) -> None:
+    session.add(
+        LookupSourceBinding(
+            related_entity_type="mentor",
+            data_source_key="mentorsForLookup",
+            deleted_at=utcnow(),
+        )
+    )
+    session.flush()
+    # A retired binding reads unbound — the seam's re-resolve-every-time
+    # contract, so a re-bind (new live row) takes over with no restart.
+    assert StoredLookupSources(session).lookup_source_key("mentor") is None
+
+
+def test_seed_bindings_are_idempotent_and_reconcile(session: Session) -> None:
+    seed_mentor_lookup_bindings(session)
+    resolver = StoredLookupSources(session)
+    for related_entity_type, data_source_key in MENTOR_LOOKUP_BINDINGS:
+        assert resolver.lookup_source_key(related_entity_type) == data_source_key
+    # A second run inserts nothing new — one live binding per entity holds.
+    seed_mentor_lookup_bindings(session)
+    live = session.scalars(
+        LookupSourceBinding.__table__.select().where(
+            LookupSourceBinding.deleted_at.is_(None)
+        )
+    ).all()
+    assert len(live) == len(MENTOR_LOOKUP_BINDINGS)

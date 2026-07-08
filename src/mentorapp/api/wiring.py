@@ -39,8 +39,10 @@ from sqlalchemy.orm import Session
 from mentorapp.access import (
     CredentialCipher,
     IdentityBridge,
+    LookupSourceResolver,
     SessionManagement,
     StoredIdentityBridge,
+    StoredLookupSources,
     StoredSessionStore,
     StoredTokenActionStore,
     TokenActionService,
@@ -63,7 +65,7 @@ from mentorapp.api.routers.home import (
     get_message_admin,
     get_message_center,
 )
-from mentorapp.api.routers.records import get_record_catalog
+from mentorapp.api.routers.records import get_lookup_sources, get_record_catalog
 from mentorapp.api.routers.shell import ShellCatalog, get_shell_catalog
 from mentorapp.api.routers.workprocess import RoleSource, get_role_source
 from mentorapp.crm.espo import EspoAuthGateway, EspoResponse, EspoTransport
@@ -305,10 +307,22 @@ def provide_record_catalog() -> MappedRecordCatalog:
     return MappedRecordCatalog(MENTOR_RECORD_CATALOG)
 
 
+def provide_lookup_sources(session: _SessionDep) -> LookupSourceResolver:
+    """The production ``get_lookup_sources``: the persisted binding table (REQ-036).
+
+    Reads ``lookupSourceBinding`` live per keystroke, so an administrator's
+    re-bind takes effect on the next suggestion request — the durable form of
+    the resolver seam, replacing the fail-loud default.
+    """
+    return StoredLookupSources(session)
+
+
 def install_records_wiring(app: FastAPI) -> None:
-    """Bind the domain entity catalog onto the records router's seam (WTK-168).
+    """Bind the domain entity catalog + lookup-binding resolver (WTK-168, REQ-036).
 
     Same override mechanism as the auth wiring — one seam, one binding; a
-    test that wants a different catalog re-overrides the same provider key.
+    test that wants a different catalog or binding set re-overrides the same
+    provider key.
     """
     app.dependency_overrides[get_record_catalog] = provide_record_catalog
+    app.dependency_overrides[get_lookup_sources] = provide_lookup_sources

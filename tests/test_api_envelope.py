@@ -288,9 +288,10 @@ def mounted_client(session: Session) -> TestClient:
     # The record catalog is fail-loud until the domain entities wire it
     # (WTK-029); same treatment as the seams above.
     app.dependency_overrides[get_record_catalog] = _SweepRecordCatalog
-    # The lookup-source resolver is fail-loud until lookup bindings get a
-    # durable home (REL-004 block 1); same treatment as the seams above —
-    # an empty binding set renders the probe as the unbound educate phase.
+    # The production resolver reads the durable lookupSourceBinding table
+    # (PI-012); the sweep pins an EMPTY binding set so a bare /lookups probe
+    # deterministically renders the unbound educate phase (200), independent
+    # of whatever the sweep's session happens to hold.
     app.dependency_overrides[get_lookup_sources] = lambda: InMemoryLookupSources([])
     # The grid entity catalog is fail-loud until the grids wiring lands
     # (WTK-047); same treatment as the seams above.
