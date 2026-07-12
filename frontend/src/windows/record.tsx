@@ -20,6 +20,10 @@ import {
 } from "../api/payloads";
 import { useEnvelope } from "../api/useEnvelope";
 import { FieldEditWindow } from "../forms/field-edit-window";
+// Module cycle with the seam (seam → domain previews → this file's opener)
+// is deliberate and safe: the opener is a hoisted function declaration the
+// previews call from event handlers, long after both modules evaluate.
+import { previewRendererForEntityType } from "../grid/preview-seam";
 import { NotificationBell } from "../shell/bell";
 import { DeclinedNotice, EducateNotice, UnreachableNotice } from "../shell/educate";
 
@@ -238,6 +242,9 @@ export function RecordWindow(): ReactElement {
       />
     );
   }
+  // The seam's pop-out decision (REQ-110): a domain preview owns its entity
+  // type; the generic flat pane stays the fallback for everything unmapped.
+  const DomainPreview = previewRendererForEntityType(entityType);
   return (
     <div>
       {/* The standard header minus navigation: a record window, not a panel
@@ -252,7 +259,11 @@ export function RecordWindow(): ReactElement {
         </Link>
         <NotificationBell />
       </header>
-      <RecordPreview entityType={entityType} recordId={recordId} />
+      {DomainPreview !== null ? (
+        <DomainPreview recordId={recordId} />
+      ) : (
+        <RecordPreview entityType={entityType} recordId={recordId} />
+      )}
     </div>
   );
 }

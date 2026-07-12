@@ -19,6 +19,39 @@ export interface EffectiveThemePayload {
   typeScale: { scaleSteps: Record<string, number> };
 }
 
+/** The preference key the app-wide template choice rides (REQ-044 layer two,
+ * mirrors ui/template_flow.py TEMPLATE_CHOICE_PREFERENCE_KEY). */
+export const TEMPLATE_CHOICE_PREFERENCE_KEY = "theming.templateChoice";
+
+/**
+ * A font slot → CSS custom properties (REQ-046). Each slot exposes a family
+ * and a weight; components pick the family/weight through these, and the size
+ * comes from the slot's chosen type step (`--type-step-*`), never a raw size.
+ */
+export function fontSlotFamilyVariable(slotName: string): string {
+  return `--font-${slotName.replace(/[A-Z]/g, (l) => `-${l.toLowerCase()}`)}-family`;
+}
+
+export function fontSlotWeightVariable(slotName: string): string {
+  return `--font-${slotName.replace(/[A-Z]/g, (l) => `-${l.toLowerCase()}`)}-weight`;
+}
+
+/**
+ * Record the caller's app-wide template choice (REQ-044 layer two) and
+ * repaint. The choice rides the one preference mechanism (a
+ * `{templateKey}` document under TEMPLATE_CHOICE_PREFERENCE_KEY); the server
+ * re-resolves `/theming/effective` from it, so a re-apply is all the client
+ * does. The key is a stored template's ID or a launch-set key.
+ */
+export async function chooseTemplate(templateKey: string): Promise<void> {
+  await callApi(`/preferences/${TEMPLATE_CHOICE_PREFERENCE_KEY}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ preferenceValue: { templateKey } }),
+  });
+  await applyEffectiveTheme();
+}
+
 /**
  * The ONE slot-name → custom-property mapping. The backend's camelCase slot
  * vocabulary (storage.theming COLOR_SLOTS) derives mechanically into the
@@ -64,5 +97,11 @@ export async function applyEffectiveTheme(): Promise<void> {
   }
   for (const [step, sizePx] of Object.entries(payload.typeScale.scaleSteps)) {
     root.style.setProperty(typeStepVariable(step), `${String(sizePx)}px`);
+  }
+  // Font slots (REQ-046): family + weight per slot; the size is the slot's
+  // chosen step, already painted above — a font picks a step, never a size.
+  for (const [slot, spec] of Object.entries(payload.fontSlots)) {
+    root.style.setProperty(fontSlotFamilyVariable(slot), spec.fontFamily);
+    root.style.setProperty(fontSlotWeightVariable(slot), String(spec.fontWeight));
   }
 }

@@ -1233,3 +1233,417 @@ span.link-row {
   font-size: var(--type-step-sm);
   color: var(--slot-group-header-text);
 }
+
+/* --- Themes surface (REQ-044/046, block 2): picker + creator + guardrail. */
+
+.appearance-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  overflow-y: auto;
+  padding: 40px 16px;
+}
+
+.appearance-panel {
+  background: var(--slot-panel-background);
+  color: var(--slot-row-text);
+  border-radius: 6px;
+  box-shadow: 0 6px 30px rgba(0, 0, 0, 0.3);
+  width: min(760px, 100%);
+  padding: 18px 22px;
+}
+
+.appearance-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.appearance-intro {
+  font-size: var(--type-step-sm);
+  color: var(--slot-group-header-text);
+}
+
+.template-picker {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.template-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  padding: 10px;
+  border: 2px solid var(--slot-group-header-background);
+  border-radius: 5px;
+  background: var(--slot-row-background);
+  cursor: pointer;
+  text-align: left;
+}
+
+.template-card[aria-pressed="true"] {
+  border-color: var(--slot-accent);
+  outline: 2px solid var(--slot-accent);
+}
+
+.template-swatch {
+  display: flex;
+  height: 34px;
+  border: 1px solid;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.template-swatch > span {
+  flex: 1;
+}
+
+.template-name {
+  font-size: var(--type-step-md);
+}
+
+.template-kind {
+  font-size: var(--type-step-xs);
+  color: var(--slot-group-header-text);
+}
+
+.template-new,
+.creator-save {
+  margin-top: 14px;
+  padding: 8px 18px;
+  background: var(--slot-accent);
+  color: var(--slot-header-text);
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.slot-group {
+  border: 1px solid var(--slot-group-header-background);
+  border-radius: 4px;
+  margin: 10px 0;
+  padding: 8px 12px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 6px 16px;
+}
+
+.slot-group legend {
+  font-size: var(--type-step-sm);
+  color: var(--slot-group-header-text);
+  font-weight: 600;
+}
+
+.color-slot-field,
+.font-slot-field,
+.creator-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: var(--type-step-sm);
+}
+
+.creator-field input[type="text"],
+.font-slot-field input[type="text"] {
+  flex: 1;
+}
+
+.creator-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.contrast-warnings {
+  border: 1px solid var(--slot-status-warning);
+  border-radius: 4px;
+  padding: 10px 14px;
+  margin: 10px 0;
+}
+
+.contrast-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  border-top: 1px solid var(--slot-group-header-background);
+  flex-wrap: wrap;
+}
+
+.contrast-preview {
+  padding: 6px 12px;
+  border-radius: 3px;
+  font-size: var(--type-step-md);
+}
+
+.contrast-ratio {
+  font-size: var(--type-step-sm);
+  color: var(--slot-group-header-text);
+}
+
+.creator-errors {
+  color: var(--slot-status-negative);
+  font-size: var(--type-step-sm);
+}
+
+/* --- The session details surface (REQ-110, PI-015 — the approved design).
+   Every fact once: title band → context/actions bar → attendee grid →
+   long-form → transcript → record info. Colors ride the fixed slots and
+   sizes ride the shared scale, like every surface (REQ-044/046). */
+
+.session-detail {
+  padding: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* Links here sit inline in bars and cells — the grid's block-row look
+   (.link-row) would force full-width lines, so scope it back. */
+.session-detail .link-row {
+  display: inline;
+  width: auto;
+  padding: 0;
+}
+
+.session-title {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.6rem;
+}
+
+.session-title h2 {
+  margin: 0;
+  font-size: var(--type-step-lg);
+}
+
+.session-context {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.25rem 1.5rem;
+  padding: 0.3rem 0 0.45rem;
+  border-bottom: 1px solid #dbe3ea;
+}
+
+.ctx-label {
+  font-size: var(--type-step-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #6b7b87;
+  margin-right: 0.35rem;
+}
+
+.join-conference {
+  margin-left: auto;
+  background: var(--slot-accent);
+  color: #fff;
+  border: none;
+  border-radius: 3px;
+  padding: 0.15rem 0.7rem;
+  font-size: var(--type-step-sm);
+  cursor: pointer;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.attendee-section {
+  padding: 0.4rem 0 0.2rem;
+}
+
+.attendee-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.9rem;
+}
+
+.attendee-head h3,
+.session-longform h3,
+.transcript-head h3 {
+  margin: 0 0 0.2rem;
+  font-size: var(--type-step-sm);
+  color: var(--slot-group-header-text);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.attendee-tools {
+  margin-left: auto;
+  display: flex;
+  gap: 0.75rem;
+}
+
+.attendee-tools button {
+  border: none;
+  background: none;
+  color: var(--slot-accent);
+  font-size: var(--type-step-xs);
+  cursor: pointer;
+  padding: 0;
+}
+
+.attendee-grid {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--type-step-sm);
+}
+
+.attendee-grid th {
+  text-align: left;
+  font-size: var(--type-step-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #6b7b87;
+  font-weight: 600;
+  border-bottom: 1px solid #dbe3ea;
+  padding: 0.1rem 0.6rem 0.15rem 0.25rem;
+}
+
+.attendee-grid td {
+  padding: 0.18rem 0.6rem 0.18rem 0.25rem;
+  white-space: nowrap;
+}
+
+/* REQ-092: every row-oriented display bands, subtly, from the slots. */
+.attendee-grid tbody tr:nth-child(odd) {
+  background: var(--slot-row-background);
+}
+
+.attendee-grid tbody tr:nth-child(even) {
+  background: var(--slot-row-alternate-background);
+}
+
+.copy-cell {
+  border: none;
+  background: none;
+  color: #9fb0bc;
+  cursor: pointer;
+  font-size: var(--type-step-xs);
+  padding: 0 0 0 0.3rem;
+}
+
+.copy-confirm {
+  margin: 0.15rem 0 0;
+  font-size: var(--type-step-xs);
+  color: var(--slot-status-positive);
+}
+
+.att-chip {
+  display: inline-block;
+  font-size: var(--type-step-xs);
+  border: 1px solid;
+  border-radius: 8px;
+  padding: 0 0.45rem;
+}
+
+.att-chip.att-attended {
+  color: var(--slot-status-positive);
+  border-color: var(--slot-status-positive);
+  background: color-mix(
+    in srgb,
+    var(--slot-status-positive) 10%,
+    var(--slot-panel-background)
+  );
+}
+
+.att-chip.att-invited {
+  color: #55656f;
+  border-color: #9fb0bc;
+  background: var(--slot-row-alternate-background);
+}
+
+/* Notes and action items side by side; they are the working layer and keep
+   fill priority over the transcript below (REQ-088/089 spirit). */
+.session-longform {
+  display: grid;
+  grid-template-columns: 3fr 2fr;
+  gap: 0.75rem;
+  padding: 0.4rem 0;
+  border-top: 1px solid #dbe3ea;
+  font-size: var(--type-step-sm);
+}
+
+.draft-flag {
+  border-left: 3px solid var(--slot-status-warning);
+  background: color-mix(
+    in srgb,
+    var(--slot-status-warning) 6%,
+    var(--slot-panel-background)
+  );
+  padding: 0.3rem 0.5rem;
+  font-size: var(--type-step-xs);
+  margin: 0.4rem 0 0;
+}
+
+/* The transcript: the record's longest text — its own scroll allotment
+   (the dashlet scroll rule), never the page's height. */
+.transcript-section {
+  border-top: 1px solid #dbe3ea;
+  padding-top: 0.4rem;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.transcript-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.9rem;
+}
+
+.transcript-prov {
+  font-size: var(--type-step-xs);
+  color: #6b7b87;
+}
+
+.transcript-find {
+  margin-left: auto;
+  font-size: var(--type-step-sm);
+  border: 1px solid #c3ccd6;
+  border-radius: 3px;
+  padding: 0.1rem 0.45rem;
+  min-width: 13rem;
+}
+
+.transcript-matches {
+  font-size: var(--type-step-xs);
+  color: #6b7b87;
+}
+
+.transcript-body {
+  margin-top: 0.3rem;
+  overflow-y: auto;
+  max-height: 40vh;
+  font-size: var(--type-step-sm);
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.transcript-body mark {
+  background: color-mix(in srgb, var(--slot-status-warning) 30%, transparent);
+  padding: 0 1px;
+}
+
+.record-info {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem 1.25rem;
+  margin: 0.4rem 0 0;
+  padding-top: 0.3rem;
+  border-top: 1px solid #e5ebf0;
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-step-xs, 11px);
+  color: #798894;
+}

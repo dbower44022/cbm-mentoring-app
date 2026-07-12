@@ -77,6 +77,11 @@ from mentorapp.automation.conferencing import (
     FakeConferencingProvider,
     MeetingContext,
 )
+from mentorapp.automation.contact_detail import (
+    ContactDetail,
+    ContactDetailSource,
+    DeterministicContactDetailSource,
+)
 from mentorapp.automation.email_outbound import (
     CatalogTemplateSource,
     EmailTemplateSource,
@@ -288,6 +293,7 @@ _DEV_TRANSPORT = LoggedEmailTransport()
 _DEV_CONFERENCING = FakeConferencingProvider()
 _DEV_TRANSCRIPTS = FakeTranscriptSource()
 _DEV_DRAFTER = FakeSummaryDrafter()
+_DEV_CONTACT_DETAIL = DeterministicContactDetailSource()
 
 
 def get_email_templates() -> EmailTemplateSource:
@@ -315,6 +321,11 @@ def get_summary_drafter() -> SummaryDrafter:
     return _DEV_DRAFTER
 
 
+def get_contact_detail_source() -> ContactDetailSource:
+    """Provide the attendee contact-detail seam (REQ-110) — dev default is deterministic."""
+    return _DEV_CONTACT_DETAIL
+
+
 _SessionDep = Annotated[Session, Depends(get_session)]
 _UserDep = Annotated[uuid.UUID, Depends(get_current_user_id)]
 _RolesDep = Annotated[RoleSource, Depends(get_role_source)]
@@ -323,6 +334,7 @@ _TransportDep = Annotated[EmailTransport, Depends(get_email_transport)]
 _ConferencingDep = Annotated[ConferencingProvider, Depends(get_conferencing_provider)]
 _TranscriptsDep = Annotated[TranscriptSource, Depends(get_transcript_source)]
 _DrafterDep = Annotated[SummaryDrafter, Depends(get_summary_drafter)]
+_ContactDetailDep = Annotated[ContactDetailSource, Depends(get_contact_detail_source)]
 
 
 # --- Option-set reads (DB-S7: names are stable, labels are admin data) ----------------
@@ -551,6 +563,222 @@ def get_engagement_rollup(
             "sessions": entries,
         },
         meta={"rollupCount": len(rollup), "sessionCount": len(entries)},
+    )
+
+
+# --- The session details read (REQ-110, PI-015) -----------------------------------------
+
+
+_TRANSCRIPT_ATTACHED: Final = "attached"
+_TRANSCRIPT_EXPECTED: Final = "expected"
+_TRANSCRIPT_UNAVAILABLE: Final = "unavailable"
+
+
+def _scoped_session(
+    session: Session, session_id: uuid.UUID, user_id: uuid.UUID, roles: RoleSource
+) -> tuple[MentoringSession, Engagement]:
+    """The caller's live session with its engagement, or the uniform 404.
+
+    Sessions carry no access rule of their own — the engagement's pairing is
+    the rule, so a session outside the caller's engagements answers exactly
+    like one that never existed (the ``_scoped_engagement`` guarantee).
+    """
+    record = session.get(MentoringSession, session_id)
+    if record is None or record.deleted_at is not None:
+        raise RecordNotFoundError(_SESSION_ENTITY, str(session_id))
+    engagement = _scoped_engagement(session, record.engagement_id, user_id, roles)
+    return record, engagement
+
+
+def _transcript_state(record: MentoringSession) -> str:
+    """Which of the three surface states the transcript is in (REQ-110).
+
+    ``expected`` is truthful because an app-created meeting always has the
+    retrieval job standing (enqueued in the same transaction as the session);
+    without one there is nothing to wait for — the paste path is the route.
+    """
+    if record.transcript_text:
+        return _TRANSCRIPT_ATTACHED
+    if record.external_meeting_id is not None:
+        return _TRANSCRIPT_EXPECTED
+    return _TRANSCRIPT_UNAVAILABLE
+
+
+def _attendee_rows(
+    session: Session,
+    engagement: Engagement,
+    record: MentoringSession,
+    by_id: dict[uuid.UUID, OptionValue],
+    details: ContactDetailSource,
+) -> list[dict[str, Any]]:
+    """The DERIVED attendee list (DEC-098): mentor + primary contact.
+
+    Participation reads off the session status — ``invited`` until the
+    session is marked completed, ``attended`` after — because per-person
+    invited-vs-attended state is deliberately unmodeled pending its own
+    ruling; this read never claims to know more than the session does.
+    App-side values stay authoritative; the detail seam only fills gaps
+    (phone, and whatever the production CRM binding adds later).
+    """
+    status = by_id.get(record.session_status) if record.session_status else None
+    attended = status is not None and status.option_value_name == "completed"
+    participation = "attended" if attended else "invited"
+
+    mentor_ref = engagement.crm_mentor_ref
+    crm_ids = [
+        ref
+        for ref in (
+            mentor_ref.crm_mentor_id if mentor_ref is not None else None,
+            engagement.primary_contact_crm_id,
+        )
+        if ref
+    ]
+    found = details.lookup(crm_ids) if crm_ids else {}
+
+    client = (
+        engagement.client
+        if engagement.client and engagement.client.deleted_at is None
+        else None
+    )
+    company = client.crm_company_ref if client is not None else None
+
+    rows: list[dict[str, Any]] = []
+    if mentor_ref is not None:
+        detail = found.get(mentor_ref.crm_mentor_id, ContactDetail())
+        mentor_user = session.get(AppUser, mentor_ref.user_id) if mentor_ref.user_id else None
+        rows.append(
+            {
+                "name": detail.contact_name
+                or (mentor_user.username if mentor_user else "Mentor"),
+                "role": "mentor",
+                "companyName": detail.company_name,
+                "companyRefID": None,
+                "crmContactID": mentor_ref.crm_mentor_id,
+                "email": detail.email_address,
+                "phone": detail.phone_number,
+                "participation": participation,
+            }
+        )
+    if engagement.primary_contact_name:
+        crm_id = engagement.primary_contact_crm_id
+        detail = found.get(crm_id, ContactDetail()) if crm_id else ContactDetail()
+        rows.append(
+            {
+                "name": engagement.primary_contact_name,
+                "role": "client",
+                "companyName": detail.company_name
+                or (company.crm_company_id if company else None),
+                "companyRefID": company.crm_company_ref_id if company else None,
+                "crmContactID": crm_id,
+                "email": engagement.primary_contact_email or detail.email_address,
+                "phone": detail.phone_number,
+                "participation": participation,
+            }
+        )
+    return rows
+
+
+@router.get("/sessions/{session_id}/detail")
+def get_session_detail(
+    session_id: uuid.UUID,
+    session: _SessionDep,
+    user_id: _UserDep,
+    roles: _RolesDep,
+    details: _ContactDetailDep,
+) -> Envelope:
+    """Everything the session details surface renders, in one read (REQ-110).
+
+    The transcript TEXT stays out of this payload by design — it is the
+    record's longest content, so ``data.transcript`` carries only the state
+    triple the surface's section renders from (attached / expected /
+    unavailable, plus source and size), and the dedicated transcript read
+    serves the text on demand. Attendees are the derived list documented on
+    :func:`_attendee_rows`.
+    """
+    record, engagement = _scoped_session(session, session_id, user_id, roles)
+    by_id, _ = _status_vocabulary(session, SESSION_STATUS_OPTION_SET)
+    attendees = _attendee_rows(session, engagement, record, by_id, details)
+    client = (
+        engagement.client
+        if engagement.client and engagement.client.deleted_at is None
+        else None
+    )
+    company = client.crm_company_ref if client is not None else None
+    word_count = len(record.transcript_text.split()) if record.transcript_text else 0
+    log.info(
+        "session detail served",
+        extra={
+            "context": {
+                "userId": str(user_id),
+                "sessionID": str(session_id),
+                "attendeeCount": len(attendees),
+                "transcriptState": _transcript_state(record),
+            }
+        },
+    )
+    return ok(
+        data={
+            "session": _session_entry(record, by_id),
+            "engagement": {
+                "engagementID": engagement.engagement_id,
+                "engagementName": engagement.engagement_name,
+            },
+            "client": (
+                {
+                    "clientID": client.client_id,
+                    "crmCompanyRefID": company.crm_company_ref_id if company else None,
+                    "crmCompanyID": company.crm_company_id if company else None,
+                }
+                if client is not None
+                else None
+            ),
+            "attendees": attendees,
+            "transcript": {
+                "state": _transcript_state(record),
+                "source": record.transcript_source,
+                "wordCount": word_count,
+            },
+        },
+        meta={"attendeeCount": len(attendees)},
+    )
+
+
+@router.get("/sessions/{session_id}/transcript")
+def get_session_transcript(
+    session_id: uuid.UUID,
+    session: _SessionDep,
+    user_id: _UserDep,
+    roles: _RolesDep,
+) -> Envelope:
+    """The transcript text, on demand (REQ-110).
+
+    Fetched only when the details surface's transcript section is actually
+    used — an hour of conversation never rides along on a preview read. A
+    session whose transcript is not attached answers its state with a null
+    text, and the surface's own educate copy explains it; asking is not an
+    error.
+    """
+    record, _ = _scoped_session(session, session_id, user_id, roles)
+    state = _transcript_state(record)
+    text = record.transcript_text if state == _TRANSCRIPT_ATTACHED else None
+    log.info(
+        "session transcript served",
+        extra={
+            "context": {
+                "userId": str(user_id),
+                "sessionID": str(session_id),
+                "state": state,
+                "wordCount": len(text.split()) if text else 0,
+            }
+        },
+    )
+    return ok(
+        data={
+            "state": state,
+            "transcriptText": text,
+            "transcriptSource": record.transcript_source,
+        },
+        meta={"wordCount": len(text.split()) if text else 0},
     )
 
 
@@ -948,10 +1176,7 @@ def patch_session(
     fields actually sent travel, and unchanged values never bump the
     version. An unknown status name is 422 ``unknownSessionStatus``.
     """
-    record = session.get(MentoringSession, session_id)
-    if record is None or record.deleted_at is not None:
-        raise RecordNotFoundError(_SESSION_ENTITY, str(session_id))
-    _scoped_engagement(session, record.engagement_id, user_id, roles)
+    record, _ = _scoped_session(session, session_id, user_id, roles)
 
     sent = body.model_fields_set
     changes: dict[str, Any] = {}
@@ -1140,10 +1365,7 @@ def post_session_transcript(
     Success answers the updated session record; the drafts land as PROPOSALS
     on ``draftSummary``/``draftActionItems`` — never on the mentor's notes.
     """
-    record = session.get(MentoringSession, session_id)
-    if record is None or record.deleted_at is not None:
-        raise RecordNotFoundError(_SESSION_ENTITY, str(session_id))
-    _scoped_engagement(session, record.engagement_id, user_id, roles)
+    record, _ = _scoped_session(session, session_id, user_id, roles)
     if record.external_meeting_id is None:
         raise ApiValidationError(
             [

@@ -115,3 +115,38 @@ export interface SessionRecordPayload {
   draftActionItems: string | null;
   rowVersion: number;
 }
+
+/** One derived attendee row on the session details read (REQ-110, DEC-098). */
+export interface SessionAttendeePayload {
+  name: string;
+  role: string;
+  companyName: string | null;
+  companyRefID: string | null;
+  crmContactID: string | null;
+  email: string | null;
+  phone: string | null;
+  participation: string;
+}
+
+/** `GET /sessions/{id}/detail` — the one session-details read (REQ-110).
+ * The transcript TEXT is deliberately absent: `transcript` carries only the
+ * state triple the section renders from; the text rides the dedicated
+ * on-demand read below. */
+export interface SessionDetailPayload {
+  session: RollupSessionPayload;
+  engagement: { engagementID: string; engagementName: string | null };
+  client: {
+    clientID: string;
+    crmCompanyRefID: string | null;
+    crmCompanyID: string | null;
+  } | null;
+  attendees: SessionAttendeePayload[];
+  transcript: { state: string; source: string | null; wordCount: number };
+}
+
+/** `GET /sessions/{id}/transcript` — the on-demand transcript text (REQ-110). */
+export interface SessionTranscriptPayload {
+  state: string;
+  transcriptText: string | null;
+  transcriptSource: string | null;
+}
