@@ -12,8 +12,9 @@
 
 import { type ComponentType } from "react";
 
-import { ENGAGEMENT_SOURCE_KEYS } from "../mentoring/actions";
+import { ENGAGEMENT_SOURCE_KEYS, SESSION_SOURCE_KEYS } from "../mentoring/actions";
 import { EngagementPreview } from "../mentoring/engagement-preview";
+import { SessionDetailPreview } from "../mentoring/session-detail";
 
 export interface PreviewRendererProps {
   recordId: string;
@@ -25,7 +26,25 @@ export interface PreviewRendererProps {
 const RENDERERS: readonly (readonly [
   readonly string[],
   ComponentType<PreviewRendererProps>,
-])[] = [[ENGAGEMENT_SOURCE_KEYS, EngagementPreview]];
+])[] = [
+  [ENGAGEMENT_SOURCE_KEYS, EngagementPreview],
+  [SESSION_SOURCE_KEYS, SessionDetailPreview],
+];
+
+/** Domain renderers for POP-OUT record windows, keyed by ENTITY TYPE.
+ * A pop-out has no data source — its route names the record — so this is
+ * the same seam decision keyed the only way a window can key it. The
+ * generic RecordPreview stays the fallback for everything unmapped. */
+const ENTITY_RENDERERS: Readonly<Record<string, ComponentType<PreviewRendererProps>>> =
+  {
+    session: SessionDetailPreview,
+  };
+
+export function previewRendererForEntityType(
+  entityType: string,
+): ComponentType<PreviewRendererProps> | null {
+  return ENTITY_RENDERERS[entityType] ?? null;
+}
 
 /** The domain preview for one data source, or null for the generic pane. */
 export function previewRendererFor(

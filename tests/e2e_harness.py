@@ -175,6 +175,10 @@ class SeededFacts:
 
     riverbend_engagement_id: uuid.UUID
     summit_engagement_id: uuid.UUID
+    # The REQ-110 session-details journey's two subjects: one held session
+    # with an attached transcript, one upcoming with a retrieval standing.
+    summit_transcript_session_id: uuid.UUID
+    summit_upcoming_session_id: uuid.UUID
 
 
 def _fresh_migrated_engine() -> Engine:
@@ -269,6 +273,7 @@ def _session_row(
     action_items: str | None = None,
     link: str | None = None,
     external_meeting_id: str | None = None,
+    transcript_text: str | None = None,
 ) -> MentoringSession:
     row = MentoringSession(
         engagement_id=engagement.engagement_id,
@@ -278,6 +283,8 @@ def _session_row(
         action_items=action_items,
         conference_link=link,
         external_meeting_id=external_meeting_id,
+        transcript_text=transcript_text,
+        transcript_source="platform" if transcript_text is not None else None,
     )
     db.add(row)
     db.flush()
@@ -386,7 +393,7 @@ def _seed(engine: Engine) -> SeededFacts:
                 "<li>Deshawn drafts the detailer job posting</li></ul>"
             ),
         )
-        _session_row(
+        summit_transcript_session = _session_row(
             db,
             summit,
             days(-14),
@@ -400,8 +407,25 @@ def _seed(engine: Engine) -> SeededFacts:
                 "<li>Frank shares the cash-flow basics video</li></ul>"
             ),
             external_meeting_id="dev-meeting-summit-2026-06",
+            # The REQ-110 attached state, browsable: speaker-turn text the
+            # transcript section renders, scrolls, and finds within.
+            transcript_text=(
+                "Frank: Let's settle the van question today — lease or buy.\n"
+                "Deshawn: The dealer quoted four twenty a month on a lease.\n"
+                "Frank: Against buying, the lease keeps eleven thousand in "
+                "cash the first year. With the mobile launch, cash wins.\n"
+                "Deshawn: That was my gut too. What about insurance?\n"
+                "Frank: Commercial auto is the open number. Get two quotes — "
+                "one through your agent, one direct — before we commit.\n"
+                "Deshawn: I can have both by Friday.\n"
+                "Frank: Good. Then we plug real insurance numbers into the "
+                "unit economics and the mobile package price holds or moves.\n"
+                "Deshawn: And the second detailer posting?\n"
+                "Frank: Draft it after the insurance quotes — the hiring math "
+                "only works if the van is on the road by September."
+            ),
         )
-        _session_row(
+        summit_upcoming_session = _session_row(
             db,
             summit,
             days(3),
@@ -702,6 +726,8 @@ def _seed(engine: Engine) -> SeededFacts:
         return SeededFacts(
             riverbend_engagement_id=riverbend.engagement_id,
             summit_engagement_id=summit.engagement_id,
+            summit_transcript_session_id=summit_transcript_session.session_id,
+            summit_upcoming_session_id=summit_upcoming_session.session_id,
         )
 
 
@@ -772,5 +798,7 @@ def harness_state() -> Envelope:
             "password": DEMO_PASSWORD,
             "riverbendEngagementID": str(_facts.riverbend_engagement_id),
             "summitEngagementID": str(_facts.summit_engagement_id),
+            "summitTranscriptSessionID": str(_facts.summit_transcript_session_id),
+            "summitUpcomingSessionID": str(_facts.summit_upcoming_session_id),
         }
     )

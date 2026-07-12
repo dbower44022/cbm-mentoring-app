@@ -21,6 +21,10 @@ export const ENGAGEMENT_SOURCE_KEYS: readonly string[] = [
 /** The resources-library data source (REQ-084). */
 export const RESOURCE_SOURCE_KEYS: readonly string[] = ["mentorResources"];
 
+/** The sessions data source (access/mentoring.py DS_MENTOR_SESSIONS) —
+ * keys the REQ-110 session details preview in the seam. */
+export const SESSION_SOURCE_KEYS: readonly string[] = ["mentorSessions"];
+
 /**
  * The REQ-075 lifecycle actions, classification per the action rules:
  * every transition is `modifying` — a status flip changes data but destroys

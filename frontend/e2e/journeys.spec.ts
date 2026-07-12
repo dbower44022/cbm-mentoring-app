@@ -44,12 +44,20 @@ async function signIn(page: Page): Promise<void> {
   await expect(page.locator(".shell-header")).toBeVisible();
 }
 
-async function seededState(
-  request: APIRequestContext,
-): Promise<{ summitEngagementID: string; riverbendEngagementID: string }> {
+async function seededState(request: APIRequestContext): Promise<{
+  summitEngagementID: string;
+  riverbendEngagementID: string;
+  summitTranscriptSessionID: string;
+  summitUpcomingSessionID: string;
+}> {
   const response = await request.get(`${API}/e2e/state`);
   const body = (await response.json()) as {
-    data: { summitEngagementID: string; riverbendEngagementID: string };
+    data: {
+      summitEngagementID: string;
+      riverbendEngagementID: string;
+      summitTranscriptSessionID: string;
+      summitUpcomingSessionID: string;
+    };
   };
   return body.data;
 }
@@ -124,6 +132,66 @@ test("login → engagements triage → docked rollup preview → prep → logout
   await page.getByRole("button", { name: "Account ▾" }).click();
   await page.getByRole("menuitem", { name: /log out/i }).click();
   await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
+});
+
+test("session details: identity once, attendee grid, on-demand transcript with find (REQ-110)", async ({
+  page,
+  request,
+}) => {
+  await signIn(page);
+  const state = await seededState(request);
+
+  // The held Summit session with the attached transcript.
+  await page.goto(`/records/session/${state.summitTranscriptSessionID}`);
+  const pane = page.locator(".session-detail");
+  await expect(pane).toBeVisible();
+
+  // Identity exactly once: the title carries the moment, ONE status chip,
+  // and no Scheduled/Status/Engagement facts repeat below the title band.
+  await expect(pane.locator("h2")).toContainText("Session —");
+  await expect(pane.locator(".status-chip")).toHaveCount(1);
+  await expect(pane.locator(".status-chip")).toHaveText("Completed");
+
+  // The attendee grid: ruled columns, names not identifiers, role split
+  // readable, banding cadence, participation chips.
+  const grid = pane.locator(".attendee-grid");
+  await expect(grid.locator("th")).toHaveText([
+    "Name",
+    "Role",
+    "Company",
+    "Email",
+    "Phone",
+    "Status",
+  ]);
+  await expect(grid.locator("tbody tr")).toHaveCount(2);
+  await expect(grid).toContainText("Deshawn Carter");
+  await expect(grid).toContainText("deshawn@summitautodetail.com");
+  await expect(grid.locator(".att-chip")).toHaveText(["Attended", "Attended"]);
+  expect(UUID_PATTERN.test((await grid.textContent()) ?? "")).toBe(false);
+
+  // Long-form renders as content; the transcript arrived on demand with
+  // provenance in its head, and find counts + marks + jumps.
+  await expect(pane).toContainText("Van lease vs. buy");
+  await expect(pane.locator(".transcript-prov")).toContainText(
+    "From the meeting platform",
+  );
+  await expect(pane.locator(".transcript-body")).toContainText(
+    "the lease keeps eleven thousand in cash",
+  );
+  await page.getByLabel("Find in transcript").fill("insurance");
+  await expect(pane.locator(".transcript-matches")).toHaveText("3 matches");
+  await expect(pane.locator(".transcript-body mark")).toHaveCount(3);
+
+  // The upcoming session: Join control present, participation reads
+  // Invited, and the transcript section educates that retrieval retries —
+  // provenance surfaces as consequence, never as a "meeting source" fact.
+  await page.goto(`/records/session/${state.summitUpcomingSessionID}`);
+  await expect(page.locator(".session-detail .status-chip")).toHaveText("Scheduled");
+  await expect(page.getByRole("link", { name: "Join conference" })).toBeVisible();
+  await expect(page.locator(".session-detail .att-chip").first()).toHaveText("Invited");
+  await expect(page.locator(".transcript-section")).toContainText(
+    "retrieval retries automatically",
+  );
 });
 
 test("grid anatomy: one action bar, centered search, status bar, count footer", async ({
